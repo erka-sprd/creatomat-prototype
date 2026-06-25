@@ -7,19 +7,20 @@ type WedgeSliderProps = {
   max: number
   value: number
   onChange: (value: number) => void
+  width?: number
 }
 
-export function WedgeSlider({ min, max, value, onChange }: WedgeSliderProps) {
+export function WedgeSlider({ min, max, value, onChange, width = 140 }: WedgeSliderProps) {
   const [isDragging, setIsDragging] = useState(false)
   const percentage = Math.round(((value - min) / (max - min)) * 100)
 
   return (
-    <div className="group relative flex h-6 min-w-[140px] items-center">
+    <div className="group relative flex h-6 items-center" style={{ minWidth: width, width }}>
       <svg
         className="absolute"
         preserveAspectRatio="none"
         xmlns="http://www.w3.org/2000/svg"
-        width="140"
+        width={width}
         height="7"
         viewBox="0 0 140 7"
         fill="none"

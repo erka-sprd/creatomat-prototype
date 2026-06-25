@@ -13,6 +13,7 @@ export type AppearanceData = {
   name: string
   color: string
   image: string
+  modelImage: string | null
   views: ViewImage[]
 }
 

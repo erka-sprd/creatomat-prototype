@@ -30,6 +30,7 @@ export type StaticAppearance = {
   name: string
   color: string
   image: string
+  modelImage: string | null
   printTypes: StaticPrintType[]
   views: StaticAppearanceView[]
 }
@@ -73,7 +74,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 19.99,
     "preview": "/products/2940/1257/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/2940/model-front.webp",
+    "modelImageFront": "/products/2940/1257/model.webp",
     "appearances": [
       {
         "id": "1251",
@@ -135,7 +136,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/2940/1251/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2940/1251/model.webp"
       },
       {
         "id": "1256",
@@ -197,7 +199,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/2940/1256/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2940/1256/model.webp"
       },
       {
         "id": "1257",
@@ -259,7 +262,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/2940/1257/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2940/1257/model.webp"
       },
       {
         "id": "1258",
@@ -321,7 +325,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/2940/1258/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2940/1258/model.webp"
       },
       {
         "id": "1261",
@@ -383,7 +388,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/2940/1261/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2940/1261/model.webp"
       },
       {
         "id": "1269",
@@ -445,7 +451,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/2940/1269/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2940/1269/model.webp"
       },
       {
         "id": "1274",
@@ -507,7 +514,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/2940/1274/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2940/1274/model.webp"
       }
     ],
     "views": [
@@ -771,7 +779,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 14.99,
     "preview": "/products/812/2/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/812/model-front.webp",
+    "modelImageFront": "/products/812/2/model.webp",
     "appearances": [
       {
         "id": "1251",
@@ -833,7 +841,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1251/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1251/model.webp"
       },
       {
         "id": "1252",
@@ -895,7 +904,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1252/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1252/model.webp"
       },
       {
         "id": "1254",
@@ -957,7 +967,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1254/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1254/model.webp"
       },
       {
         "id": "1256",
@@ -1019,7 +1030,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1256/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1256/model.webp"
       },
       {
         "id": "1259",
@@ -1081,7 +1093,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1259/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1259/model.webp"
       },
       {
         "id": "1261",
@@ -1143,7 +1156,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1261/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1261/model.webp"
       },
       {
         "id": "1264",
@@ -1205,7 +1219,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1264/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1264/model.webp"
       },
       {
         "id": "1265",
@@ -1267,7 +1282,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1265/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1265/model.webp"
       },
       {
         "id": "1268",
@@ -1329,7 +1345,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1268/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1268/model.webp"
       },
       {
         "id": "1269",
@@ -1391,7 +1408,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1269/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1269/model.webp"
       },
       {
         "id": "1270",
@@ -1453,7 +1471,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1270/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1270/model.webp"
       },
       {
         "id": "1271",
@@ -1515,7 +1534,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1271/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1271/model.webp"
       },
       {
         "id": "1272",
@@ -1577,7 +1597,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1272/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1272/model.webp"
       },
       {
         "id": "1274",
@@ -1639,7 +1660,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1274/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1274/model.webp"
       },
       {
         "id": "1276",
@@ -1701,7 +1723,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1276/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1276/model.webp"
       },
       {
         "id": "1277",
@@ -1763,7 +1786,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1277/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1277/model.webp"
       },
       {
         "id": "1",
@@ -1825,7 +1849,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/1/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/1/model.webp"
       },
       {
         "id": "2",
@@ -1887,7 +1912,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/812/2/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/812/2/model.webp"
       }
     ],
     "views": [
@@ -2530,7 +2556,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 14.99,
     "preview": "/products/813/2/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/813/model-front.webp",
+    "modelImageFront": "/products/813/2/model.webp",
     "appearances": [
       {
         "id": "1249",
@@ -2592,7 +2618,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1249/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1249/model.webp"
       },
       {
         "id": "1251",
@@ -2654,7 +2681,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1251/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1251/model.webp"
       },
       {
         "id": "1252",
@@ -2716,7 +2744,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1252/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1252/model.webp"
       },
       {
         "id": "1254",
@@ -2778,7 +2807,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1254/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1254/model.webp"
       },
       {
         "id": "1256",
@@ -2840,7 +2870,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1256/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1256/model.webp"
       },
       {
         "id": "1259",
@@ -2902,7 +2933,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1259/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1259/model.webp"
       },
       {
         "id": "1264",
@@ -2964,7 +2996,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1264/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1264/model.webp"
       },
       {
         "id": "1265",
@@ -3026,7 +3059,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1265/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1265/model.webp"
       },
       {
         "id": "1268",
@@ -3088,7 +3122,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1268/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1268/model.webp"
       },
       {
         "id": "1269",
@@ -3150,7 +3185,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1269/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1269/model.webp"
       },
       {
         "id": "1271",
@@ -3212,7 +3248,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1271/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1271/model.webp"
       },
       {
         "id": "1272",
@@ -3274,7 +3311,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1272/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1272/model.webp"
       },
       {
         "id": "1275",
@@ -3336,7 +3374,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1275/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1275/model.webp"
       },
       {
         "id": "1277",
@@ -3398,7 +3437,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1277/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1277/model.webp"
       },
       {
         "id": "1",
@@ -3460,7 +3500,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/1/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/1/model.webp"
       },
       {
         "id": "2",
@@ -3522,7 +3563,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/813/2/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/813/2/model.webp"
       }
     ],
     "views": [
@@ -4020,7 +4062,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 9.99,
     "preview": "/products/814/2/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/814/model-front.webp",
+    "modelImageFront": "/products/814/2/model.webp",
     "appearances": [
       {
         "id": "1249",
@@ -4082,7 +4124,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1249/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1249/model.webp"
       },
       {
         "id": "1251",
@@ -4144,7 +4187,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1251/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1251/model.webp"
       },
       {
         "id": "1252",
@@ -4206,7 +4250,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1252/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1252/model.webp"
       },
       {
         "id": "1254",
@@ -4268,7 +4313,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1254/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1254/model.webp"
       },
       {
         "id": "1256",
@@ -4330,7 +4376,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1256/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1256/model.webp"
       },
       {
         "id": "1259",
@@ -4392,7 +4439,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1259/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1259/model.webp"
       },
       {
         "id": "1264",
@@ -4454,7 +4502,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1264/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1264/model.webp"
       },
       {
         "id": "1265",
@@ -4516,7 +4565,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1265/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1265/model.webp"
       },
       {
         "id": "1268",
@@ -4578,7 +4628,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1268/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1268/model.webp"
       },
       {
         "id": "1269",
@@ -4640,7 +4691,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1269/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1269/model.webp"
       },
       {
         "id": "1270",
@@ -4702,7 +4754,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1270/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1270/model.webp"
       },
       {
         "id": "1271",
@@ -4764,7 +4817,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1271/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1271/model.webp"
       },
       {
         "id": "1272",
@@ -4826,7 +4880,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1272/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1272/model.webp"
       },
       {
         "id": "1274",
@@ -4888,7 +4943,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1274/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1274/model.webp"
       },
       {
         "id": "1275",
@@ -4950,7 +5006,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1275/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1275/model.webp"
       },
       {
         "id": "1277",
@@ -5012,7 +5069,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1277/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1277/model.webp"
       },
       {
         "id": "1278",
@@ -5074,7 +5132,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1278/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1278/model.webp"
       },
       {
         "id": "1",
@@ -5136,7 +5195,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/1/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/1/model.webp"
       },
       {
         "id": "2",
@@ -5198,7 +5258,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/814/2/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/814/2/model.webp"
       }
     ],
     "views": [
@@ -5749,7 +5810,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 29.99,
     "preview": "/products/1047/2/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/1047/model-front.webp",
+    "modelImageFront": "/products/1047/2/model.webp",
     "appearances": [
       {
         "id": "424",
@@ -5815,7 +5876,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/424/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/424/model.webp"
       },
       {
         "id": "577",
@@ -5881,7 +5943,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/577/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/577/model.webp"
       },
       {
         "id": "648",
@@ -5947,7 +6010,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/648/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/648/model.webp"
       },
       {
         "id": "649",
@@ -6013,7 +6077,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/649/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/649/model.webp"
       },
       {
         "id": "764",
@@ -6079,7 +6144,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/764/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/764/model.webp"
       },
       {
         "id": "765",
@@ -6145,7 +6211,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/765/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/765/model.webp"
       },
       {
         "id": "766",
@@ -6211,7 +6278,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/766/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/766/model.webp"
       },
       {
         "id": "795",
@@ -6277,7 +6345,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/795/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/795/model.webp"
       },
       {
         "id": "874",
@@ -6343,7 +6412,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/874/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/874/model.webp"
       },
       {
         "id": "924",
@@ -6409,7 +6479,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/924/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/924/model.webp"
       },
       {
         "id": "1253",
@@ -6475,7 +6546,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/1253/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/1253/model.webp"
       },
       {
         "id": "1318",
@@ -6541,7 +6613,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/1318/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/1318/model.webp"
       },
       {
         "id": "1461",
@@ -6607,7 +6680,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/1461/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/1461/model.webp"
       },
       {
         "id": "1",
@@ -6673,7 +6747,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/1/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/1/model.webp"
       },
       {
         "id": "2",
@@ -6739,7 +6814,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/2/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/2/model.webp"
       },
       {
         "id": "196",
@@ -6805,7 +6881,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/196/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/196/model.webp"
       },
       {
         "id": "92",
@@ -6871,7 +6948,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/92/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/92/model.webp"
       },
       {
         "id": "22",
@@ -6937,7 +7015,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/22/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/22/model.webp"
       },
       {
         "id": "399",
@@ -7003,7 +7082,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/399/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/399/model.webp"
       },
       {
         "id": "152",
@@ -7069,7 +7149,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/152/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/152/model.webp"
       },
       {
         "id": "141",
@@ -7135,7 +7216,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/141/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/141/model.webp"
       },
       {
         "id": "29",
@@ -7201,7 +7283,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/29/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/29/model.webp"
       },
       {
         "id": "32",
@@ -7267,7 +7350,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/32/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/32/model.webp"
       },
       {
         "id": "301",
@@ -7333,7 +7417,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/1047/301/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1047/301/model.webp"
       }
     ],
     "views": [
@@ -8026,7 +8111,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 36.99,
     "preview": "/products/20/2/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/20/model-front.webp",
+    "modelImageFront": "/products/20/2/model.webp",
     "appearances": [
       {
         "id": "1247",
@@ -8104,7 +8189,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1247/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1247/model.webp"
       },
       {
         "id": "1250",
@@ -8182,7 +8268,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1250/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1250/model.webp"
       },
       {
         "id": "1253",
@@ -8260,7 +8347,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1253/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1253/model.webp"
       },
       {
         "id": "1254",
@@ -8338,7 +8426,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1254/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1254/model.webp"
       },
       {
         "id": "1256",
@@ -8416,7 +8505,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1256/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1256/model.webp"
       },
       {
         "id": "1259",
@@ -8494,7 +8584,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1259/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1259/model.webp"
       },
       {
         "id": "1261",
@@ -8572,7 +8663,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1261/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1261/model.webp"
       },
       {
         "id": "1264",
@@ -8650,7 +8742,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1264/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1264/model.webp"
       },
       {
         "id": "1265",
@@ -8728,7 +8821,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1265/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1265/model.webp"
       },
       {
         "id": "1269",
@@ -8806,7 +8900,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1269/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1269/model.webp"
       },
       {
         "id": "1271",
@@ -8884,7 +8979,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1271/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1271/model.webp"
       },
       {
         "id": "1274",
@@ -8962,7 +9058,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1274/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1274/model.webp"
       },
       {
         "id": "1278",
@@ -9040,7 +9137,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1278/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1278/model.webp"
       },
       {
         "id": "1",
@@ -9126,7 +9224,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/1/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/1/model.webp"
       },
       {
         "id": "2",
@@ -9212,7 +9311,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/20/2/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/20/2/model.webp"
       }
     ],
     "views": [
@@ -10210,7 +10310,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 26.99,
     "preview": "/products/1505/2/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/1505/model-front.webp",
+    "modelImageFront": "/products/1505/2/model.webp",
     "appearances": [
       {
         "id": "394",
@@ -10268,7 +10368,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/394/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/394/model.webp"
       },
       {
         "id": "424",
@@ -10326,7 +10427,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/424/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/424/model.webp"
       },
       {
         "id": "577",
@@ -10384,7 +10486,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/577/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/577/model.webp"
       },
       {
         "id": "649",
@@ -10442,7 +10545,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/649/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/649/model.webp"
       },
       {
         "id": "763",
@@ -10500,7 +10604,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/763/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/763/model.webp"
       },
       {
         "id": "874",
@@ -10558,7 +10663,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/874/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/874/model.webp"
       },
       {
         "id": "1037",
@@ -10616,7 +10722,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/1037/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/1037/model.webp"
       },
       {
         "id": "1253",
@@ -10674,7 +10781,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/1253/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/1253/model.webp"
       },
       {
         "id": "1584",
@@ -10732,7 +10840,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/1584/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/1584/model.webp"
       },
       {
         "id": "1",
@@ -10790,7 +10899,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/1/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/1/model.webp"
       },
       {
         "id": "2",
@@ -10848,7 +10958,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/2/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/2/model.webp"
       },
       {
         "id": "196",
@@ -10906,7 +11017,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/196/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/196/model.webp"
       },
       {
         "id": "92",
@@ -10964,7 +11076,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/92/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/92/model.webp"
       },
       {
         "id": "22",
@@ -11022,7 +11135,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/22/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/22/model.webp"
       },
       {
         "id": "399",
@@ -11080,7 +11194,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/399/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/399/model.webp"
       },
       {
         "id": "141",
@@ -11138,7 +11253,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/141/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/141/model.webp"
       },
       {
         "id": "29",
@@ -11196,7 +11312,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/29/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/29/model.webp"
       },
       {
         "id": "326",
@@ -11254,7 +11371,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "6",
             "image": "/products/1505/326/6.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1505/326/model.webp"
       }
     ],
     "views": [
@@ -11555,7 +11673,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "3",
             "image": "/products/3980/586/3.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "587",
@@ -11585,7 +11704,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "3",
             "image": "/products/3980/587/3.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1529",
@@ -11615,7 +11735,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "3",
             "image": "/products/3980/1529/3.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1530",
@@ -11645,7 +11766,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "3",
             "image": "/products/3980/1530/3.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1531",
@@ -11675,7 +11797,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "3",
             "image": "/products/3980/1531/3.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "70",
@@ -11705,7 +11828,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "3",
             "image": "/products/3980/70/3.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "26",
@@ -11735,7 +11859,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "3",
             "image": "/products/3980/26/3.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "71",
@@ -11765,7 +11890,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "3",
             "image": "/products/3980/71/3.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "80",
@@ -11795,7 +11921,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "3",
             "image": "/products/3980/80/3.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -11982,7 +12109,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/3001/1/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -12176,7 +12304,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "3",
             "image": "/products/4312/1/3.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -12317,7 +12446,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/56/404/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "494",
@@ -12363,7 +12493,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/56/494/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "741",
@@ -12409,7 +12540,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/56/741/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1",
@@ -12455,7 +12587,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/56/1/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "2",
@@ -12501,7 +12634,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/56/2/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "5",
@@ -12547,7 +12681,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/56/5/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "17",
@@ -12593,7 +12728,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/56/17/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "307",
@@ -12639,7 +12775,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/56/307/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "194",
@@ -12685,7 +12822,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/56/194/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "360",
@@ -12731,7 +12869,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/56/360/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -12906,7 +13045,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 12.99,
     "preview": "/products/4133/2/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/4133/model-front.webp",
+    "modelImageFront": "/products/4133/2/model.webp",
     "appearances": [
       {
         "id": "718",
@@ -12952,7 +13091,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/4133/718/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/4133/718/model.webp"
       },
       {
         "id": "741",
@@ -12998,7 +13138,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/4133/741/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/4133/741/model.webp"
       },
       {
         "id": "742",
@@ -13044,7 +13185,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/4133/742/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/4133/742/model.webp"
       },
       {
         "id": "938",
@@ -13090,7 +13232,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/4133/938/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/4133/938/model.webp"
       },
       {
         "id": "1189",
@@ -13136,7 +13279,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/4133/1189/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/4133/1189/model.webp"
       },
       {
         "id": "1409",
@@ -13182,7 +13326,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/4133/1409/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/4133/1409/model.webp"
       },
       {
         "id": "1410",
@@ -13228,7 +13373,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/4133/1410/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/4133/1410/model.webp"
       },
       {
         "id": "1474",
@@ -13274,7 +13420,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/4133/1474/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/4133/1474/model.webp"
       },
       {
         "id": "1524",
@@ -13320,7 +13467,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/4133/1524/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/4133/1524/model.webp"
       },
       {
         "id": "2",
@@ -13366,7 +13514,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/4133/2/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/4133/2/model.webp"
       },
       {
         "id": "968",
@@ -13412,7 +13561,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/4133/968/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/4133/968/model.webp"
       },
       {
         "id": "239",
@@ -13458,7 +13608,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/4133/239/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/4133/239/model.webp"
       }
     ],
     "views": [
@@ -13564,7 +13715,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 12.99,
     "preview": "/products/2973/2/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/2973/model-front.webp",
+    "modelImageFront": "/products/2973/2/model.webp",
     "appearances": [
       {
         "id": "741",
@@ -13614,7 +13765,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/2973/741/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2973/741/model.webp"
       },
       {
         "id": "742",
@@ -13664,7 +13816,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/2973/742/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2973/742/model.webp"
       },
       {
         "id": "947",
@@ -13714,7 +13867,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/2973/947/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2973/947/model.webp"
       },
       {
         "id": "990",
@@ -13764,7 +13918,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/2973/990/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2973/990/model.webp"
       },
       {
         "id": "1188",
@@ -13814,7 +13969,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/2973/1188/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2973/1188/model.webp"
       },
       {
         "id": "1",
@@ -13864,7 +14020,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/2973/1/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2973/1/model.webp"
       },
       {
         "id": "2",
@@ -13914,7 +14071,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/2973/2/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2973/2/model.webp"
       },
       {
         "id": "196",
@@ -13964,7 +14122,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/2973/196/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2973/196/model.webp"
       },
       {
         "id": "338",
@@ -14014,7 +14173,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/2973/338/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2973/338/model.webp"
       }
     ],
     "views": [
@@ -14189,7 +14349,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 9.99,
     "preview": "/products/1040/1320/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/1040/model-front.webp",
+    "modelImageFront": "/products/1040/70/model.webp",
     "appearances": [
       {
         "id": "942",
@@ -14247,7 +14407,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/1040/942/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1320",
@@ -14305,7 +14466,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/1040/1320/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1321",
@@ -14363,7 +14525,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/1040/1321/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "70",
@@ -14421,7 +14584,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/1040/70/4.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1040/70/model.webp"
       },
       {
         "id": "26",
@@ -14479,7 +14643,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/1040/26/4.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1040/26/model.webp"
       },
       {
         "id": "71",
@@ -14537,7 +14702,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/1040/71/4.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1040/71/model.webp"
       },
       {
         "id": "14",
@@ -14595,7 +14761,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/1040/14/4.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/1040/14/model.webp"
       }
     ],
     "views": [
@@ -14758,7 +14925,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/4562/820/11.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "942",
@@ -14812,7 +14980,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/4562/942/11.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1280",
@@ -14866,7 +15035,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/4562/1280/11.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1",
@@ -14920,7 +15090,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/4562/1/11.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "26",
@@ -14974,7 +15145,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/4562/26/11.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "71",
@@ -15028,7 +15200,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/4562/71/11.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "14",
@@ -15082,7 +15255,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/4562/14/11.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -15220,7 +15394,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 12.99,
     "preview": "/products/15/14/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/15/model-front.webp",
+    "modelImageFront": "/products/15/14/model.webp",
     "appearances": [
       {
         "id": "1253",
@@ -15274,7 +15448,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/15/1253/11.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/15/1253/model.webp"
       },
       {
         "id": "10",
@@ -15336,7 +15511,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/15/10/11.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/15/10/model.webp"
       },
       {
         "id": "14",
@@ -15398,7 +15574,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/15/14/11.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/15/14/model.webp"
       },
       {
         "id": "261",
@@ -15460,7 +15637,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/15/261/11.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/15/261/model.webp"
       },
       {
         "id": "13",
@@ -15522,7 +15700,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/15/13/11.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/15/13/model.webp"
       },
       {
         "id": "272",
@@ -15584,7 +15763,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "11",
             "image": "/products/15/272/11.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/15/272/model.webp"
       }
     ],
     "views": [
@@ -15836,7 +16016,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4180/1254/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1257",
@@ -15890,7 +16071,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4180/1257/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1259",
@@ -15944,7 +16126,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4180/1259/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1269",
@@ -15998,7 +16181,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4180/1269/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -16304,7 +16488,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4181/1249/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1254",
@@ -16358,7 +16543,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4181/1254/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1257",
@@ -16412,7 +16598,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4181/1257/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1259",
@@ -16466,7 +16653,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4181/1259/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1269",
@@ -16520,7 +16708,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4181/1269/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -16768,7 +16957,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4182/1254/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1257",
@@ -16822,7 +17012,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4182/1257/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1259",
@@ -16876,7 +17067,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4182/1259/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "1269",
@@ -16930,7 +17122,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/4182/1269/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -17208,7 +17401,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "3",
             "image": "/products/31/1/3.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -17381,7 +17575,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/1313/1/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "70",
@@ -17407,7 +17602,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/1313/70/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "71",
@@ -17433,7 +17629,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/1313/71/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "11",
@@ -17459,7 +17656,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/1313/11/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -17719,7 +17917,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "4",
             "image": "/products/1470/1/4.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -17888,7 +18087,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/4506/839/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "840",
@@ -17910,7 +18110,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/4506/840/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "842",
@@ -17932,7 +18133,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/4506/842/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -18026,7 +18228,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "1",
             "image": "/products/1459/839/1.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "840",
@@ -18044,7 +18247,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "1",
             "image": "/products/1459/840/1.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "842",
@@ -18062,7 +18266,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "1",
             "image": "/products/1459/842/1.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -18149,7 +18354,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/4505/839/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "840",
@@ -18171,7 +18377,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/4505/840/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       },
       {
         "id": "842",
@@ -18193,7 +18400,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/4505/842/12.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -18269,7 +18477,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 14.99,
     "preview": "/products/943/2/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/943/model-front.webp",
+    "modelImageFront": "/products/943/2/model.webp",
     "appearances": [
       {
         "id": "1250",
@@ -18323,7 +18531,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/943/1250/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/943/1250/model.webp"
       },
       {
         "id": "1252",
@@ -18377,7 +18586,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/943/1252/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/943/1252/model.webp"
       },
       {
         "id": "1254",
@@ -18431,7 +18641,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/943/1254/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/943/1254/model.webp"
       },
       {
         "id": "1264",
@@ -18485,7 +18696,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/943/1264/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/943/1264/model.webp"
       },
       {
         "id": "1269",
@@ -18539,7 +18751,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/943/1269/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/943/1269/model.webp"
       },
       {
         "id": "1271",
@@ -18593,7 +18806,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/943/1271/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/943/1271/model.webp"
       },
       {
         "id": "1",
@@ -18647,7 +18861,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/943/1/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/943/1/model.webp"
       },
       {
         "id": "2",
@@ -18701,7 +18916,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "13",
             "image": "/products/943/2/13.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/943/2/model.webp"
       }
     ],
     "views": [
@@ -18970,7 +19186,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 12.99,
     "preview": "/products/916/2/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/916/model-front.webp",
+    "modelImageFront": "/products/916/2/model.webp",
     "appearances": [
       {
         "id": "648",
@@ -19024,7 +19240,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/916/648/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/916/648/model.webp"
       },
       {
         "id": "1256",
@@ -19078,7 +19295,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/916/1256/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/916/1256/model.webp"
       },
       {
         "id": "1269",
@@ -19132,7 +19350,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/916/1269/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/916/1269/model.webp"
       },
       {
         "id": "1274",
@@ -19186,7 +19405,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/916/1274/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/916/1274/model.webp"
       },
       {
         "id": "1",
@@ -19240,7 +19460,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/916/1/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/916/1/model.webp"
       },
       {
         "id": "2",
@@ -19294,7 +19515,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "12",
             "image": "/products/916/2/12.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/916/2/model.webp"
       }
     ],
     "views": [
@@ -19767,7 +19989,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 12.99,
     "preview": "/products/917/2/1.webp",
     "embroidery": true,
-    "modelImageFront": "/products/917/model-front.webp",
+    "modelImageFront": "/products/917/2/model.webp",
     "appearances": [
       {
         "id": "1251",
@@ -19817,7 +20039,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/917/1251/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/917/1251/model.webp"
       },
       {
         "id": "1254",
@@ -19867,7 +20090,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/917/1254/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/917/1254/model.webp"
       },
       {
         "id": "1256",
@@ -19917,7 +20141,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/917/1256/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/917/1256/model.webp"
       },
       {
         "id": "1269",
@@ -19967,7 +20192,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/917/1269/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/917/1269/model.webp"
       },
       {
         "id": "1",
@@ -20017,7 +20243,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/917/1/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/917/1/model.webp"
       },
       {
         "id": "2",
@@ -20067,7 +20294,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/917/2/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/917/2/model.webp"
       }
     ],
     "views": [
@@ -20313,7 +20541,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "1",
             "image": "/products/1300/1/1.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -20454,7 +20683,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "1",
             "image": "/products/1301/1/1.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -20595,7 +20825,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "1",
             "image": "/products/1302/1/1.webp"
           }
-        ]
+        ],
+        "modelImage": null
       }
     ],
     "views": [
@@ -20660,7 +20891,7 @@ export const PRODUCTS: StaticProduct[] = [
     "price": 29.99,
     "preview": "/products/2116/2/1.webp",
     "embroidery": true,
-    "modelImageFront": null,
+    "modelImageFront": "/products/2116/2/model.webp",
     "appearances": [
       {
         "id": "655",
@@ -20702,7 +20933,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/655/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/655/model.webp"
       },
       {
         "id": "741",
@@ -20744,7 +20976,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/741/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/741/model.webp"
       },
       {
         "id": "742",
@@ -20786,7 +21019,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/742/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/742/model.webp"
       },
       {
         "id": "947",
@@ -20828,7 +21062,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/947/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/947/model.webp"
       },
       {
         "id": "950",
@@ -20866,7 +21101,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/950/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/950/model.webp"
       },
       {
         "id": "1188",
@@ -20908,7 +21144,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/1188/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/1188/model.webp"
       },
       {
         "id": "1189",
@@ -20950,7 +21187,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/1189/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/1189/model.webp"
       },
       {
         "id": "1224",
@@ -20992,7 +21230,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/1224/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/1224/model.webp"
       },
       {
         "id": "1485",
@@ -21034,7 +21273,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/1485/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/1485/model.webp"
       },
       {
         "id": "1486",
@@ -21076,7 +21316,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/1486/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/1486/model.webp"
       },
       {
         "id": "1",
@@ -21118,7 +21359,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/1/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/1/model.webp"
       },
       {
         "id": "2",
@@ -21160,7 +21402,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/2/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/2/model.webp"
       },
       {
         "id": "196",
@@ -21202,7 +21445,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/196/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/196/model.webp"
       },
       {
         "id": "348",
@@ -21244,7 +21488,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/348/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/348/model.webp"
       },
       {
         "id": "231",
@@ -21286,7 +21531,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/231/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/231/model.webp"
       },
       {
         "id": "63",
@@ -21328,7 +21574,8 @@ export const PRODUCTS: StaticProduct[] = [
             "id": "2",
             "image": "/products/2116/63/2.webp"
           }
-        ]
+        ],
+        "modelImage": "/products/2116/63/model.webp"
       }
     ],
     "views": [
@@ -21343,10 +21590,10 @@ export const PRODUCTS: StaticProduct[] = [
         "dpi": 42.87,
         "viewMaps": [
           {
-            "printAreaId": "6250",
+            "printAreaId": "6322",
             "offset": {
-              "x": 391.043,
-              "y": 140.42,
+              "x": 204.409,
+              "y": 135.087,
               "unit": "mm"
             },
             "size": {
@@ -21357,10 +21604,10 @@ export const PRODUCTS: StaticProduct[] = [
             "dpi": 42.87
           },
           {
-            "printAreaId": "6322",
+            "printAreaId": "6250",
             "offset": {
-              "x": 204.409,
-              "y": 135.087,
+              "x": 391.043,
+              "y": 140.42,
               "unit": "mm"
             },
             "size": {
@@ -21383,10 +21630,10 @@ export const PRODUCTS: StaticProduct[] = [
         "dpi": 42.87,
         "viewMaps": [
           {
-            "printAreaId": "6251",
+            "printAreaId": "6323",
             "offset": {
-              "x": 250.623,
-              "y": 87.0959,
+              "x": 204.409,
+              "y": 135.087,
               "unit": "mm"
             },
             "size": {
@@ -21397,10 +21644,10 @@ export const PRODUCTS: StaticProduct[] = [
             "dpi": 42.87
           },
           {
-            "printAreaId": "6323",
+            "printAreaId": "6251",
             "offset": {
-              "x": 204.409,
-              "y": 135.087,
+              "x": 250.623,
+              "y": 87.0959,
               "unit": "mm"
             },
             "size": {

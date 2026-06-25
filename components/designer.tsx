@@ -9,6 +9,7 @@ import ProductsDrawer, { type SelectedProduct } from "@/components/products-draw
 import SiteHeader from "@/components/site-header"
 import { IconsScroller } from "@/components/ui/icons-scroller"
 import { EditorBar } from "@/components/ui/editor-bar"
+import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
 import {
   ScopedDialog,
   ScopedDialogClose,
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/scoped-dialog"
 import { FontPanel } from "@/components/ui/font-panel/FontPanel"
 import { TextColorPanel } from "@/components/ui/text-color-panel/TextColorPanel"
+import { UploadPanel } from "@/components/ui/upload-panel/UploadPanel"
 import {
   buildOutOfStockMap,
   getPrintAreaOverlay,
@@ -35,7 +37,7 @@ import {
 
 type DesignerPanel = "graphics" | "uploads" | "ai"
 
-const DEFAULT_PRODUCT_ID = "2940" // Unisex Premium Oversized Organic T-Shirt
+const DEFAULT_PRODUCT_ID = "2116" // Stanley/Stella Unisex Organic Polo Shirt PREPSTER
 
 // Treat a product color as "dark" only when very close to black.
 // Returns true only for near-black colors (e.g., #1A1A1A, #2F3031), so non-dark
@@ -73,6 +75,28 @@ export default function Designer() {
   const productId = selectedProduct?.id ?? DEFAULT_PRODUCT_ID
   const productData: ProductTypeData | null = useMemo(() => getProductType(productId), [productId])
   const [activeColorIndex, setActiveColorIndex] = useState(0)
+  // Canvas zoom (1 = fit, up to 3x) controlled by the slider at the bottom-left.
+  // When zoomed in, the canvas area scrolls so different parts of the product
+  // can be reached; the controls stay fixed.
+  const [zoom, setZoom] = useState(1)
+  const canvasScrollRef = useRef<HTMLDivElement>(null)
+  const [viewDropdownOpen, setViewDropdownOpen] = useState(false)
+  // Close the view dropdown when clicking outside of it.
+  useEffect(() => {
+    if (!viewDropdownOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-view-dropdown]")) setViewDropdownOpen(false)
+    }
+    document.addEventListener("mousedown", onDown)
+    return () => document.removeEventListener("mousedown", onDown)
+  }, [viewDropdownOpen])
+  // Keep the view centered as the zoom (or product/view) changes.
+  useEffect(() => {
+    const el = canvasScrollRef.current
+    if (!el) return
+    el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2
+    el.scrollTop = (el.scrollHeight - el.clientHeight) / 2
+  }, [zoom])
   const [activeViewId, setActiveViewId] = useState("1")
   const [productsDrawerOpen, setProductsDrawerOpen] = useState(false)
   const [activePanel, setActivePanel] = useState<DesignerPanel | null>(null)
@@ -661,6 +685,9 @@ export default function Designer() {
     currentAppearance?.views.find(v => v.id === activeViewId)?.image ??
     currentAppearance?.image ??
     ""
+  // Model image in the selected colour; fall back to the product's default shot
+  // when the chosen colour has no dedicated model photo.
+  const currentModelImage = currentAppearance?.modelImage ?? productData?.modelImageFront ?? null
   const currentView = productData?.views.find(v => v.id === activeViewId)
   const canvasAspect = currentView
     ? `${currentView.canvas.width} / ${currentView.canvas.height}`
@@ -673,6 +700,12 @@ export default function Designer() {
   const visibleGraphicElements = currentPrintAreaId
     ? graphicElements.filter(g => g.printAreaId === currentPrintAreaId)
     : []
+  // The live canvas content's on-screen square size (px) — fontSize is relative
+  // to this, so the view-thumbnail previews use it to scale the design down.
+  const liveCanvasContentSize =
+    printAreaOverlay && printAreaPxSize.width > 0
+      ? (printAreaPxSize.width * 100) / printAreaOverlay.width
+      : 0
 
   // Embroidery clamps the design to a max area; warn when that shrinks it by >20%.
   const embroiderySizeWarning = (() => {
@@ -1166,7 +1199,7 @@ export default function Designer() {
                   <div className="text-[12px] font-[600] text-black text-center">AI Image</div>
                 )}
                 {isDockCompact && hoveredButton === "ai" && (
-                  <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded bg-black px-2 py-1 text-[14px] font-medium text-white z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-black">
+                  <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded-md bg-neutral-900 p-3 text-sm text-neutral-100 shadow-sm z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-neutral-900">
                     AI Image
                   </span>
                 )}
@@ -1218,7 +1251,7 @@ export default function Designer() {
                   <div className="text-[12px] font-[600] text-black text-center">Uploads</div>
                 )}
                 {isDockCompact && hoveredButton === "upload" && (
-                  <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded bg-black px-2 py-1 text-[14px] font-medium text-white z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-black">
+                  <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded-md bg-neutral-900 p-3 text-sm text-neutral-100 shadow-sm z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-neutral-900">
                     Uploads
                   </span>
                 )}
@@ -1246,7 +1279,7 @@ export default function Designer() {
                   <div className="text-[12px] font-[600] text-black text-center">Text</div>
                 )}
                 {isDockCompact && hoveredButton === "text" && (
-                  <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded bg-black px-2 py-1 text-[14px] font-medium text-white z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-black">
+                  <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded-md bg-neutral-900 p-3 text-sm text-neutral-100 shadow-sm z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-neutral-900">
                     Text
                   </span>
                 )}
@@ -1299,7 +1332,7 @@ export default function Designer() {
                   <div className="text-[12px] font-[600] text-black text-center">Graphics</div>
                 )}
                 {isDockCompact && hoveredButton === "graphics" && (
-                  <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded bg-black px-2 py-1 text-[14px] font-medium text-white z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-black">
+                  <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded-md bg-neutral-900 p-3 text-sm text-neutral-100 shadow-sm z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-neutral-900">
                     Graphics
                   </span>
                 )}
@@ -1325,7 +1358,7 @@ export default function Designer() {
                     />
                   </svg>
                 </button>
-                <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded bg-black px-2 py-1 text-[14px] font-medium text-white opacity-0 group-hover/tooltip:opacity-100 transition-opacity z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-black">
+                <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded-md bg-neutral-900 p-3 text-sm text-neutral-100 shadow-sm opacity-0 group-hover/tooltip:opacity-100 transition-opacity z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-neutral-900">
                   Undo
                 </span>
               </div>
@@ -1345,7 +1378,7 @@ export default function Designer() {
                     />
                   </svg>
                 </button>
-                <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded bg-black px-2 py-1 text-[14px] font-medium text-white opacity-0 group-hover/tooltip:opacity-100 transition-opacity z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-black">
+                <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded-md bg-neutral-900 p-3 text-sm text-neutral-100 shadow-sm opacity-0 group-hover/tooltip:opacity-100 transition-opacity z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-neutral-900">
                   Redo
                 </span>
               </div>
@@ -1354,21 +1387,25 @@ export default function Designer() {
 
           <div
             id="canvas-section"
-            className="relative overflow-hidden flex-1 min-w-0 h-full bg-[#F4F4F4] rounded-[12px] flex items-center justify-center"
-            onClick={e => {
-              if (activePanel && e.target === e.currentTarget) {
-                setActivePanel(null)
-              }
-              if (e.target === e.currentTarget) {
+            className="relative overflow-hidden flex-1 min-w-0 h-full bg-[#F4F4F4] rounded-[12px]"
+          >
+            <div
+              ref={canvasScrollRef}
+              className="absolute inset-0 flex overflow-auto"
+              onClick={e => {
+                if (e.target !== e.currentTarget) return
+                if (activePanel) setActivePanel(null)
                 setSelectedTextId(null)
                 setTextColorPanelOpen(false)
                 setFontPanelOpen(false)
-              }
-            }}
-          >
+              }}
+            >
             <div
-              className="relative h-[60%]"
-              style={{ aspectRatio: canvasAspect }}
+              className="relative m-auto shrink-0"
+              style={{
+                aspectRatio: canvasAspect,
+                height: `calc(${60 * zoom}% + ${100 * zoom}px)`,
+              }}
               onClick={() => activePanel && setActivePanel(null)}
             >
               <img
@@ -1569,84 +1606,188 @@ export default function Designer() {
                 </div>
               )}
             </div>
+            </div>
 
-            {/* View selector */}
-            {productData && productData.views.length > 1 && (
-              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-start gap-0.3">
-                {productData.views.map(view => {
-                  const thumb = currentAppearance?.views.find(v => v.id === view.id)?.image
-                  if (!thumb) return null
-                  const selected = activeViewId === view.id
-                  return (
-                    <button
-                      key={view.id}
-                      type="button"
-                      onClick={() => setActiveViewId(view.id)}
-                      className="group flex w-[60px] flex-col items-center gap-1 cursor-pointer"
-                    >
-                      <div
-                        className={`box-border rounded-md border bg-white p-1 transition-colors ${
-                          selected
-                            ? "border-black"
-                            : "border-transparent group-hover:border-neutral-200"
-                        }`}
-                      >
-                        <img
-                          src={thumb}
-                          alt={view.name}
-                          className="block h-11 w-11 object-contain"
-                        />
-                      </div>
-                      <span
-                        className={`block h-8 w-full overflow-hidden text-center text-[12px] font-semibold leading-4 transition-opacity line-clamp-2 ${
-                          selected
-                            ? "text-black opacity-100"
-                            : "text-neutral-700 opacity-0 group-hover:opacity-100"
-                        }`}
-                      >
-                        {view.name}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-            {/* Model picture of the current product — portrait, above the print
-                selection, same border radius as the print-selection button. */}
-            {productData?.modelImageFront && (
-              <div className="absolute right-6 bottom-[72px] z-20 aspect-[3/4] w-24 overflow-hidden rounded-[8px] bg-white shadow-xs">
-                <img
-                  src={productData.modelImageFront}
-                  alt={`${productData.name} on model`}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-            )}
-
-            {/* Print technique dropdown — only for embroidery-suitable products. */}
-            {productData?.embroidery && (
-              <button
-                type="button"
-                onClick={() => setPrintTechniqueOpen(true)}
-                className="absolute bottom-6 right-6 z-20 flex items-center gap-2 rounded-[8px] bg-white px-3 py-2 text-sm font-medium text-black shadow-xs hover:bg-neutral-50 cursor-pointer"
-              >
-                <span>{printTechnique === "embroidery" ? "Embroidery" : "Standard print"}</span>
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 12 12"
-                  fill="none"
-                  className="text-neutral-500"
+            {/* Zoom control — vertical, bottom-left of the canvas area. Plus on
+                top, minus at the bottom; the WedgeSlider is rotated upright. */}
+            <div className="absolute bottom-6 left-6 z-20 flex w-[48px] flex-col items-center gap-1 rounded-full bg-white py-2.5 shadow-xs">
+              <div className="group/tooltip relative flex">
+                <button
+                  type="button"
+                  aria-label="Zoom in"
+                  onClick={() => setZoom(z => Math.min(3, Math.round((z + 0.25) * 100) / 100))}
+                  className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-black hover:bg-neutral-100"
                 >
-                  <path
-                    d="M2.5 4.5L6 8L9.5 4.5"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
+                  <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
+                    <path
+                      fillRule="evenodd"
+                      clipRule="evenodd"
+                      d="M10.8277 4.06952C10.7796 3.65507 10.4273 3.33337 9.99998 3.33337C9.53974 3.33337 9.16665 3.70647 9.16665 4.16671V9.16671H4.16665L4.06946 9.17231C3.65501 9.22045 3.33331 9.57268 3.33331 10C3.33331 10.4603 3.70641 10.8334 4.16665 10.8334H9.16665V15.8334L9.17225 15.9306C9.22039 16.345 9.57262 16.6667 9.99998 16.6667C10.4602 16.6667 10.8333 16.2936 10.8333 15.8334V10.8334H15.8333L15.9305 10.8278C16.3449 10.7796 16.6666 10.4274 16.6666 10C16.6666 9.5398 16.2935 9.16671 15.8333 9.16671H10.8333V4.16671L10.8277 4.06952Z"
+                    />
+                  </svg>
+                </button>
+                <span className="pointer-events-none absolute top-1/2 left-full z-50 ml-2 -translate-y-1/2 rounded-md bg-neutral-900 p-3 text-sm whitespace-nowrap text-neutral-100 shadow-sm opacity-0 transition-opacity group-hover/tooltip:opacity-100 before:absolute before:top-1/2 before:right-full before:h-0 before:w-0 before:-translate-y-1/2 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-neutral-900 before:content-['']">
+                  Zoom in
+                </span>
+              </div>
+              <div className="flex h-24 w-6 items-center justify-center">
+                <div className="-rotate-90">
+                  <WedgeSlider min={1} max={3} value={zoom} onChange={setZoom} width={96} />
+                </div>
+              </div>
+              <div className="group/tooltip relative flex">
+                <button
+                  type="button"
+                  aria-label="Zoom out"
+                  onClick={() => setZoom(z => Math.max(1, Math.round((z - 0.25) * 100) / 100))}
+                  className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-black hover:bg-neutral-100"
+                >
+                  <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
+                    <path
+                      fillRule="evenodd"
+                      clipRule="evenodd"
+                      d="M15.8333 9.16663C16.2935 9.16663 16.6666 9.53972 16.6666 9.99996C16.6666 10.4273 16.3449 10.7795 15.9305 10.8277L15.8333 10.8333H4.16665C3.70641 10.8333 3.33331 10.4602 3.33331 9.99996C3.33331 9.5726 3.65501 9.22037 4.06946 9.17223L4.16665 9.16663H15.8333Z"
+                    />
+                  </svg>
+                </button>
+                <span className="pointer-events-none absolute top-1/2 left-full z-50 ml-2 -translate-y-1/2 rounded-md bg-neutral-900 p-3 text-sm whitespace-nowrap text-neutral-100 shadow-sm opacity-0 transition-opacity group-hover/tooltip:opacity-100 before:absolute before:top-1/2 before:right-full before:h-0 before:w-0 before:-translate-y-1/2 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-neutral-900 before:content-['']">
+                  Zoom out
+                </span>
+              </div>
+            </div>
+
+            {/* View selector — single rounded button + dropdown of all views. */}
+            {productData && productData.views.length > 1 && (
+              <div
+                data-view-dropdown
+                className="absolute bottom-6 left-1/2 z-20 -translate-x-1/2"
+              >
+                <div
+                  className={`absolute bottom-full left-1/2 mb-2 flex origin-bottom -translate-x-1/2 gap-2 rounded-2xl bg-white p-6 shadow-xl transition-all duration-150 ease-out ${
+                    viewDropdownOpen
+                      ? "scale-100 opacity-100"
+                      : "pointer-events-none scale-95 opacity-0"
+                  }`}
+                >
+                    {productData.views.map(view => {
+                      const thumb = currentAppearance?.views.find(v => v.id === view.id)?.image
+                      const selected = activeViewId === view.id
+                      const viewPaId = view.viewMaps[0]?.printAreaId
+                      const viewOverlay = getPrintAreaOverlay(productData, view.id)
+                      const viewTexts = textElements.filter(t => t.printAreaId === viewPaId)
+                      const viewGraphics = graphicElements.filter(g => g.printAreaId === viewPaId)
+                      return (
+                        <button
+                          key={view.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveViewId(view.id)
+                            setViewDropdownOpen(false)
+                          }}
+                          className="group flex w-28 cursor-pointer flex-col items-center gap-1.5"
+                        >
+                          <div
+                            className={`flex aspect-[4/5] w-full items-center justify-center overflow-hidden rounded-[8px] border-2 px-1 py-2 ${
+                              selected
+                                ? "border-black bg-neutral-100"
+                                : "border-transparent bg-neutral-100 group-hover:bg-neutral-200"
+                            }`}
+                          >
+                            {thumb && (
+                              <div className="relative h-[100px] w-[100px]">
+                                <ViewDesignThumb
+                                  image={thumb}
+                                  overlay={viewOverlay}
+                                  textElements={viewTexts}
+                                  graphicElements={viewGraphics}
+                                  displaySize={liveCanvasContentSize}
+                                  size={100}
+                                />
+                              </div>
+                            )}
+                          </div>
+                          <span
+                            className={`text-center text-sm ${
+                              selected
+                                ? "font-semibold text-black"
+                                : "text-neutral-800 group-hover:text-black"
+                            }`}
+                          >
+                            {view.name}
+                          </span>
+                        </button>
+                      )
+                    })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewDropdownOpen(o => !o)}
+                  className="flex h-[48px] items-center gap-2 rounded-full bg-white px-4 text-sm font-medium text-black shadow-xs hover:bg-neutral-50 cursor-pointer"
+                >
+                  <span>{currentView?.name ?? productData.views[0]?.name}</span>
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                    className={`text-neutral-500 transition-transform ${viewDropdownOpen ? "rotate-180" : ""}`}
+                  >
+                    <path
+                      d="M2.5 4.5L6 8L9.5 4.5"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+            )}
+            {/* Model circle (left) + print-technique selection (right), grouped
+                at the bottom-right of the canvas. */}
+            {(currentModelImage || productData?.embroidery) && (
+              <div className="absolute bottom-6 right-6 z-20 flex items-center gap-2">
+                {currentModelImage && (
+                  <div className="group/tooltip relative flex h-[48px] w-[48px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-white p-1 shadow-xs">
+                    <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 rounded-md bg-neutral-900 p-3 text-sm whitespace-nowrap text-neutral-100 shadow-sm opacity-0 transition-opacity group-hover/tooltip:opacity-100 after:absolute after:top-full after:left-1/2 after:h-0 after:w-0 after:-translate-x-1/2 after:border-x-[4px] after:border-x-transparent after:border-t-[4px] after:border-t-neutral-900 after:content-['']">
+                      See all pictures
+                    </span>
+                    <div className="h-full w-full overflow-hidden rounded-full bg-neutral-100">
+                      <img
+                        src={currentModelImage}
+                        alt={`${productData?.name} on model`}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  </div>
+                )}
+                {productData?.embroidery && (
+                  <button
+                    type="button"
+                    onClick={() => setPrintTechniqueOpen(true)}
+                    className="flex h-[48px] items-center gap-2 rounded-full bg-white px-4 text-sm font-medium text-black shadow-xs hover:bg-neutral-50 cursor-pointer"
+                  >
+                    <span>
+                      {printTechnique === "embroidery" ? "Embroidery" : "Standard print"}
+                    </span>
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 12 12"
+                      fill="none"
+                      className="text-neutral-500"
+                    >
+                      <path
+                        d="M2.5 4.5L6 8L9.5 4.5"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                )}
+              </div>
             )}
 
             {/* Print technique modal — same ScopedDialog infrastructure as product details. */}
@@ -1740,14 +1881,14 @@ export default function Designer() {
                 {/* Full-width model image. For the Women's Premium Organic Top (943) the
                     rendered design is composited onto the model's chest; other products
                     show the plain model image. */}
-                {productData?.modelImageFront && (
+                {currentModelImage && (
                   <div className="relative w-full shrink-0">
                     <img
-                      src={productData.modelImageFront}
-                      alt={`${productData.name} model`}
+                      src={currentModelImage}
+                      alt={`${productData?.name} model`}
                       className="block w-full bg-[#F4F4F4]"
                     />
-                    {productData.id === "943" &&
+                    {productData?.id === "943" &&
                       designDataUrl &&
                       designBbox &&
                       (() => {
@@ -1810,13 +1951,14 @@ export default function Designer() {
             {(["graphics", "uploads", "ai"] as const).map(panel => (
               <div
                 key={panel}
-                className={`absolute z-10 inset-y-[2px] left-[2px] w-[375px] rounded-[12px] bg-white shadow-[32px_0px_50px_0px_rgba(0,0,0,0.05)] flex flex-col transition-transform duration-300 ease-out ${
+                className={`absolute z-30 inset-y-[2px] left-[2px] w-[375px] rounded-[12px] bg-white shadow-[32px_0px_50px_0px_rgba(0,0,0,0.05)] flex flex-col transition-transform duration-300 ease-out ${
                   activePanel === panel ? "translate-x-0" : "-translate-x-[calc(100%+100px)]"
                 }`}
               >
                 <h2 className="font-display text-[18px] font-medium text-black px-6 pt-6 pb-4 capitalize flex-shrink-0">
                   {panel === "ai" ? "AI Image" : panel}
                 </h2>
+                {panel === "uploads" && <UploadPanel onPlaceImage={addGraphicElement} />}
                 {panel === "graphics" && (
                   <div className="flex-1 overflow-y-auto">
                     <div className="grid grid-cols-3 gap-0">
@@ -2554,6 +2696,94 @@ export default function Designer() {
       />
 
     </>
+  )
+}
+
+// Miniature preview of a view with its placed design composited on the print
+// area — same approach as the basket's DesignThumbnail. Renders the product at
+// its on-screen display size, then scales the whole thing down to `size`.
+function ViewDesignThumb({
+  image,
+  overlay,
+  textElements,
+  graphicElements,
+  displaySize,
+  size,
+}: {
+  image: string
+  overlay: { left: number; top: number; width: number; height: number } | null
+  textElements: { id: string; x: number; y: number; color: string; fontSize: number; fontFamily: string; content: string }[]
+  graphicElements: { id: string; x: number; y: number; width: number; height: number; src: string }[]
+  displaySize: number
+  size: number
+}) {
+  const hasDesign =
+    overlay && displaySize > 0 && (textElements.length > 0 || graphicElements.length > 0)
+  if (!hasDesign) {
+    return <img src={image} alt="" className="h-full w-full object-contain" />
+  }
+  const scale = size / displaySize
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: "50%",
+        top: "50%",
+        width: displaySize,
+        height: displaySize,
+        transform: `translate(-50%, -50%) scale(${scale})`,
+        transformOrigin: "center",
+      }}
+    >
+      <img
+        src={image}
+        alt=""
+        className="pointer-events-none h-full w-full object-contain select-none"
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: `${overlay.left}%`,
+          top: `${overlay.top}%`,
+          width: `${overlay.width}%`,
+          height: `${overlay.height}%`,
+        }}
+      >
+        {textElements.map(el => (
+          <div
+            key={el.id}
+            style={{
+              position: "absolute",
+              left: `${el.x}%`,
+              top: `${el.y}%`,
+              color: el.color,
+              fontSize: `${el.fontSize}px`,
+              fontFamily: `"${el.fontFamily}"`,
+              whiteSpace: "pre",
+              lineHeight: 1,
+            }}
+          >
+            {el.content}
+          </div>
+        ))}
+        {graphicElements.map(el => (
+          <img
+            key={el.id}
+            src={el.src}
+            alt=""
+            className="pointer-events-none select-none"
+            style={{
+              position: "absolute",
+              left: `${el.x}%`,
+              top: `${el.y}%`,
+              width: `${el.width}%`,
+              height: `${el.height}%`,
+              objectFit: "contain",
+            }}
+          />
+        ))}
+      </div>
+    </div>
   )
 }
 
