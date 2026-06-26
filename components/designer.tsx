@@ -86,7 +86,54 @@ export default function Designer() {
   // When zoomed in, the canvas area scrolls so different parts of the product
   // can be reached; the controls stay fixed.
   const [zoom, setZoom] = useState(1)
+  // Animate the zoom only for the +/- buttons (a discrete step). Continuous
+  // gestures (pinch, slider drag) keep it off so they don't feel laggy.
+  const [zoomAnimate, setZoomAnimate] = useState(false)
   const canvasScrollRef = useRef<HTMLDivElement>(null)
+  // While a pinch is in flight, the zoom anchors on the cursor's content point
+  // instead of the design's group centre. Recomputing the group centre on every
+  // tick reads object rects that depend on the scroll we just set — a feedback
+  // loop that makes the product tremble. Cursor-anchoring has no such loop.
+  const pinchAnchorRef = useRef<{
+    fracX: number
+    fracY: number
+    offsetX: number
+    offsetY: number
+  } | null>(null)
+  const pinchEndTimerRef = useRef<number | null>(null)
+  // Trackpad pinch-to-zoom: macOS sends wheel events with ctrlKey set during a
+  // pinch gesture. Adjust the zoom and prevent the browser's page zoom. Needs a
+  // non-passive listener so preventDefault is honoured.
+  useEffect(() => {
+    const el = canvasScrollRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      // Capture the content point under the cursor so the centering effect can
+      // keep it fixed across the zoom (stable; no group-centre feedback loop).
+      const rect = el.getBoundingClientRect()
+      const offsetX = e.clientX - rect.left
+      const offsetY = e.clientY - rect.top
+      pinchAnchorRef.current = {
+        fracX: el.scrollWidth ? (el.scrollLeft + offsetX) / el.scrollWidth : 0.5,
+        fracY: el.scrollHeight ? (el.scrollTop + offsetY) / el.scrollHeight : 0.5,
+        offsetX,
+        offsetY,
+      }
+      if (pinchEndTimerRef.current) window.clearTimeout(pinchEndTimerRef.current)
+      pinchEndTimerRef.current = window.setTimeout(() => {
+        pinchAnchorRef.current = null
+      }, 200)
+      setZoomAnimate(false)
+      setZoom(z => {
+        const next = z * Math.exp(-e.deltaY * 0.01)
+        return Math.min(6, Math.max(1, Math.round(next * 100) / 100))
+      })
+    }
+    el.addEventListener("wheel", onWheel, { passive: false })
+    return () => el.removeEventListener("wheel", onWheel)
+  }, [])
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false)
   // Close the view dropdown when clicking outside of it.
   useEffect(() => {
@@ -99,40 +146,69 @@ export default function Designer() {
   }, [viewDropdownOpen])
   // On zoom, keep the design centered: anchor on the centre of the combined
   // bounding box of all objects in the print area (treat them as one group).
-  // Falls back to the product centre when there's no design.
-  useEffect(() => {
+  // Falls back to the product centre when there's no design. Runs in a layout
+  // effect so the scroll is set before paint — using useEffect would paint the
+  // zoomed product at the old scroll first, then correct it (visible shake).
+  useLayoutEffect(() => {
     const el = canvasScrollRef.current
     if (!el) return
-    let fx = 0.5
-    let fy = 0.5
-    const pa = printAreaBoxRef.current
-    if (pa && printAreaOverlay) {
-      const rects: DOMRect[] = []
-      for (const t of visibleTextElements) {
-        const n = textElementRefs.current[t.id]
-        if (n) rects.push(n.getBoundingClientRect())
+    // Predict the zoomed content size rather than reading scrollWidth/Height:
+    // during the +/- height transition those are still mid-animation, which
+    // would leave the scroll off-centre. Mirrors the inner div's height calc
+    // (`calc(60*zoom% + 100*zoom px)`) and aspect-ratio derived width.
+    const cw = el.clientWidth
+    const ch = el.clientHeight
+    const aspect = currentView ? currentView.canvas.width / currentView.canvas.height : 1
+    const innerH = 0.6 * zoom * ch + 100 * zoom
+    const innerW = innerH * aspect
+    const scrollW = Math.max(innerW, cw)
+    const scrollH = Math.max(innerH, ch)
+
+    // During a pinch, the cursor's content point is the only thing that drives
+    // the scroll — the group-centre logic (which reads object rects that move
+    // with the scroll we set, a feedback loop) is ruled out entirely.
+    const anchor = pinchAnchorRef.current
+    let targetLeft: number
+    let targetTop: number
+    if (anchor) {
+      targetLeft = anchor.fracX * scrollW - anchor.offsetX
+      targetTop = anchor.fracY * scrollH - anchor.offsetY
+    } else {
+      let fx = 0.5
+      let fy = 0.5
+      const pa = printAreaBoxRef.current
+      if (pa && printAreaOverlay) {
+        const rects: DOMRect[] = []
+        for (const t of visibleTextElements) {
+          const n = textElementRefs.current[t.id]
+          if (n) rects.push(n.getBoundingClientRect())
+        }
+        for (const g of visibleGraphicElements) {
+          const n = graphicElementRefs.current[g.id]
+          if (n) rects.push(n.getBoundingClientRect())
+        }
+        if (rects.length) {
+          const paRect = pa.getBoundingClientRect()
+          const minX = Math.min(...rects.map(r => r.left))
+          const maxX = Math.max(...rects.map(r => r.right))
+          const minY = Math.min(...rects.map(r => r.top))
+          const maxY = Math.max(...rects.map(r => r.bottom))
+          // group centre as a fraction of the print area, then of the content
+          const gcx = paRect.width ? ((minX + maxX) / 2 - paRect.left) / paRect.width : 0.5
+          const gcy = paRect.height ? ((minY + maxY) / 2 - paRect.top) / paRect.height : 0.5
+          fx = (printAreaOverlay.left + gcx * printAreaOverlay.width) / 100
+          fy = (printAreaOverlay.top + gcy * printAreaOverlay.height) / 100
+        }
       }
-      for (const g of visibleGraphicElements) {
-        const n = graphicElementRefs.current[g.id]
-        if (n) rects.push(n.getBoundingClientRect())
-      }
-      if (rects.length) {
-        const paRect = pa.getBoundingClientRect()
-        const minX = Math.min(...rects.map(r => r.left))
-        const maxX = Math.max(...rects.map(r => r.right))
-        const minY = Math.min(...rects.map(r => r.top))
-        const maxY = Math.max(...rects.map(r => r.bottom))
-        // group centre as a fraction of the print area, then of the whole content
-        const gcx = paRect.width ? ((minX + maxX) / 2 - paRect.left) / paRect.width : 0.5
-        const gcy = paRect.height ? ((minY + maxY) / 2 - paRect.top) / paRect.height : 0.5
-        fx = (printAreaOverlay.left + gcx * printAreaOverlay.width) / 100
-        fy = (printAreaOverlay.top + gcy * printAreaOverlay.height) / 100
-      }
+      targetLeft = fx * scrollW - cw / 2
+      targetTop = fy * scrollH - ch / 2
     }
-    const maxScrollX = el.scrollWidth - el.clientWidth
-    const maxScrollY = el.scrollHeight - el.clientHeight
-    el.scrollLeft = Math.max(0, Math.min(maxScrollX, fx * el.scrollWidth - el.clientWidth / 2))
-    el.scrollTop = Math.max(0, Math.min(maxScrollY, fy * el.scrollHeight - el.clientHeight / 2))
+    el.scrollTo({
+      left: Math.max(0, Math.min(scrollW - cw, targetLeft)),
+      top: Math.max(0, Math.min(scrollH - ch, targetTop)),
+      // Only the +/- buttons animate; a pinch must land instantly each tick.
+      behavior: zoomAnimate && !anchor ? "smooth" : "auto",
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom])
   const [activeViewId, setActiveViewId] = useState("1")
@@ -1715,6 +1791,7 @@ export default function Designer() {
               style={{
                 aspectRatio: canvasAspect,
                 height: `calc(${60 * zoom}% + ${100 * zoom}px)`,
+                transition: zoomAnimate ? "height 250ms ease-out" : "none",
               }}
               onClick={() => activePanel && setActivePanel(null)}
             >
@@ -2021,7 +2098,10 @@ export default function Designer() {
                 <button
                   type="button"
                   aria-label="Zoom in"
-                  onClick={() => setZoom(z => Math.min(6, Math.round((z + 0.25) * 100) / 100))}
+                  onClick={() => {
+                    setZoomAnimate(true)
+                    setZoom(z => Math.min(6, Math.round((z + 0.25) * 100) / 100))
+                  }}
                   className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-black hover:bg-neutral-100"
                 >
                   <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
@@ -2038,14 +2118,26 @@ export default function Designer() {
               </div>
               <div className="flex h-24 w-6 items-center justify-center">
                 <div className="-rotate-90">
-                  <WedgeSlider min={1} max={6} value={zoom} onChange={setZoom} width={96} />
+                  <WedgeSlider
+                    min={1}
+                    max={6}
+                    value={zoom}
+                    onChange={v => {
+                      setZoomAnimate(false)
+                      setZoom(v)
+                    }}
+                    width={96}
+                  />
                 </div>
               </div>
               <div className="group/tooltip relative flex">
                 <button
                   type="button"
                   aria-label="Zoom out"
-                  onClick={() => setZoom(z => Math.max(1, Math.round((z - 0.25) * 100) / 100))}
+                  onClick={() => {
+                    setZoomAnimate(true)
+                    setZoom(z => Math.max(1, Math.round((z - 0.25) * 100) / 100))
+                  }}
                   className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-black hover:bg-neutral-100"
                 >
                   <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
