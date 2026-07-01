@@ -32,7 +32,7 @@ export function GraphicEditorBar({ show, onDuplicate, onDelete }: GraphicEditorB
         </button>
 
         {/* divider */}
-        <div className="bg-neutral-200 -my-1.5 w-px self-stretch" />
+        <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
         {/* Delete */}
         <button

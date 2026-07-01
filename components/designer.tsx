@@ -26,6 +26,7 @@ import {
   ScopedDialogTitle,
 } from "@/components/ui/scoped-dialog"
 import { FontPanel } from "@/components/ui/font-panel/FontPanel"
+import { useFonts, getFontVariants } from "@/hooks/useFonts"
 import { TextColorPanel } from "@/components/ui/text-color-panel/TextColorPanel"
 import { UploadPanel } from "@/components/ui/upload-panel/UploadPanel"
 
@@ -280,6 +281,13 @@ export default function Designer() {
     color: string
     fontSize: number
     fontFamily: string
+    textAlign?: "left" | "center" | "right"
+    bold?: boolean
+    italic?: boolean
+    underline?: boolean
+    // False/undefined until the user explicitly picks a colour — while default we
+    // show a rainbow swatch in the editor bar (matches create-omat).
+    colorSet?: boolean
   }
   const DEFAULT_FONT_FAMILY = "Inter"
   const [textElements, setTextElements] = useState<TextElement[]>([])
@@ -292,6 +300,10 @@ export default function Designer() {
     v: false,
   })
   const selectedText = textElements.find(t => t.id === selectedTextId) ?? null
+  const { loadFont } = useFonts()
+  // Which style variants the selected text's font actually offers (bold/italic
+  // buttons are disabled when the font lacks the variant).
+  const [fontCaps, setFontCaps] = useState({ canBold: true, canItalic: true })
 
   // Graphic elements placed inside a print area. Position and size are % of that print area.
   type GraphicElement = {
@@ -324,6 +336,11 @@ export default function Designer() {
   // *appearance* (not its position) changes, so moving never regenerates it.
   const [embroiderySrc, setEmbroiderySrc] = useState<string | null>(null)
   const lastEmbroiderySigRef = useRef<string | null>(null)
+  // Mirrors embroiderySrc so we can detect when a re-flatten produced an
+  // identical stitched source (e.g. changing alignment on single-line text): the
+  // EmbroideryPreview effect won't re-run, so onRendered won't fire and we must
+  // clear the render-stale spinner ourselves instead of spinning forever.
+  const lastEmbroiderySrcRef = useRef<string | null>(null)
   // True between a drag/resize release and the next flatten completing — keeps
   // the flat element visible (no spinner) until the position settles, so the
   // stitched render appears at the final spot with no jump.
@@ -451,6 +468,35 @@ export default function Designer() {
       prev.map(t => (t.id === selectedTextId ? { ...t, ...patch } : t))
     )
   }
+
+  // When the selected text's font changes, detect which variants it supports and
+  // drop any bold/italic the new font can't render (so we never faux-render or
+  // strand an un-toggleable style).
+  const selectedFontFamily = selectedText?.fontFamily
+  useEffect(() => {
+    if (!selectedFontFamily) return
+    let active = true
+    const apply = () => {
+      if (!active) return
+      const v = getFontVariants(selectedFontFamily)
+      setFontCaps({ canBold: v.bold, canItalic: v.italic })
+      setTextElements(prev =>
+        prev.map(t => {
+          if (t.fontFamily !== selectedFontFamily) return t
+          if ((t.bold && !v.bold) || (t.italic && !v.italic)) {
+            return { ...t, bold: t.bold && v.bold, italic: t.italic && v.italic }
+          }
+          return t
+        })
+      )
+    }
+    apply()
+    loadFont(selectedFontFamily).then(apply)
+    return () => {
+      active = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFontFamily])
 
   const duplicateSelectedText = () => {
     if (!selectedTextId) return
@@ -965,7 +1011,7 @@ export default function Designer() {
   // Signature of the current print area's design — drives re-flattening for the
   // on-canvas embroidery preview when text/graphics change.
   const designSignature = JSON.stringify({
-    t: visibleTextElements.map(t => [t.x, t.y, t.content, t.fontSize, t.fontFamily, t.color]),
+    t: visibleTextElements.map(t => [t.x, t.y, t.content, t.fontSize, t.fontFamily, t.color, t.textAlign, t.bold, t.italic, t.underline]),
     g: visibleGraphicElements.map(g => [g.x, g.y, g.width, g.height, g.src]),
   })
   // Appearance signature, normalized to the design's top-left so a pure
@@ -982,6 +1028,10 @@ export default function Designer() {
       t.fontSize,
       t.fontFamily,
       t.color,
+      t.textAlign,
+      t.bold,
+      t.italic,
+      t.underline,
     ]),
     g: visibleGraphicElements.map(g => [
       g.x - designMinX,
@@ -1049,6 +1099,7 @@ export default function Designer() {
     if (!wantPreview) {
       setDesignDataUrl(null)
       setEmbroiderySrc(null)
+      lastEmbroiderySrcRef.current = null
       lastEmbroiderySigRef.current = null
       setEmbroideryRenderedUrl(null)
       setDesignBbox(null)
@@ -1096,6 +1147,7 @@ export default function Designer() {
         if (!cancelled) {
           setDesignDataUrl(null)
           setEmbroiderySrc(null)
+          lastEmbroiderySrcRef.current = null
           lastEmbroiderySigRef.current = null
           setDesignBbox(null)
           setEmbroiderySettling(false)
@@ -1126,13 +1178,31 @@ export default function Designer() {
         ctx.fillStyle = t.color
         ctx.textBaseline = "top"
         const fontSize = t.fontSize * scale
-        ctx.font = `${fontSize}px "${t.fontFamily}"`
+        ctx.font = `${t.italic ? "italic " : ""}${t.bold ? 700 : 400} ${fontSize}px "${t.fontFamily}"`
         const x = Math.round((t.x / 100) * W)
         let y = (t.y / 100) * H
-        for (const line of t.content.split("\n")) {
-          ctx.fillText(line, x, Math.round(y))
+        // Align each line within the block's widest line, matching the DOM box
+        // (left at x, width = max-content, text-align applied).
+        const lines = t.content.split("\n")
+        const lineWidths = lines.map(l => ctx.measureText(l).width)
+        const blockWidth = Math.max(0, ...lineWidths)
+        const align = t.textAlign ?? "left"
+        lines.forEach((line, i) => {
+          const dx =
+            align === "center"
+              ? (blockWidth - lineWidths[i]) / 2
+              : align === "right"
+                ? blockWidth - lineWidths[i]
+                : 0
+          const lx = Math.round(x + dx)
+          const ly = Math.round(y)
+          ctx.fillText(line, lx, ly)
+          if (t.underline && lineWidths[i] > 0) {
+            const uy = Math.round(ly + fontSize * 0.92)
+            ctx.fillRect(lx, uy, Math.round(lineWidths[i]), Math.max(1, Math.round(fontSize / 16)))
+          }
           y += fontSize
-        }
+        })
       }
       for (const g of graphics) {
         const img = await loadImage(g.src).catch(() => null)
@@ -1165,6 +1235,7 @@ export default function Designer() {
         if (!cancelled) {
           setDesignDataUrl(null)
           setEmbroiderySrc(null)
+          lastEmbroiderySrcRef.current = null
           lastEmbroiderySigRef.current = null
           setDesignBbox(null)
           setEmbroiderySettling(false)
@@ -1217,13 +1288,29 @@ export default function Designer() {
             hctx.fillStyle = t.color
             hctx.textBaseline = "top"
             const fs = t.fontSize * scaleHi
-            hctx.font = `${fs}px "${t.fontFamily}"`
+            hctx.font = `${t.italic ? "italic " : ""}${t.bold ? 700 : 400} ${fs}px "${t.fontFamily}"`
             const x = Math.round((t.x / 100) * WF)
             let y = (t.y / 100) * HF
-            for (const line of t.content.split("\n")) {
-              hctx.fillText(line, x, Math.round(y))
+            const lines = t.content.split("\n")
+            const lineWidths = lines.map(l => hctx.measureText(l).width)
+            const blockWidth = Math.max(0, ...lineWidths)
+            const align = t.textAlign ?? "left"
+            lines.forEach((line, i) => {
+              const dx =
+                align === "center"
+                  ? (blockWidth - lineWidths[i]) / 2
+                  : align === "right"
+                    ? blockWidth - lineWidths[i]
+                    : 0
+              const lx = Math.round(x + dx)
+              const ly = Math.round(y)
+              hctx.fillText(line, lx, ly)
+              if (t.underline && lineWidths[i] > 0) {
+                const uy = Math.round(ly + fs * 0.92)
+                hctx.fillRect(lx, uy, Math.round(lineWidths[i]), Math.max(1, Math.round(fs / 16)))
+              }
               y += fs
-            }
+            })
           }
           for (const g of graphics) {
             const img = await loadImage(g.src).catch(() => null)
@@ -1239,7 +1326,16 @@ export default function Designer() {
         }
         if (cancelled) return
         lastEmbroiderySigRef.current = embroiderySignature
-        setEmbroiderySrc(hctx ? hi.toDataURL("image/png") : url)
+        const nextSrc = hctx ? hi.toDataURL("image/png") : url
+        if (nextSrc === lastEmbroiderySrcRef.current) {
+          // Identical stitched source — EmbroideryPreview won't re-render, so its
+          // onRendered won't fire. Clear the spinner here (the existing render is
+          // still valid).
+          setEmbroideryRenderStale(false)
+        } else {
+          lastEmbroiderySrcRef.current = nextSrc
+          setEmbroiderySrc(nextSrc)
+        }
       } else {
         setEmbroideryRenderStale(false)
       }
@@ -1926,6 +2022,10 @@ export default function Designer() {
                               color: el.color,
                               fontSize: `${el.fontSize * zoom}px`,
                               fontFamily: `"${el.fontFamily}"`,
+                              textAlign: el.textAlign ?? "left",
+                              fontWeight: el.bold ? 700 : 400,
+                              fontStyle: el.italic ? "italic" : "normal",
+                              textDecoration: el.underline ? "underline" : "none",
                               width: `${box.width + 4}px`,
                               height: `${box.height}px`,
                               minWidth: `${el.fontSize * zoom * 0.5}px`,
@@ -1968,6 +2068,10 @@ export default function Designer() {
                           color: embroideryShown ? "transparent" : el.color,
                           fontSize: `${el.fontSize * zoom}px`,
                           fontFamily: `"${el.fontFamily}"`,
+                          textAlign: el.textAlign ?? "left",
+                          fontWeight: el.bold ? 700 : 400,
+                          fontStyle: el.italic ? "italic" : "normal",
+                          textDecoration: el.underline ? "underline" : "none",
                           whiteSpace: "pre",
                           // Size exactly to the text so the selection box + handles
                           // always wrap the rendered glyphs (no shrink-to-fit wrap
@@ -2629,7 +2733,18 @@ export default function Designer() {
               fontSize={selectedText?.fontSize ?? 32}
               fontFamily={selectedText?.fontFamily ?? DEFAULT_FONT_FAMILY}
               color={selectedText?.color ?? "#000000"}
+              isDefaultColor={!selectedText?.colorSet}
+              textAlign={selectedText?.textAlign ?? "left"}
+              bold={!!selectedText?.bold}
+              italic={!!selectedText?.italic}
+              underline={!!selectedText?.underline}
+              canBold={fontCaps.canBold}
+              canItalic={fontCaps.canItalic}
               maxFontSize={maxFontSize}
+              onTextAlignChange={align => updateSelectedText({ textAlign: align })}
+              onToggleBold={() => updateSelectedText({ bold: !selectedText?.bold })}
+              onToggleItalic={() => updateSelectedText({ italic: !selectedText?.italic })}
+              onToggleUnderline={() => updateSelectedText({ underline: !selectedText?.underline })}
               onFontSizeChange={size => updateSelectedText({ fontSize: size })}
               onFontFamilyClick={() =>
                 setFontPanelOpen(o => {
@@ -2659,7 +2774,7 @@ export default function Designer() {
               open={textColorPanelOpen && !!selectedText}
               onClose={() => setTextColorPanelOpen(false)}
               currentColor={selectedText?.color ?? "#000000"}
-              onChange={color => updateSelectedText({ color })}
+              onChange={color => updateSelectedText({ color, colorSet: true })}
             />
 
             <FontPanel

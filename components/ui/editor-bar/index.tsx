@@ -2,37 +2,135 @@
 
 import { WedgeSlider } from "./WedgeSlider"
 
+type TextAlign = "left" | "center" | "right"
+
 type EditorBarProps = {
   show: boolean
   fontSize: number
   fontFamily: string
   color: string
+  isDefaultColor?: boolean
+  textAlign?: TextAlign
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  canBold?: boolean
+  canItalic?: boolean
   maxFontSize?: number
   onFontSizeChange: (next: number) => void
   onFontFamilyClick: () => void
   onColorClick: () => void
+  onTextAlignChange?: (next: TextAlign) => void
+  onToggleBold?: () => void
+  onToggleItalic?: () => void
+  onToggleUnderline?: () => void
   onDuplicate?: () => void
   onDelete?: () => void
 }
 
 const MIN_FONT_SIZE = 14
 const ABS_MAX_FONT_SIZE = 320
+const ALIGN_ORDER: TextAlign[] = ["left", "center", "right"]
+
+function BoldIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 4h7a4 4 0 0 1 0 8H6z" />
+      <path d="M6 12h8a4 4 0 0 1 0 8H6z" />
+    </svg>
+  )
+}
+
+function ItalicIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="19" y1="4" x2="10" y2="4" />
+      <line x1="14" y1="20" x2="5" y2="20" />
+      <line x1="15" y1="4" x2="9" y2="20" />
+    </svg>
+  )
+}
+
+function UnderlineIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 3v7a6 6 0 0 0 12 0V3" />
+      <line x1="4" y1="21" x2="20" y2="21" />
+    </svg>
+  )
+}
+
+// Alignment icon — three lines shifted to match the alignment.
+function AlignIcon({ align }: { align: TextAlign }) {
+  const lines =
+    align === "center"
+      ? [
+          [4, 16],
+          [6.5, 13.5],
+          [5, 15],
+        ]
+      : align === "right"
+        ? [
+            [3, 17],
+            [9, 17],
+            [7, 17],
+          ]
+        : [
+            [3, 17],
+            [3, 11],
+            [3, 13],
+          ]
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+      {lines.map(([x1, x2], i) => (
+        <line
+          key={i}
+          x1={x1}
+          x2={x2}
+          y1={5 + i * 5}
+          y2={5 + i * 5}
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      ))}
+    </svg>
+  )
+}
 
 export function EditorBar({
   show,
   fontSize,
   fontFamily,
   color,
+  isDefaultColor = false,
+  textAlign = "left",
+  bold = false,
+  italic = false,
+  underline = false,
+  canBold = true,
+  canItalic = true,
   maxFontSize = ABS_MAX_FONT_SIZE,
   onFontSizeChange,
   onFontFamilyClick,
   onColorClick,
+  onTextAlignChange,
+  onToggleBold,
+  onToggleItalic,
+  onToggleUnderline,
   onDuplicate,
   onDelete,
 }: EditorBarProps) {
   if (!show) return null
   const max = Math.max(MIN_FONT_SIZE, Math.min(ABS_MAX_FONT_SIZE, Math.floor(maxFontSize)))
   const clamp = (n: number) => Math.max(MIN_FONT_SIZE, Math.min(max, Math.round(n)))
+  const nextAlign = ALIGN_ORDER[(ALIGN_ORDER.indexOf(textAlign) + 1) % ALIGN_ORDER.length]
+  const iconBtn = (active: boolean, disabled: boolean) =>
+    `flex h-9 w-9 items-center justify-center rounded-md ${
+      disabled
+        ? "cursor-not-allowed opacity-30"
+        : `cursor-pointer hover:bg-neutral-100 ${active ? "bg-neutral-100" : ""}`
+    }`
 
   return (
     <div
@@ -40,19 +138,62 @@ export function EditorBar({
       className="shadow-xs absolute top-8 left-1/2 z-[5] flex h-[48px] -translate-x-1/2 items-center overflow-hidden rounded-full bg-white"
     >
       <div className="flex h-full min-w-0 items-center gap-2 px-1.5 py-1.5">
-        {/* Font family */}
+        {/* Font family (fixed label; hover shows current font) */}
         <button
           type="button"
-          aria-label="Font family"
+          aria-label="Font"
           title={fontFamily}
           onClick={onFontFamilyClick}
-          className="flex h-9 max-w-[100px] min-w-[100px] cursor-pointer items-center justify-start truncate rounded-md rounded-l-[24px] px-2 text-left text-[12px] font-semibold hover:bg-neutral-100"
+          className="flex h-9 cursor-pointer items-center justify-start rounded-md rounded-l-[24px] px-3 text-left text-[12px] font-semibold hover:bg-neutral-100"
         >
-          {fontFamily}
+          Font
         </button>
 
         {/* divider */}
-        <div className="bg-neutral-200 -my-1.5 w-px self-stretch" />
+        <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
+
+        {/* Bold / Italic / Underline / Alignment */}
+        <button
+          type="button"
+          aria-label="Bold"
+          title="Bold"
+          disabled={!canBold}
+          onClick={onToggleBold}
+          className={iconBtn(bold, !canBold)}
+        >
+          <BoldIcon />
+        </button>
+        <button
+          type="button"
+          aria-label="Italic"
+          title="Italic"
+          disabled={!canItalic}
+          onClick={onToggleItalic}
+          className={iconBtn(italic, !canItalic)}
+        >
+          <ItalicIcon />
+        </button>
+        <button
+          type="button"
+          aria-label="Underline"
+          title="Underline"
+          onClick={onToggleUnderline}
+          className={iconBtn(underline, false)}
+        >
+          <UnderlineIcon />
+        </button>
+        <button
+          type="button"
+          aria-label={`Text alignment: ${textAlign}`}
+          title="Alignment"
+          onClick={() => onTextAlignChange?.(nextAlign)}
+          className={iconBtn(false, false)}
+        >
+          <AlignIcon align={textAlign} />
+        </button>
+
+        {/* divider */}
+        <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
         {/* Font size: decrease */}
         <button
@@ -101,7 +242,7 @@ export function EditorBar({
         </button>
 
         {/* divider */}
-        <div className="bg-neutral-200 -my-1.5 w-px self-stretch" />
+        <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
         {/* Color */}
         <button
@@ -110,16 +251,30 @@ export function EditorBar({
           onClick={onColorClick}
           className="flex h-9 items-center gap-2 cursor-pointer rounded-md px-2 hover:bg-neutral-100"
         >
-          <span
-            aria-hidden="true"
-            className="inline-block h-5 w-5 rounded-full border border-neutral-300"
-            style={{ backgroundColor: color }}
-          />
+          {isDefaultColor ? (
+            // Rainbow swatch while the colour is still the default (unchanged).
+            <span
+              aria-hidden="true"
+              className="flex h-5 w-5 items-center justify-center rounded-full"
+              style={{
+                background:
+                  "conic-gradient(from 90deg, rgba(43, 113, 247, 1) 0deg, rgba(254, 48, 195, 1) 83.07deg, rgba(254, 28, 31, 1) 157.5deg, rgba(244, 245, 71, 1) 240.57deg, rgba(1, 241, 87, 1) 294.23deg, rgba(102, 102, 102, 1) 360deg)",
+              }}
+            >
+              <span className="h-3 w-3 rounded-full bg-white" />
+            </span>
+          ) : (
+            <span
+              aria-hidden="true"
+              className="inline-block h-5 w-5 rounded-full border border-neutral-300"
+              style={{ backgroundColor: color }}
+            />
+          )}
           <span className="text-[12px] font-semibold">Color</span>
         </button>
 
         {/* divider */}
-        <div className="bg-neutral-200 -my-1.5 w-px self-stretch" />
+        <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
         {/* Duplicate */}
         <button
