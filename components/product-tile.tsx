@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ReactNode } from "react"
+import { useState, type CSSProperties, type ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 import {
@@ -35,6 +35,19 @@ type ProductTileProps = {
 }
 
 const eur = (n: number) => n.toFixed(2).replace(".", ",") + " €"
+
+// The kit chevron SVGs are fill="black"; mask them so the shape paints in the
+// button's currentColor (white on the black arrow buttons) instead.
+const chevronMask = (icon: string): CSSProperties => ({
+  maskImage: `url(${icon})`,
+  WebkitMaskImage: `url(${icon})`,
+  maskRepeat: "no-repeat",
+  WebkitMaskRepeat: "no-repeat",
+  maskPosition: "center",
+  WebkitMaskPosition: "center",
+  maskSize: "contain",
+  WebkitMaskSize: "contain",
+})
 
 // Shared product tile (kit ProductCard style): gray image area, price,
 // brand + name, and a row of colour swatches (+N). Width is controlled by
@@ -89,8 +102,20 @@ export default function ProductTile({
                     className="pointer-events-none absolute inset-0"
                     onClick={e => e.stopPropagation()}
                   >
-                    <CarouselPrevious className="pointer-events-auto left-2 size-10 cursor-pointer border-none bg-black text-white shadow-md hover:bg-neutral-800 hover:text-white" />
-                    <CarouselNext className="pointer-events-auto right-2 size-10 cursor-pointer border-none bg-black text-white shadow-md hover:bg-neutral-800 hover:text-white" />
+                    <CarouselPrevious className="pointer-events-auto left-2 size-10 cursor-pointer border-none bg-black text-white shadow-md hover:bg-neutral-800 hover:text-white">
+                      <span
+                        aria-hidden
+                        className="size-6 bg-current"
+                        style={chevronMask("/icons/icon-chevron-left.svg")}
+                      />
+                    </CarouselPrevious>
+                    <CarouselNext className="pointer-events-auto right-2 size-10 cursor-pointer border-none bg-black text-white shadow-md hover:bg-neutral-800 hover:text-white">
+                      <span
+                        aria-hidden
+                        className="size-6 bg-current"
+                        style={chevronMask("/icons/icon-chevron-right.svg")}
+                      />
+                    </CarouselNext>
                     <CarouselDots className="pointer-events-auto" />
                   </div>
                 </Carousel>
