@@ -110,12 +110,12 @@ export default function ProductsSection({ tiles }: { tiles: ProductTileData[] })
             />
           </div>
           <div>
-            <p className="font-display text-xl font-[900] text-black">Order 20 or more products</p>
+            <p className="font-display text-xl font-[900] text-black">Order in bulk</p>
             <h2 className="font-display mt-1 text-3xl font-[900] tracking-tight text-black sm:text-4xl">
               to SEE A SAMPLE
             </h2>
             <p className="mt-5 max-w-xl text-base leading-relaxed text-neutral-700">
-              We'll send you a close-up photo of your design embroidered on the product you order, so you can see the quality and details before before we continue with your order.
+              For orders over €3,000, we'll send you a close-up photo of your embroidered design on your chosen product so you can review the quality and details before we proceed with your order.
             </p>
             <div className="mt-8">
               <GradientButton href="/">Create now</GradientButton>
