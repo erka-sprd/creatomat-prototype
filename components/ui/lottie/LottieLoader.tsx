@@ -1,8 +1,10 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-// SVG-only ("light") build — smaller, renders the animation as inline SVG.
-import lottie from "lottie-web/build/player/lottie_light"
+// Canvas renderer: rasterises each frame to a bitmap instead of building a
+// large <mask>/<clipPath> SVG tree. Chrome's first-paint of that tree was the
+// start hitch — canvas avoids it, so the animation starts smooth in Chrome too.
+import lottie from "lottie-web/build/player/lottie_canvas"
 
 import animationData from "@/components/ui/lottie/designer-loader.json"
 
@@ -22,29 +24,25 @@ export default function LottieLoader({ size = 180, className }: LottieLoaderProp
     const rafs: number[] = []
     const queue = (fn: () => void) => rafs.push(requestAnimationFrame(fn))
 
-    // Building this mask/track-matte-heavy animation is main-thread work, and
-    // in Chrome the first *paint* of all those <mask>/<clipPath> nodes is the
-    // expensive part — if motion starts on that same frame, it stutters
-    // ("laggy start"). Firefox paints it more gracefully, so it's smooth there.
-    //
-    // So: (1) wait two paints so the designer's mount commits first, then
-    // (2) build with autoplay OFF and render a *static* frame 0, letting Chrome
-    // do its heavy first layout/paint while nothing is moving, then
-    // (3) start motion a couple frames later, on a settled tree — smooth in
-    // both browsers, and the SVG look Firefox handles well is unchanged.
+    // (1) Wait two paints so the designer's mount commits first, then (2) build
+    // with autoplay OFF and draw a static frame 0 (the first rasterise), then
+    // (3) start motion a couple frames later on a settled thread — smooth start.
     queue(() =>
       queue(() => {
         anim = lottie.loadAnimation({
           container,
-          renderer: "svg",
+          renderer: "canvas",
           loop: true,
           autoplay: false,
           animationData,
-          // Build every layer up front so the first loop doesn't hitch.
-          rendererSettings: { progressiveLoad: false },
+          rendererSettings: {
+            // Build every layer up front and clear between frames.
+            progressiveLoad: false,
+            clearCanvas: true,
+          },
         })
         anim.addEventListener("DOMLoaded", () => {
-          anim?.goToAndStop(0, true) // force the costly first paint, static
+          anim?.goToAndStop(0, true) // first rasterise while static
           queue(() => queue(() => anim?.play())) // then start motion, settled
         })
       })
