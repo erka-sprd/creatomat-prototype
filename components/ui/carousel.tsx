@@ -4,7 +4,7 @@ import * as React from 'react'
 import useEmblaCarousel, {
   type UseEmblaCarouselType,
 } from 'embla-carousel-react'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -195,7 +195,7 @@ function CarouselPrevious({
       onClick={scrollPrev}
       {...props}
     >
-      <ArrowLeft />
+      <ChevronLeft className="size-5" strokeWidth={2.25} />
       <span className="sr-only">Previous slide</span>
     </Button>
   )
@@ -225,7 +225,7 @@ function CarouselNext({
       onClick={scrollNext}
       {...props}
     >
-      <ArrowRight />
+      <ChevronRight className="size-5" strokeWidth={2.25} />
       <span className="sr-only">Next slide</span>
     </Button>
   )
@@ -256,25 +256,28 @@ function CarouselDots({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'absolute inset-x-0 bottom-2 flex items-center justify-center gap-1.5',
+        'absolute inset-x-0 bottom-2 flex items-center justify-center',
         className,
       )}
     >
-      {snaps.map((_, i) => (
-        <button
-          key={i}
-          type="button"
-          aria-label={`Go to slide ${i + 1}`}
-          onClick={e => {
-            e.stopPropagation()
-            api?.scrollTo(i)
-          }}
-          className={cn(
-            'h-1.5 cursor-pointer rounded-full bg-white transition-all',
-            i === selected ? 'w-4' : 'w-1.5 opacity-60',
-          )}
-        />
-      ))}
+      {/* White pill frame around the dots: 4px padding, fully rounded. */}
+      <div className="flex items-center gap-1.5 rounded-full bg-white p-1 shadow-sm">
+        {snaps.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            aria-label={`Go to slide ${i + 1}`}
+            onClick={e => {
+              e.stopPropagation()
+              api?.scrollTo(i)
+            }}
+            className={cn(
+              'h-1.5 cursor-pointer rounded-full transition-all',
+              i === selected ? 'w-4 bg-neutral-900' : 'w-1.5 bg-neutral-300',
+            )}
+          />
+        ))}
+      </div>
     </div>
   )
 }

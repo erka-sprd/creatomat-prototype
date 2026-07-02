@@ -89,8 +89,8 @@ export default function ProductTile({
                     className="pointer-events-none absolute inset-0"
                     onClick={e => e.stopPropagation()}
                   >
-                    <CarouselPrevious className="pointer-events-auto left-2 size-7 cursor-pointer border-none bg-white/85 text-black shadow hover:bg-white" />
-                    <CarouselNext className="pointer-events-auto right-2 size-7 cursor-pointer border-none bg-white/85 text-black shadow hover:bg-white" />
+                    <CarouselPrevious className="pointer-events-auto left-2 size-9 cursor-pointer border-none bg-white text-black shadow-md hover:bg-white" />
+                    <CarouselNext className="pointer-events-auto right-2 size-9 cursor-pointer border-none bg-white text-black shadow-md hover:bg-white" />
                     <CarouselDots className="pointer-events-auto" />
                   </div>
                 </Carousel>
