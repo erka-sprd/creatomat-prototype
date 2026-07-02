@@ -1,12 +1,24 @@
-import type { ReactNode } from "react"
+"use client"
+
+import { useState, type ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselPrevious,
+  CarouselNext,
+  CarouselDots,
+} from "@/components/ui/carousel"
 
 export type ProductTileData = {
   id: string
   image: string
   /** appearance (colour) id shown as the tile preview */
   appearanceId: string
+  /** model / mood images shown in the hover carousel (absolute URLs). */
+  modelImages?: string[]
   price: string
   priceValue: number
   brand: string
@@ -37,15 +49,54 @@ export default function ProductTile({
 }: ProductTileProps) {
   const shown = t.colors.slice(0, 5)
   const extra = t.colors.length - shown.length
+  const models = t.modelImages ?? []
+  const [hovered, setHovered] = useState(false)
   return (
     <div className="w-full">
       <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         className={cn(
-          "relative flex aspect-[4/5] items-center justify-center overflow-hidden bg-neutral-100",
+          "group relative flex aspect-[4/5] items-center justify-center overflow-hidden bg-neutral-100",
           selected && "border-2 border-black"
         )}
       >
         <img src={t.image} alt={t.name} className="h-full w-full object-contain" />
+        {models.length > 0 && (
+          <div
+            className={cn(
+              "absolute inset-0 transition-opacity duration-200",
+              hovered ? "opacity-100" : "pointer-events-none opacity-0"
+            )}
+          >
+            {hovered &&
+              (models.length === 1 ? (
+                <img src={models[0]} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <Carousel
+                  className="h-full [&_[data-slot=carousel-content]]:h-full"
+                  opts={{ loop: true }}
+                >
+                  <CarouselContent className="ml-0 h-full">
+                    {models.map((src, i) => (
+                      <CarouselItem key={i} className="h-full pl-0">
+                        <img src={src} alt="" className="h-full w-full object-cover" />
+                      </CarouselItem>
+                    ))}
+                  </CarouselContent>
+                  {/* Controls layer: clicks here don't select the product. */}
+                  <div
+                    className="pointer-events-none absolute inset-0"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <CarouselPrevious className="pointer-events-auto left-2 size-7 cursor-pointer border-none bg-white/85 text-black shadow hover:bg-white" />
+                    <CarouselNext className="pointer-events-auto right-2 size-7 cursor-pointer border-none bg-white/85 text-black shadow hover:bg-white" />
+                    <CarouselDots className="pointer-events-auto" />
+                  </div>
+                </Carousel>
+              ))}
+          </div>
+        )}
         {topLeft && <div className="absolute top-2 left-2 z-10">{topLeft}</div>}
         {bottomCenter && <div className="absolute inset-x-0 bottom-0 z-10">{bottomCenter}</div>}
       </div>

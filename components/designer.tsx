@@ -13,7 +13,7 @@ import {
   type ProductTypeData,
   type StaticProduct,
 } from "product-catalog-client"
-import { loadCatalog } from "@/lib/catalog"
+import { loadCatalog, modelImagesFor } from "@/lib/catalog"
 import ProductsDrawer, { type SelectedProduct } from "@/components/products-drawer"
 import SiteHeader from "@/components/site-header"
 import { IconsScroller } from "@/components/ui/icons-scroller"
@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/scoped-dialog"
 import { FontPanel } from "@/components/ui/font-panel/FontPanel"
 import { useFonts, getFontVariants } from "@/hooks/useFonts"
+import LottieLoader from "@/components/ui/lottie/LottieLoader"
 import { TextColorPanel } from "@/components/ui/text-color-panel/TextColorPanel"
 import { UploadPanel } from "@/components/ui/upload-panel/UploadPanel"
 
@@ -87,6 +88,15 @@ export default function Designer() {
     loadCatalog().then(c => setProducts(c.products))
   }, [])
   const allTiles = useMemo(() => buildTiles(products).allTiles, [products])
+  // Enrich the "All products" tiles with a front model/mood image for hover.
+  const allTilesWithModel = useMemo(
+    () =>
+      allTiles.map(t => {
+        const product = products.find(p => p.id === t.id)
+        return { ...t, modelImages: product ? modelImagesFor(product, t.appearanceId) : [] }
+      }),
+    [allTiles, products]
+  )
 
   const [selectedProduct, setSelectedProduct] = useState<SelectedProduct | null>(null)
   const productId = selectedProduct?.id ?? DEFAULT_PRODUCT_ID
@@ -270,6 +280,22 @@ export default function Designer() {
     return () => clearInterval(interval)
   }, [addingToBasket])
   const [flashSize, setFlashSize] = useState(false)
+
+  // Staged intro reveal: skeleton (0.5s) → left/right fade in (0.3s), middle
+  // shows the loader animation (1.5s) → middle fades in → overlays unmount.
+  const [loadPhase, setLoadPhase] = useState<"skeleton" | "columns" | "ready" | "done">(
+    "skeleton"
+  )
+  useEffect(() => {
+    const timers = [
+      // Left/right skeleton reveals its content at 0.5s; the middle loader
+      // animation runs from the start for 1.85s, then the canvas fades in.
+      setTimeout(() => setLoadPhase("columns"), 500),
+      setTimeout(() => setLoadPhase("ready"), 2000),
+      setTimeout(() => setLoadPhase("done"), 2550),
+    ]
+    return () => timers.forEach(clearTimeout)
+  }, [])
 
   // Text elements placed inside a specific print area. Positions are % of that print area.
   type TextElement = {
@@ -1695,8 +1721,37 @@ export default function Designer() {
         <div ref={creatomatRef} id="creatomat-container" className="relative flex items-stretch gap-2 w-full max-w-[1920px] h-full justify-center">
           <div
             id="left-section"
-            className="shrink-0 w-[100px] p-[6px] px-1.5 h-full bg-[#F4F4F4] rounded-[12px] flex flex-col"
+            className="relative shrink-0 w-[100px] p-[6px] px-1.5 h-full bg-[#F4F4F4] rounded-[12px] flex flex-col"
           >
+            {/* Intro skeleton overlay — mirrors the real button layout
+                (Products on top, 4 tools centred, undo/redo at the bottom). */}
+            {loadPhase !== "done" && (
+              <div
+                className={`absolute inset-0 z-30 flex flex-col items-center p-[6px] px-1.5 rounded-[12px] bg-[#F4F4F4] transition-opacity duration-300 ${
+                  loadPhase === "skeleton" ? "opacity-100" : "pointer-events-none opacity-0"
+                }`}
+              >
+                <div className="flex-shrink-0">
+                  <div className="h-[68px] w-[88px] animate-pulse rounded-[10px] bg-neutral-200/70" />
+                </div>
+                <div className="flex flex-1 flex-col justify-center gap-[8px]">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-[68px] w-[88px] animate-pulse rounded-[10px] bg-neutral-200/70"
+                    />
+                  ))}
+                </div>
+                <div className="flex flex-shrink-0 flex-col gap-[2px] pb-1">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-9 w-[88px] animate-pulse rounded-[10px] bg-neutral-200/70 opacity-60"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Top Section - Products */}
             <div id="left-section-top-side" className="flex-shrink-0">
               <button
@@ -1928,6 +1983,17 @@ export default function Designer() {
             id="canvas-section"
             className="relative overflow-hidden flex-1 min-w-0 h-full bg-[#F4F4F4] rounded-[12px]"
           >
+            {/* Intro overlay: the loader animation runs from the start (1.85s),
+                then fades out to reveal the canvas. */}
+            {loadPhase !== "done" && (
+              <div
+                className={`absolute inset-0 z-30 flex items-center justify-center rounded-[12px] bg-[#F4F4F4] transition-opacity duration-300 ${
+                  loadPhase === "ready" ? "pointer-events-none opacity-0" : "opacity-100"
+                }`}
+              >
+                <LottieLoader size={220} />
+              </div>
+            )}
             <div
               ref={canvasScrollRef}
               className="absolute inset-0 flex overflow-auto"
@@ -2788,8 +2854,30 @@ export default function Designer() {
           <div
             ref={rightSectionRef}
             id="right-section"
-            className="shrink-0 w-[470px] p-[24px] pb-3 overflow-y-auto h-full bg-[#F4F4F4] rounded-[12px] flex flex-col"
+            className="relative shrink-0 w-[470px] p-[24px] pb-3 overflow-y-auto h-full bg-[#F4F4F4] rounded-[12px] flex flex-col"
           >
+            {/* Intro skeleton overlay (fades out after the skeleton phase) */}
+            {loadPhase !== "done" && (
+              <div
+                className={`absolute inset-0 z-30 flex flex-col gap-4 rounded-[12px] bg-[#F4F4F4] p-[24px] transition-opacity duration-300 ${
+                  loadPhase === "skeleton" ? "opacity-100" : "pointer-events-none opacity-0"
+                }`}
+              >
+                <div className="h-6 w-3/4 animate-pulse rounded bg-neutral-200/70" />
+                <div className="h-4 w-1/3 animate-pulse rounded bg-neutral-200/70" />
+                <div className="mt-2 flex gap-2">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="h-8 w-8 animate-pulse rounded-full bg-neutral-200/70" />
+                  ))}
+                </div>
+                <div className="mt-4 grid grid-cols-4 gap-2">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className="h-9 animate-pulse rounded bg-neutral-200/70" />
+                  ))}
+                </div>
+                <div className="mt-auto h-12 w-full animate-pulse rounded bg-neutral-200/70" />
+              </div>
+            )}
             <div id="top-part" className="flex-shrink-0">
               <div className="flex items-start justify-between mb-[8px]">
                 <h1 className="font-display text-[20px] font-[800] text-black leading-tight line-clamp-2">
@@ -3288,7 +3376,7 @@ export default function Designer() {
           </div>
 
           <ScopedDialog
-            open={welcomeOpen}
+            open={welcomeOpen && loadPhase === "done"}
             onOpenChange={open => {
               if (!open) window.history.pushState({ from: "onboarding" }, "")
               setWelcomeOpen(open)
@@ -3444,7 +3532,7 @@ export default function Designer() {
         open={productsDrawerOpen}
         onOpenChange={setProductsDrawerOpen}
         onSelect={setSelectedProduct}
-        tiles={allTiles}
+        tiles={allTilesWithModel}
       />
 
     </>

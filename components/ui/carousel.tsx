@@ -231,6 +231,54 @@ function CarouselNext({
   )
 }
 
+function CarouselDots({ className }: { className?: string }) {
+  const { api } = useCarousel()
+  const [snaps, setSnaps] = React.useState<number[]>([])
+  const [selected, setSelected] = React.useState(0)
+
+  React.useEffect(() => {
+    if (!api) return
+    const update = () => {
+      setSnaps(api.scrollSnapList())
+      setSelected(api.selectedScrollSnap())
+    }
+    update()
+    api.on('select', update)
+    api.on('reInit', update)
+    return () => {
+      api.off('select', update)
+      api.off('reInit', update)
+    }
+  }, [api])
+
+  if (snaps.length <= 1) return null
+
+  return (
+    <div
+      className={cn(
+        'absolute inset-x-0 bottom-2 flex items-center justify-center gap-1.5',
+        className,
+      )}
+    >
+      {snaps.map((_, i) => (
+        <button
+          key={i}
+          type="button"
+          aria-label={`Go to slide ${i + 1}`}
+          onClick={e => {
+            e.stopPropagation()
+            api?.scrollTo(i)
+          }}
+          className={cn(
+            'h-1.5 cursor-pointer rounded-full bg-white transition-all',
+            i === selected ? 'w-4' : 'w-1.5 opacity-60',
+          )}
+        />
+      ))}
+    </div>
+  )
+}
+
 export {
   type CarouselApi,
   Carousel,
@@ -238,4 +286,5 @@ export {
   CarouselItem,
   CarouselPrevious,
   CarouselNext,
+  CarouselDots,
 }

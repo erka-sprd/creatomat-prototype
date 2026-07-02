@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Off so effects aren't double-invoked in dev (which re-inits the Lottie
+  // loader and hitches its start) — gives dev parity with the prod build.
+  reactStrictMode: false,
   typescript: {
     ignoreBuildErrors: true,
   },
