@@ -160,11 +160,22 @@ export default function Designer() {
     return () => el.removeEventListener("wheel", onWheel)
   }, [])
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false)
-  // Close the view dropdown when clicking outside of it.
+  // First-run "Add this to:" flow — the very first time (per session) the user
+  // adds text/graphics/uploads, we open the view dropdown first so they pick the
+  // target side, then run the pending add on that view.
+  const [firstAddDone, setFirstAddDone] = useState(false)
+  const [viewPickerForAdd, setViewPickerForAdd] = useState(false)
+  const [runPendingAdd, setRunPendingAdd] = useState(false)
+  const pendingAddIntentRef = useRef<"text" | "uploads" | "graphics" | null>(null)
+  // Close the view dropdown when clicking outside of it (cancels a pending add).
   useEffect(() => {
     if (!viewDropdownOpen) return
     const onDown = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest("[data-view-dropdown]")) setViewDropdownOpen(false)
+      if (!(e.target as HTMLElement).closest("[data-view-dropdown]")) {
+        setViewDropdownOpen(false)
+        setViewPickerForAdd(false)
+        pendingAddIntentRef.current = null
+      }
     }
     document.addEventListener("mousedown", onDown)
     return () => document.removeEventListener("mousedown", onDown)
@@ -971,6 +982,34 @@ export default function Designer() {
   )
   const togglePanel = (panel: DesignerPanel) =>
     setActivePanel(p => (p === panel ? null : panel))
+
+  // Run an add tool (text adds directly; graphics/uploads open their panel).
+  const runAddIntent = (intent: "text" | "uploads" | "graphics") => {
+    if (intent === "text") addTextElement()
+    else setActivePanel(intent)
+  }
+  // Entry point for the add tools. The first time in the session (on a product
+  // with more than one view) we open the view dropdown so the user picks the
+  // target side first; the pending tool then runs on that view.
+  const startAdd = (intent: "text" | "uploads" | "graphics") => {
+    if (!firstAddDone && productData && productData.views.length > 1) {
+      pendingAddIntentRef.current = intent
+      setViewPickerForAdd(true)
+      setViewDropdownOpen(true)
+    } else {
+      runAddIntent(intent)
+    }
+  }
+  // After the user picks a view in the first-run flow, run the pending add once
+  // the new view has been applied (so it lands on the chosen print area).
+  useEffect(() => {
+    if (!runPendingAdd) return
+    setRunPendingAdd(false)
+    const intent = pendingAddIntentRef.current
+    pendingAddIntentRef.current = null
+    if (intent) runAddIntent(intent)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runPendingAdd])
   const productImages = appearances.map(a => ({
     src: a.image,
     alt: a.name,
@@ -1811,7 +1850,7 @@ export default function Designer() {
                 type="button"
                 onMouseEnter={() => setHoveredButton("upload")}
                 onMouseLeave={() => setHoveredButton(null)}
-                onClick={() => togglePanel("uploads")}
+                onClick={() => startAdd("uploads")}
                 className={
                   "relative w-[88px] h-auto flex flex-col items-center gap-[8px] rounded-[10px] transition-all duration-200 cursor-pointer " +
                   (isDockCompact ? "px-[8px] py-[10px] " : "p-[8px] ") +
@@ -1863,7 +1902,7 @@ export default function Designer() {
                 type="button"
                 onMouseEnter={() => setHoveredButton("text")}
                 onMouseLeave={() => setHoveredButton(null)}
-                onClick={addTextElement}
+                onClick={() => startAdd("text")}
                 className={
                   "relative w-[88px] h-auto flex flex-col items-center gap-[8px] rounded-[10px] transition-all duration-200 cursor-pointer " +
                   (isDockCompact ? "px-[8px] py-[10px] " : "p-[8px] ") +
@@ -1894,7 +1933,7 @@ export default function Designer() {
                   setGfxActive(true) // keep the Lottie alive for the reverse-out
                 }}
                 onMouseLeave={() => setHoveredButton(null)}
-                onClick={() => togglePanel("graphics")}
+                onClick={() => startAdd("graphics")}
                 className={
                   "relative w-[88px] h-auto flex flex-col items-center gap-[8px] rounded-[10px] transition-all duration-200 cursor-pointer " +
                   (isDockCompact ? "px-[8px] py-[10px] " : "p-[8px] ") +
@@ -2455,12 +2494,19 @@ export default function Designer() {
                 className="absolute bottom-6 left-1/2 z-20 -translate-x-1/2"
               >
                 <div
-                  className={`absolute bottom-full left-1/2 mb-2 flex origin-bottom -translate-x-1/2 gap-2 rounded-2xl bg-white p-6 shadow-xl transition-all duration-150 ease-out ${
+                  className={`absolute bottom-full left-1/2 mb-2 flex origin-bottom -translate-x-1/2 flex-col gap-3 rounded-2xl bg-white p-6 shadow-xl transition-all duration-150 ease-out ${
                     viewDropdownOpen
                       ? "scale-100 opacity-100"
                       : "pointer-events-none scale-95 opacity-0"
                   }`}
                 >
+                  {/* First-run only: prompt the user to choose the target side. */}
+                  {viewPickerForAdd && (
+                    <div className="self-start font-display text-[15px] font-medium text-black">
+                      Add this to:
+                    </div>
+                  )}
+                  <div className="flex gap-2">
                     {productData.views.map(view => {
                       const thumb = currentAppearance?.views.find(v => v.id === view.id)?.image
                       const selected = activeViewId === view.id
@@ -2475,6 +2521,11 @@ export default function Designer() {
                           onClick={() => {
                             setActiveViewId(view.id)
                             setViewDropdownOpen(false)
+                            if (viewPickerForAdd) {
+                              setViewPickerForAdd(false)
+                              setFirstAddDone(true)
+                              setRunPendingAdd(true)
+                            }
                           }}
                           className="group flex w-28 cursor-pointer flex-col items-center gap-1.5"
                         >
@@ -2510,6 +2561,7 @@ export default function Designer() {
                         </button>
                       )
                     })}
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -3461,8 +3513,12 @@ export default function Designer() {
                     }}
                     onMouseLeave={() => setObHovered(null)}
                     onClick={() => {
-                      if (a.id === "text") {
-                        openFromOnboarding(() => addTextElement())
+                      // Route text/graphics/uploads through the first-run "Add
+                      // this to:" view picker; AI keeps its direct panel open.
+                      const intent =
+                        a.id === "upload" ? "uploads" : a.id === "graphics" ? "graphics" : a.id === "text" ? "text" : null
+                      if (intent) {
+                        openFromOnboarding(() => startAdd(intent))
                         return
                       }
                       if (!("panel" in a)) return
