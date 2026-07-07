@@ -1634,6 +1634,9 @@ export default function Designer() {
   const rightSectionRef = useRef<HTMLDivElement | null>(null)
 
   const [hoveredButton, setHoveredButton] = useState<string | null>(null)
+  // Keeps the graphics Lottie mounted through hover-out so it can play in
+  // reverse; cleared once that reverse finishes (then the static icon returns).
+  const [gfxActive, setGfxActive] = useState(false)
 
   useEffect(() => {
     const checkRightSectionHeight = () => {
@@ -1883,7 +1886,10 @@ export default function Designer() {
               {/* Graphics Button */}
               <button
                 type="button"
-                onMouseEnter={() => setHoveredButton("graphics")}
+                onMouseEnter={() => {
+                  setHoveredButton("graphics")
+                  setGfxActive(true) // keep the Lottie alive for the reverse-out
+                }}
                 onMouseLeave={() => setHoveredButton(null)}
                 onClick={() => togglePanel("graphics")}
                 className={
@@ -1902,7 +1908,7 @@ export default function Designer() {
                   viewBox="0 0 24 24"
                   fill="none"
                   xmlns="http://www.w3.org/2000/svg"
-                  style={hoveredButton === "graphics" ? {visibility: "hidden"} : undefined}
+                  style={gfxActive ? {visibility: "hidden"} : undefined}
                 >
                   <path
                     fillRule="evenodd"
@@ -1929,10 +1935,15 @@ export default function Designer() {
                     fill="currentColor"
                   />
                 </svg>
-                {/* On hover, play the graphics Lottie once, overlaid at the
-                    button's size (its artboard matches the button). */}
-                {hoveredButton === "graphics" && (
-                  <GraphicsHoverIcon className="pointer-events-none absolute inset-0" />
+                {/* Plays forward once on hover-in and reversed once on hover-out
+                    (stays mounted through the exit; artboard matches the button).
+                    After the reverse finishes it unmounts -> static icon returns. */}
+                {gfxActive && (
+                  <GraphicsHoverIcon
+                    className="pointer-events-none absolute inset-0"
+                    hovered={hoveredButton === "graphics"}
+                    onReverseDone={() => setGfxActive(false)}
+                  />
                 )}
 
                 {!isDockCompact && (
