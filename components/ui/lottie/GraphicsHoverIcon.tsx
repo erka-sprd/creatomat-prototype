@@ -52,9 +52,23 @@ export default function GraphicsHoverIcon({hovered, onReverseDone, className}: P
     useEffect(() => {
         const anim = animRef.current
         if (!anim) return
-        dir.current = hovered ? 1 : -1
-        anim.setDirection(dir.current)
-        anim.play()
+        if (hovered) {
+            dir.current = 1
+            anim.setSpeed(1) // forward always at normal speed
+            anim.setDirection(1)
+            anim.play()
+        } else {
+            // Reverse-out, capped so it never takes longer than REVERSE_CAP:
+            // speed up only when the wind-back from the current frame would
+            // otherwise exceed the cap; short hovers reverse at normal speed.
+            const REVERSE_CAP = 0.5 // seconds
+            const fps = anim.frameRate || 60
+            const naturalSec = anim.currentFrame / fps
+            dir.current = -1
+            anim.setSpeed(naturalSec > REVERSE_CAP ? naturalSec / REVERSE_CAP : 1)
+            anim.setDirection(-1)
+            anim.play()
+        }
     }, [hovered])
 
     return <div ref={ref} className={className} aria-hidden />
