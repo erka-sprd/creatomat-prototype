@@ -70,6 +70,10 @@ const isDarkProductColor = (hex?: string): boolean => {
 // prototype: clamp the design to at most 1/7 of the print area (by area),
 // anchored to its center. Returns the same bbox if it already fits.
 const EMBROIDERY_MAX_AREA_FRACTION = 1 / 7
+
+// Blur applied to the designer frame (canvas, left tools, right sidebar — not
+// the header) while the view dropdown is open. Tweak freely.
+const VIEW_DROPDOWN_BLUR_PX = 6
 type DesignBbox = { x: number; y: number; w: number; h: number }
 function clampEmbroideryBbox(b: DesignBbox): DesignBbox {
   const area = b.w * b.h
@@ -160,13 +164,20 @@ export default function Designer() {
     return () => el.removeEventListener("wheel", onWheel)
   }, [])
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false)
-  // First-run "Add this to:" flow — the very first time (per session) the user
-  // adds text/graphics/uploads, we open the view dropdown first so they pick the
-  // target side, then run the pending add on that view.
+  // First-run "Add this to:" flow — the first time (per session) the user adds
+  // something on a multi-view product, they pick the target side in the view
+  // dropdown. Text asks before adding (it places immediately); graphics/uploads
+  // ask only after the user has picked an image in their panel.
   const [firstAddDone, setFirstAddDone] = useState(false)
   const [viewPickerForAdd, setViewPickerForAdd] = useState(false)
   const [runPendingAdd, setRunPendingAdd] = useState(false)
   const pendingAddIntentRef = useRef<"text" | "uploads" | "graphics" | null>(null)
+  // An image picked from the graphics/uploads panel that is waiting for the
+  // user to choose the target view in the first-run flow.
+  const pendingGraphicRef = useRef<{
+    src: string
+    opts?: { centerX?: number; centerY?: number; widthPct?: number }
+  } | null>(null)
   // Close the view dropdown when clicking outside of it (cancels a pending add).
   useEffect(() => {
     if (!viewDropdownOpen) return
@@ -175,6 +186,7 @@ export default function Designer() {
         setViewDropdownOpen(false)
         setViewPickerForAdd(false)
         pendingAddIntentRef.current = null
+        pendingGraphicRef.current = null
       }
     }
     document.addEventListener("mousedown", onDown)
@@ -388,7 +400,7 @@ export default function Designer() {
   const [embroideryRenderStale, setEmbroideryRenderStale] = useState(false)
 
   // Print technique (only relevant for embroidery-suitable products).
-  const [printTechnique, setPrintTechnique] = useState<"standard" | "embroidery">("embroidery")
+  const [printTechnique, setPrintTechnique] = useState<"standard" | "embroidery">("standard")
   const [printTechniqueOpen, setPrintTechniqueOpen] = useState(false)
   const [printTechniqueMenuOpen, setPrintTechniqueMenuOpen] = useState(false)
   // Some products (stickers, posters, mugs, …) can't be embroidered. For those
@@ -561,7 +573,7 @@ export default function Designer() {
 
   // Adds a graphic into the current print area, centred and sized to ~40% of the
   // print-area width while preserving the image's aspect ratio.
-  const addGraphicElement = (
+  const placeGraphicElement = (
     src: string,
     opts?: { centerX?: number; centerY?: number; widthPct?: number }
   ) => {
@@ -619,6 +631,23 @@ export default function Designer() {
     } else {
       place(targetWidthPct, targetWidthPct)
     }
+  }
+
+  // Panel-facing entry: the first time in the session (on a multi-view product)
+  // the picked image waits in pendingGraphicRef while the user chooses the
+  // target view; afterwards images place directly.
+  const addGraphicElement = (
+    src: string,
+    opts?: { centerX?: number; centerY?: number; widthPct?: number }
+  ) => {
+    if (!firstAddDone && productData && productData.views.length > 1) {
+      pendingGraphicRef.current = { src, opts }
+      setActivePanel(null)
+      setViewPickerForAdd(true)
+      setViewDropdownOpen(true)
+      return
+    }
+    placeGraphicElement(src, opts)
   }
 
   const deleteSelectedGraphic = () => {
@@ -687,8 +716,8 @@ export default function Designer() {
   }, [])
 
   // Reset texts and graphics when switching products. The print technique is
-  // intentionally NOT reset — embroidery is the default, and once the user
-  // switches to standard print that choice persists across products.
+  // intentionally NOT reset — standard print is the default, and the user's
+  // technique choice persists across products.
   useEffect(() => {
     setTextElements([])
     setEditingTextId(null)
@@ -988,11 +1017,12 @@ export default function Designer() {
     if (intent === "text") addTextElement()
     else setActivePanel(intent)
   }
-  // Entry point for the add tools. The first time in the session (on a product
-  // with more than one view) we open the view dropdown so the user picks the
-  // target side first; the pending tool then runs on that view.
+  // Entry point for the add tools. Text places immediately, so its first run
+  // (on a product with more than one view) asks for the target side up front.
+  // Graphics/uploads open their panel right away — their view picker triggers
+  // in addGraphicElement, once the user has actually picked an image.
   const startAdd = (intent: "text" | "uploads" | "graphics") => {
-    if (!firstAddDone && productData && productData.views.length > 1) {
+    if (intent === "text" && !firstAddDone && productData && productData.views.length > 1) {
       pendingAddIntentRef.current = intent
       setViewPickerForAdd(true)
       setViewDropdownOpen(true)
@@ -1000,14 +1030,18 @@ export default function Designer() {
       runAddIntent(intent)
     }
   }
-  // After the user picks a view in the first-run flow, run the pending add once
-  // the new view has been applied (so it lands on the chosen print area).
+  // After the user picks a view in the first-run flow, run the pending add
+  // (tool intent or picked image) once the new view has been applied, so it
+  // lands on the chosen print area.
   useEffect(() => {
     if (!runPendingAdd) return
     setRunPendingAdd(false)
     const intent = pendingAddIntentRef.current
     pendingAddIntentRef.current = null
     if (intent) runAddIntent(intent)
+    const graphic = pendingGraphicRef.current
+    pendingGraphicRef.current = null
+    if (graphic) placeGraphicElement(graphic.src, graphic.opts)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runPendingAdd])
   const productImages = appearances.map(a => ({
@@ -1030,6 +1064,9 @@ export default function Designer() {
     ? `${currentView.canvas.width} / ${currentView.canvas.height}`
     : "1 / 1"
   const printAreaOverlay = productData ? getPrintAreaOverlay(productData, activeViewId) : null
+  // Some views (close-ups, cap underside, ...) have no print area, so nothing
+  // can be placed on them — the add tools are disabled while such a view is active.
+  const canDesignOnCurrentView = printAreaOverlay != null
   const currentPrintAreaId = currentView?.viewMaps[0]?.printAreaId ?? null
   const visibleTextElements = currentPrintAreaId
     ? textElements.filter(t => t.printAreaId === currentPrintAreaId)
@@ -1062,8 +1099,8 @@ export default function Designer() {
       sessionStorage.removeItem("pendingUpload")
     } catch {}
     setWelcomeOpen(false)
-    // Place it on the canvas directly...
-    addGraphicElement(dataUrl)
+    // Place it on the canvas directly (no view picker — this runs on load)...
+    placeGraphicElement(dataUrl)
     // ...and register it in the upload panel list so it can be re-added later.
     setPendingPanelUpload({ dataUrl, name: "your-logo" })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1767,7 +1804,13 @@ export default function Designer() {
         <div ref={creatomatRef} id="creatomat-container" className="relative flex items-stretch gap-2 w-full max-w-[1920px] h-full justify-center">
           <div
             id="left-section"
-            className="relative shrink-0 w-[100px] p-[6px] px-1.5 h-full bg-[#F4F4F4] rounded-[12px] flex flex-col"
+            className={`relative shrink-0 w-[100px] p-[6px] px-1.5 h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
+              viewDropdownOpen ? "pointer-events-none" : ""
+            }`}
+            style={{
+              transition: "filter 0.3s ease",
+              filter: viewDropdownOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+            }}
           >
             {/* Intro skeleton overlay — mirrors the real button layout
                 (Products on top, 4 tools centred, undo/redo at the bottom). */}
@@ -1820,17 +1863,21 @@ export default function Designer() {
               {/* AI Image Button */}
               <button
                 type="button"
+                disabled={!canDesignOnCurrentView}
                 onMouseEnter={() => setHoveredButton("ai")}
                 onMouseLeave={() => setHoveredButton(null)}
                 onClick={() => togglePanel("ai")}
                 className={
-                  "relative w-[88px] h-auto flex flex-col items-center gap-[8px] rounded-[10px] transition-all duration-200 cursor-pointer " +
+                  "relative w-[88px] h-auto flex flex-col items-center gap-[8px] rounded-[10px] transition-all duration-200 " +
+                  (canDesignOnCurrentView ? "cursor-pointer " : "cursor-not-allowed opacity-40 ") +
                   (isDockCompact ? "px-[8px] py-[10px] " : "p-[8px] ") +
-                  (activePanel === "ai"
-                    ? "bg-white"
-                    : hoveredButton === "ai"
-                      ? "bg-[#E9E9E9]"
-                      : "bg-transparent")
+                  (!canDesignOnCurrentView
+                    ? "bg-transparent"
+                    : activePanel === "ai"
+                      ? "bg-white"
+                      : hoveredButton === "ai"
+                        ? "bg-[#E9E9E9]"
+                        : "bg-transparent")
                 }
               >
                 <img src="/icons/icon-sparkles-ai.svg" alt="" className="h-6 w-6" />
@@ -1848,17 +1895,21 @@ export default function Designer() {
               {/* Uploads Button */}
               <button
                 type="button"
+                disabled={!canDesignOnCurrentView}
                 onMouseEnter={() => setHoveredButton("upload")}
                 onMouseLeave={() => setHoveredButton(null)}
                 onClick={() => startAdd("uploads")}
                 className={
-                  "relative w-[88px] h-auto flex flex-col items-center gap-[8px] rounded-[10px] transition-all duration-200 cursor-pointer " +
+                  "relative w-[88px] h-auto flex flex-col items-center gap-[8px] rounded-[10px] transition-all duration-200 " +
+                  (canDesignOnCurrentView ? "cursor-pointer " : "cursor-not-allowed opacity-40 ") +
                   (isDockCompact ? "px-[8px] py-[10px] " : "p-[8px] ") +
-                  (activePanel === "uploads"
-                    ? "bg-white"
-                    : hoveredButton === "upload"
-                      ? "bg-[#E9E9E9]"
-                      : "bg-transparent")
+                  (!canDesignOnCurrentView
+                    ? "bg-transparent"
+                    : activePanel === "uploads"
+                      ? "bg-white"
+                      : hoveredButton === "upload"
+                        ? "bg-[#E9E9E9]"
+                        : "bg-transparent")
                 }
               >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1900,13 +1951,17 @@ export default function Designer() {
               {/* Text Button */}
               <button
                 type="button"
+                disabled={!canDesignOnCurrentView}
                 onMouseEnter={() => setHoveredButton("text")}
                 onMouseLeave={() => setHoveredButton(null)}
                 onClick={() => startAdd("text")}
                 className={
-                  "relative w-[88px] h-auto flex flex-col items-center gap-[8px] rounded-[10px] transition-all duration-200 cursor-pointer " +
+                  "relative w-[88px] h-auto flex flex-col items-center gap-[8px] rounded-[10px] transition-all duration-200 " +
+                  (canDesignOnCurrentView ? "cursor-pointer " : "cursor-not-allowed opacity-40 ") +
                   (isDockCompact ? "px-[8px] py-[10px] " : "p-[8px] ") +
-                  (hoveredButton === "text" ? "bg-[#E9E9E9]" : "bg-transparent")
+                  (canDesignOnCurrentView && hoveredButton === "text"
+                    ? "bg-[#E9E9E9]"
+                    : "bg-transparent")
                 }
               >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1928,6 +1983,7 @@ export default function Designer() {
               {/* Graphics Button */}
               <button
                 type="button"
+                disabled={!canDesignOnCurrentView}
                 onMouseEnter={() => {
                   setHoveredButton("graphics")
                   setGfxActive(true) // keep the Lottie alive for the reverse-out
@@ -1935,13 +1991,16 @@ export default function Designer() {
                 onMouseLeave={() => setHoveredButton(null)}
                 onClick={() => startAdd("graphics")}
                 className={
-                  "relative w-[88px] h-auto flex flex-col items-center gap-[8px] rounded-[10px] transition-all duration-200 cursor-pointer " +
+                  "relative w-[88px] h-auto flex flex-col items-center gap-[8px] rounded-[10px] transition-all duration-200 " +
+                  (canDesignOnCurrentView ? "cursor-pointer " : "cursor-not-allowed opacity-40 ") +
                   (isDockCompact ? "px-[8px] py-[10px] " : "p-[8px] ") +
-                  (activePanel === "graphics"
-                    ? "bg-white"
-                    : hoveredButton === "graphics"
-                      ? "bg-[#E9E9E9]"
-                      : "bg-transparent")
+                  (!canDesignOnCurrentView
+                    ? "bg-transparent"
+                    : activePanel === "graphics"
+                      ? "bg-white"
+                      : hoveredButton === "graphics"
+                        ? "bg-[#E9E9E9]"
+                        : "bg-transparent")
                 }
               >
                 <svg
@@ -2045,9 +2104,18 @@ export default function Designer() {
             </div>
           </div>
 
+          {/* Sizing wrapper: hosts the view dropdown outside the blurred canvas
+              box and is the @container its max-width queries against. */}
+          <div className="@container relative flex-1 min-w-0 h-full">
           <div
             id="canvas-section"
-            className="relative overflow-hidden flex-1 min-w-0 h-full bg-[#F4F4F4] rounded-[12px]"
+            className={`relative overflow-hidden w-full h-full bg-[#F4F4F4] rounded-[12px] ${
+              viewDropdownOpen ? "pointer-events-none" : ""
+            }`}
+            style={{
+              transition: "filter 0.3s ease",
+              filter: viewDropdownOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+            }}
           >
             {/* Intro overlay: the loader animation runs from the start (1.85s),
                 then fades out to reveal the canvas. */}
@@ -2487,110 +2555,11 @@ export default function Designer() {
               </div>
             </div>
 
-            {/* View selector — single rounded button + dropdown of all views. */}
-            {productData && productData.views.length > 1 && (
-              <div
-                data-view-dropdown
-                className="absolute bottom-6 left-1/2 z-20 -translate-x-1/2"
-              >
-                <div
-                  className={`absolute bottom-full left-1/2 mb-2 flex origin-bottom -translate-x-1/2 flex-col gap-3 rounded-2xl bg-white p-6 shadow-xl transition-all duration-150 ease-out ${
-                    viewDropdownOpen
-                      ? "scale-100 opacity-100"
-                      : "pointer-events-none scale-95 opacity-0"
-                  }`}
-                >
-                  {/* First-run only: prompt the user to choose the target side. */}
-                  {viewPickerForAdd && (
-                    <div className="self-start font-display text-[15px] font-medium text-black">
-                      Add this to:
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    {productData.views.map(view => {
-                      const thumb = currentAppearance?.views.find(v => v.id === view.id)?.image
-                      const selected = activeViewId === view.id
-                      const viewPaId = view.viewMaps[0]?.printAreaId
-                      const viewOverlay = getPrintAreaOverlay(productData, view.id)
-                      const viewTexts = textElements.filter(t => t.printAreaId === viewPaId)
-                      const viewGraphics = graphicElements.filter(g => g.printAreaId === viewPaId)
-                      return (
-                        <button
-                          key={view.id}
-                          type="button"
-                          onClick={() => {
-                            setActiveViewId(view.id)
-                            setViewDropdownOpen(false)
-                            if (viewPickerForAdd) {
-                              setViewPickerForAdd(false)
-                              setFirstAddDone(true)
-                              setRunPendingAdd(true)
-                            }
-                          }}
-                          className="group flex w-28 cursor-pointer flex-col items-center gap-1.5"
-                        >
-                          <div
-                            className={`flex aspect-[4/5] w-full items-center justify-center overflow-hidden rounded-[8px] border-2 px-1 py-2 ${
-                              selected
-                                ? "border-black bg-neutral-100"
-                                : "border-transparent bg-neutral-100 group-hover:bg-neutral-200"
-                            }`}
-                          >
-                            {thumb && (
-                              <div className="relative h-[100px] w-[100px]">
-                                <ViewDesignThumb
-                                  image={thumb}
-                                  overlay={viewOverlay}
-                                  textElements={viewTexts}
-                                  graphicElements={viewGraphics}
-                                  displaySize={liveCanvasContentSize / zoom}
-                                  size={100}
-                                />
-                              </div>
-                            )}
-                          </div>
-                          <span
-                            className={`text-center text-sm ${
-                              selected
-                                ? "font-semibold text-black"
-                                : "text-neutral-800 group-hover:text-black"
-                            }`}
-                          >
-                            {view.name}
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setViewDropdownOpen(o => !o)}
-                  className="flex h-[48px] items-center gap-2 rounded-full bg-white px-4 text-sm font-medium text-black shadow-xs hover:bg-neutral-50 cursor-pointer"
-                >
-                  <span>{currentView?.name ?? productData.views[0]?.name}</span>
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 12 12"
-                    fill="none"
-                    className={`text-neutral-500 transition-transform ${viewDropdownOpen ? "rotate-180" : ""}`}
-                  >
-                    <path
-                      d="M2.5 4.5L6 8L9.5 4.5"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
-              </div>
-            )}
             {/* Model circle (left) + print-technique selection (right), grouped
                 at the bottom-right of the canvas. */}
             {(currentModelImage || productData?.embroidery) && (
               <div className="absolute bottom-6 right-6 z-20 flex items-center gap-2">
+                {/* Temporarily hidden — "See all pictures" model circle.
                 {currentModelImage && (
                   <div className="group/tooltip relative flex h-[48px] w-[48px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-white p-1 shadow-xs">
                     <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 rounded-md bg-neutral-900 p-3 text-sm whitespace-nowrap text-neutral-100 shadow-sm opacity-0 transition-opacity group-hover/tooltip:opacity-100 after:absolute after:top-full after:left-1/2 after:h-0 after:w-0 after:-translate-x-1/2 after:border-x-[4px] after:border-x-transparent after:border-t-[4px] after:border-t-neutral-900 after:content-['']">
@@ -2605,6 +2574,7 @@ export default function Designer() {
                     </div>
                   </div>
                 )}
+                */}
                 {productData?.embroidery && (
                   <Popover.Root
                     open={printTechniqueMenuOpen}
@@ -2929,11 +2899,141 @@ export default function Designer() {
               onChange={family => updateSelectedText({ fontFamily: family })}
             />
           </div>
+          {/* View selector — single rounded button + dropdown of all views. */}
+          {productData && productData.views.length > 1 && (
+            <div
+              data-view-dropdown
+              className={`absolute bottom-6 left-1/2 -translate-x-1/2 ${
+                viewDropdownOpen ? "z-50" : "z-20"
+              }`}
+            >
+              <div
+                className={`absolute bottom-full left-1/2 mb-2 flex w-max max-w-[calc(100cqw-100px)] origin-bottom -translate-x-1/2 flex-col gap-3 rounded-2xl bg-white p-6 shadow-xl transition-all duration-150 ease-out ${
+                  viewDropdownOpen
+                    ? "scale-100 opacity-100"
+                    : "pointer-events-none scale-95 opacity-0"
+                }`}
+              >
+                {/* First-run only: prompt the user to choose the target side. */}
+                {viewPickerForAdd && (
+                  <div className="mb-4 self-center text-center font-display text-[15px] font-medium text-black">
+                    Where do you want to place?
+                  </div>
+                )}
+                <div className="flex flex-wrap justify-center gap-2">
+                  {productData.views
+                    .filter(
+                      view =>
+                        // In the first-run picker, only offer views you can
+                        // actually place a design on.
+                        !viewPickerForAdd || getPrintAreaOverlay(productData, view.id) != null
+                    )
+                    .map(view => {
+                    const thumb = currentAppearance?.views.find(v => v.id === view.id)?.image
+                    const selected = !viewPickerForAdd && activeViewId === view.id
+                    const viewPaId = view.viewMaps[0]?.printAreaId
+                    const viewOverlay = getPrintAreaOverlay(productData, view.id)
+                    const viewTexts = textElements.filter(t => t.printAreaId === viewPaId)
+                    const viewGraphics = graphicElements.filter(g => g.printAreaId === viewPaId)
+                    return (
+                      <button
+                        key={view.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveViewId(view.id)
+                          setViewDropdownOpen(false)
+                          if (viewPickerForAdd) {
+                            setViewPickerForAdd(false)
+                            setFirstAddDone(true)
+                            setRunPendingAdd(true)
+                          }
+                        }}
+                        className="group flex w-28 cursor-pointer flex-col items-center gap-1.5"
+                      >
+                        <div
+                          className={`flex aspect-[4/5] w-full items-center justify-center overflow-hidden rounded-[8px] border-2 px-1 py-2 ${
+                            selected
+                              ? "border-black bg-neutral-100"
+                              : "border-transparent bg-neutral-100 group-hover:bg-neutral-200"
+                          }`}
+                        >
+                          {thumb && (
+                            <div className="relative h-[100px] w-[100px]">
+                              <ViewDesignThumb
+                                image={thumb}
+                                overlay={viewOverlay}
+                                textElements={viewTexts}
+                                graphicElements={viewGraphics}
+                                displaySize={liveCanvasContentSize / zoom}
+                                size={100}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <span
+                          className={`text-center text-sm ${
+                            selected
+                              ? "font-semibold text-black"
+                              : "text-neutral-800 group-hover:text-black"
+                          }`}
+                        >
+                          {view.name}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setViewDropdownOpen(o => {
+                    const next = !o
+                    // Closing the dropdown during the first-run picker cancels
+                    // the add flow, same as clicking outside.
+                    if (!next && viewPickerForAdd) {
+                      setViewPickerForAdd(false)
+                      pendingAddIntentRef.current = null
+                      pendingGraphicRef.current = null
+                    }
+                    return next
+                  })
+                }
+                className="flex h-[48px] items-center gap-2 rounded-full bg-white px-4 text-sm font-medium text-black shadow-xs hover:bg-neutral-50 cursor-pointer"
+              >
+                {!viewPickerForAdd && (
+                  <span>{currentView?.name ?? productData.views[0]?.name}</span>
+                )}
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  className={`text-neutral-500 transition-transform ${viewDropdownOpen ? "rotate-180" : ""}`}
+                >
+                  <path
+                    d="M2.5 4.5L6 8L9.5 4.5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            </div>
+          )}
+          </div>
 
           <div
             ref={rightSectionRef}
             id="right-section"
-            className="relative shrink-0 w-[470px] p-[24px] pb-3 overflow-y-auto h-full bg-[#F4F4F4] rounded-[12px] flex flex-col"
+            className={`relative shrink-0 w-[470px] p-[24px] pb-3 overflow-y-auto h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
+              viewDropdownOpen ? "pointer-events-none" : ""
+            }`}
+            style={{
+              transition: "filter 0.3s ease",
+              filter: viewDropdownOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+            }}
           >
             {/* Intro skeleton overlay (fades out after the skeleton phase) */}
             {loadPhase !== "done" && (
