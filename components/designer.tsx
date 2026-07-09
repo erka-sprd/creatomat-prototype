@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import * as Popover from "@radix-ui/react-popover"
 import { Basket, type BasketItem } from "@/components/basket"
@@ -14,6 +14,12 @@ import {
   type StaticProduct,
 } from "product-catalog-client"
 import { loadCatalog, modelImagesFor } from "@/lib/catalog"
+import {
+  applyDropdownPick,
+  getVolumeDiscountText,
+  onlyDigits,
+  shouldTriggerRemoveOnBlur,
+} from "@/lib/quantity-utils"
 import ProductsDrawer, { type SelectedProduct } from "@/components/products-drawer"
 import SiteHeader from "@/components/site-header"
 import { IconsScroller } from "@/components/ui/icons-scroller"
@@ -44,12 +50,25 @@ import { UploadPanel } from "@/components/ui/upload-panel/UploadPanel"
 
 type DesignerPanel = "graphics" | "uploads" | "ai"
 
-const DEFAULT_PRODUCT_ID = "2116" // Stanley/Stella Unisex Organic Polo Shirt PREPSTER
+const DEFAULT_PRODUCT_ID = "812" // Men's Premium Organic T-Shirt
 
 // Monotonic unique id — Date.now() alone collides when two elements are created
 // in the same millisecond (e.g. uploading/placing several at once).
 let uidCounter = 0
 const uid = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(uidCounter++).toString(36)}`
+
+// Mask an icon so a `bg-current` element paints it in the current text colour —
+// used for the thicker filled chevron assets (same approach as product-tile).
+const chevronMask = (icon: string): CSSProperties => ({
+  maskImage: `url(${icon})`,
+  WebkitMaskImage: `url(${icon})`,
+  maskRepeat: "no-repeat",
+  WebkitMaskRepeat: "no-repeat",
+  maskPosition: "center",
+  WebkitMaskPosition: "center",
+  maskSize: "contain",
+  WebkitMaskSize: "contain",
+})
 
 // Treat a product color as "dark" only when very close to black.
 // Returns true only for near-black colors (e.g., #1A1A1A, #2F3031), so non-dark
@@ -164,6 +183,10 @@ export default function Designer() {
     return () => el.removeEventListener("wheel", onWheel)
   }, [])
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false)
+  // Which inactive view dot is hovered — drives the preview popover above the
+  // switcher. lastPreviewViewRef keeps the last one rendered during fade-out.
+  const [hoveredPreviewViewId, setHoveredPreviewViewId] = useState<string | null>(null)
+  const lastPreviewViewRef = useRef<string | null>(null)
   // First-run "Add this to:" flow — the first time (per session) the user adds
   // something on a multi-view product, they pick the target side in the view
   // dropdown. Text asks before adding (it places immediately); graphics/uploads
@@ -178,20 +201,21 @@ export default function Designer() {
     src: string
     opts?: { centerX?: number; centerY?: number; widthPct?: number }
   } | null>(null)
-  // Close the view dropdown when clicking outside of it (cancels a pending add).
-  useEffect(() => {
-    if (!viewDropdownOpen) return
-    const onDown = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest("[data-view-dropdown]")) {
-        setViewDropdownOpen(false)
-        setViewPickerForAdd(false)
-        pendingAddIntentRef.current = null
-        pendingGraphicRef.current = null
-      }
-    }
-    document.addEventListener("mousedown", onDown)
-    return () => document.removeEventListener("mousedown", onDown)
-  }, [viewDropdownOpen])
+  // LEGACY (dropdown version): close the view dropdown when clicking outside
+  // (cancels a pending add). Disabled — the dots switcher has no dropdown.
+  // useEffect(() => {
+  //   if (!viewDropdownOpen) return
+  //   const onDown = (e: MouseEvent) => {
+  //     if (!(e.target as HTMLElement).closest("[data-view-dropdown]")) {
+  //       setViewDropdownOpen(false)
+  //       setViewPickerForAdd(false)
+  //       pendingAddIntentRef.current = null
+  //       pendingGraphicRef.current = null
+  //     }
+  //   }
+  //   document.addEventListener("mousedown", onDown)
+  //   return () => document.removeEventListener("mousedown", onDown)
+  // }, [viewDropdownOpen])
   // On zoom, keep the design centered: anchor on the centre of the combined
   // bounding box of all objects in the print area (treat them as one group).
   // Falls back to the product centre when there's no design. Runs in a layout
@@ -307,18 +331,36 @@ export default function Designer() {
 
   // Staged intro reveal: skeleton (0.5s) → left/right fade in (0.3s), middle
   // shows the loader animation (1.5s) → middle fades in → overlays unmount.
-  const [loadPhase, setLoadPhase] = useState<"skeleton" | "columns" | "ready" | "done">(
-    "skeleton"
+  //
+  // DEV ONLY: the intro replays on every hot reload (Fast Refresh remounts and
+  // re-runs the mount effect), which is noise while tweaking styles. So in dev we
+  // remember, per browser-tab session, that it already played and start at "done".
+  // Production always plays it. To see it again in dev: open a new tab or run
+  // `sessionStorage.clear()`.
+  const INTRO_SESSION_KEY = "b2b:intro-played"
+  const introAlreadyPlayed = () =>
+    process.env.NODE_ENV === "development" &&
+    typeof window !== "undefined" &&
+    sessionStorage.getItem(INTRO_SESSION_KEY) === "1"
+  const [loadPhase, setLoadPhase] = useState<"skeleton" | "columns" | "ready" | "done">(() =>
+    introAlreadyPlayed() ? "done" : "skeleton"
   )
   useEffect(() => {
+    if (loadPhase === "done") return // already played this session (dev hot reload)
     const timers = [
       // Left/right skeleton reveals its content at 0.5s; the middle loader
       // animation runs from the start for 1.85s, then the canvas fades in.
       setTimeout(() => setLoadPhase("columns"), 500),
       setTimeout(() => setLoadPhase("ready"), 2000),
-      setTimeout(() => setLoadPhase("done"), 2550),
+      setTimeout(() => {
+        setLoadPhase("done")
+        try {
+          sessionStorage.setItem(INTRO_SESSION_KEY, "1")
+        } catch {}
+      }, 2550),
     ]
     return () => timers.forEach(clearTimeout)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Text elements placed inside a specific print area. Positions are % of that print area.
@@ -328,6 +370,8 @@ export default function Designer() {
     content: string
     x: number
     y: number
+    // Stacking order shared across texts AND graphics — higher renders on top.
+    z: number
     color: string
     fontSize: number
     fontFamily: string
@@ -364,10 +408,22 @@ export default function Designer() {
     y: number
     width: number
     height: number
+    // Stacking order shared across texts AND graphics — higher renders on top.
+    z: number
   }
   const [graphicElements, setGraphicElements] = useState<GraphicElement[]>([])
   const [selectedGraphicId, setSelectedGraphicId] = useState<string | null>(null)
   const graphicElementRefs = useRef<Record<string, HTMLElement>>({})
+  // Monotonic stacking counter shared across texts and graphics. Every new or
+  // freshly-selected element gets the next value so it renders on top.
+  const zCounterRef = useRef(0)
+  const nextZ = () => (zCounterRef.current += 1)
+  // Bring an element to the front (on click/select). Bumps only the target's z,
+  // so relative order of everything else is preserved.
+  const bringTextToFront = (id: string) =>
+    setTextElements(prev => prev.map(t => (t.id === id ? { ...t, z: nextZ() } : t)))
+  const bringGraphicToFront = (id: string) =>
+    setGraphicElements(prev => prev.map(g => (g.id === id ? { ...g, z: nextZ() } : g)))
   // True while actively dragging/resizing an element — the on-canvas embroidery
   // preview drops to the live, flat element during manipulation, then returns.
   const [isManipulating, setIsManipulating] = useState(false)
@@ -498,6 +554,7 @@ export default function Designer() {
         content,
         x,
         y,
+        z: nextZ(),
         color,
         // Stored at zoom-1 scale; rendered as fontSize * zoom.
         fontSize: fontSize / zoom,
@@ -558,6 +615,7 @@ export default function Designer() {
       id: newId,
       x: Math.min(100, src.x + 5),
       y: Math.min(100, src.y + 5),
+      z: nextZ(),
     }
     setTextElements(prev => [...prev, newEl])
     setSelectedTextId(newId)
@@ -597,7 +655,7 @@ export default function Designer() {
         placement?.centerY != null
           ? clampPos(placement.centerY - height / 2, height)
           : (100 - height) / 2
-      setGraphicElements(prev => [...prev, { id, printAreaId, src, x, y, width, height }])
+      setGraphicElements(prev => [...prev, { id, printAreaId, src, x, y, width, height, z: nextZ() }])
       setActivePanel(null)
       // Defer so the same click's document handler doesn't clear the new selection.
       setTimeout(() => {
@@ -640,13 +698,15 @@ export default function Designer() {
     src: string,
     opts?: { centerX?: number; centerY?: number; widthPct?: number }
   ) => {
-    if (!firstAddDone && productData && productData.views.length > 1) {
-      pendingGraphicRef.current = { src, opts }
-      setActivePanel(null)
-      setViewPickerForAdd(true)
-      setViewDropdownOpen(true)
-      return
-    }
+    // LEGACY first-run "where to place" picker (disabled — the dots switcher
+    // version places the graphic directly on the current view):
+    // if (!firstAddDone && productData && productData.views.length > 1) {
+    //   pendingGraphicRef.current = { src, opts }
+    //   setActivePanel(null)
+    //   setViewPickerForAdd(true)
+    //   setViewDropdownOpen(true)
+    //   return
+    // }
     placeGraphicElement(src, opts)
   }
 
@@ -668,6 +728,7 @@ export default function Designer() {
         id: newId,
         x: Math.max(0, Math.min(100 - src.width, src.x + 5)),
         y: Math.max(0, Math.min(100 - src.height, src.y + 5)),
+        z: nextZ(),
       },
     ])
     setSelectedGraphicId(newId)
@@ -844,13 +905,16 @@ export default function Designer() {
       // A move happened — wait for the flatten to settle the position so the
       // stitched render reappears at the final spot without jumping.
       if (ds.moved) setEmbroiderySettling(true)
-      // Always select on mouseup so a drag keeps the element as the active selection.
+      // Always select on mouseup so a drag keeps the element as the active
+      // selection, and bring the clicked element to the front.
       if (ds.kind === "graphic") {
         setSelectedGraphicId(ds.id)
         setSelectedTextId(null)
+        bringGraphicToFront(ds.id)
       } else {
         setSelectedTextId(ds.id)
         setSelectedGraphicId(null)
+        bringTextToFront(ds.id)
       }
       setSnapGuides({ h: false, v: false })
       dragStateRef.current = null
@@ -1022,28 +1086,28 @@ export default function Designer() {
   // Graphics/uploads open their panel right away — their view picker triggers
   // in addGraphicElement, once the user has actually picked an image.
   const startAdd = (intent: "text" | "uploads" | "graphics") => {
-    if (intent === "text" && !firstAddDone && productData && productData.views.length > 1) {
-      pendingAddIntentRef.current = intent
-      setViewPickerForAdd(true)
-      setViewDropdownOpen(true)
-    } else {
-      runAddIntent(intent)
-    }
+    // LEGACY first-run picker for text (disabled — dots version adds directly):
+    // if (intent === "text" && !firstAddDone && productData && productData.views.length > 1) {
+    //   pendingAddIntentRef.current = intent
+    //   setViewPickerForAdd(true)
+    //   setViewDropdownOpen(true)
+    //   return
+    // }
+    runAddIntent(intent)
   }
-  // After the user picks a view in the first-run flow, run the pending add
-  // (tool intent or picked image) once the new view has been applied, so it
-  // lands on the chosen print area.
-  useEffect(() => {
-    if (!runPendingAdd) return
-    setRunPendingAdd(false)
-    const intent = pendingAddIntentRef.current
-    pendingAddIntentRef.current = null
-    if (intent) runAddIntent(intent)
-    const graphic = pendingGraphicRef.current
-    pendingGraphicRef.current = null
-    if (graphic) placeGraphicElement(graphic.src, graphic.opts)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runPendingAdd])
+  // LEGACY: after the user picks a view in the first-run flow, run the pending
+  // add once the new view is applied. Disabled with the dropdown version.
+  // useEffect(() => {
+  //   if (!runPendingAdd) return
+  //   setRunPendingAdd(false)
+  //   const intent = pendingAddIntentRef.current
+  //   pendingAddIntentRef.current = null
+  //   if (intent) runAddIntent(intent)
+  //   const graphic = pendingGraphicRef.current
+  //   pendingGraphicRef.current = null
+  //   if (graphic) placeGraphicElement(graphic.src, graphic.opts)
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [runPendingAdd])
   const productImages = appearances.map(a => ({
     src: a.image,
     alt: a.name,
@@ -1060,6 +1124,29 @@ export default function Designer() {
   // when the chosen colour has no dedicated model photo.
   const currentModelImage = currentAppearance?.modelImage ?? productData?.modelImageFront ?? null
   const currentView = productData?.views.find(v => v.id === activeViewId)
+  // Index of the active view + a helper to jump to a view by index. Used by the
+  // dot-based view switcher (prev/next chevrons + one dot per view). Switching
+  // here counts as the user discovering view switching (skips the first-run picker).
+  const activeViewIndex = productData ? productData.views.findIndex(v => v.id === activeViewId) : -1
+  const goToViewIndex = (index: number) => {
+    const view = productData?.views[index]
+    if (!view) return
+    setActiveViewId(view.id)
+    setFirstAddDone(true)
+  }
+  // Preview popover data for the hovered dot. Keep rendering the last-hovered
+  // view while the popover fades out (so the content doesn't vanish mid-fade).
+  if (hoveredPreviewViewId) lastPreviewViewRef.current = hoveredPreviewViewId
+  const previewViewId = hoveredPreviewViewId ?? lastPreviewViewRef.current
+  const previewView = productData?.views.find(v => v.id === previewViewId)
+  const previewThumb = previewView
+    ? currentAppearance?.views.find(v => v.id === previewView.id)?.image
+    : undefined
+  const previewPaId = previewView?.viewMaps[0]?.printAreaId
+  const previewOverlay =
+    previewView && productData ? getPrintAreaOverlay(productData, previewView.id) : null
+  const previewTexts = textElements.filter(t => t.printAreaId === previewPaId)
+  const previewGraphics = graphicElements.filter(g => g.printAreaId === previewPaId)
   const canvasAspect = currentView
     ? `${currentView.canvas.width} / ${currentView.canvas.height}`
     : "1 / 1"
@@ -1114,8 +1201,8 @@ export default function Designer() {
   // Signature of the current print area's design — drives re-flattening for the
   // on-canvas embroidery preview when text/graphics change.
   const designSignature = JSON.stringify({
-    t: visibleTextElements.map(t => [t.x, t.y, t.content, t.fontSize, t.fontFamily, t.color, t.textAlign, t.bold, t.italic, t.underline]),
-    g: visibleGraphicElements.map(g => [g.x, g.y, g.width, g.height, g.src]),
+    t: visibleTextElements.map(t => [t.x, t.y, t.z, t.content, t.fontSize, t.fontFamily, t.color, t.textAlign, t.bold, t.italic, t.underline]),
+    g: visibleGraphicElements.map(g => [g.x, g.y, g.z, g.width, g.height, g.src]),
   })
   // Appearance signature, normalized to the design's top-left so a pure
   // translation (single element, or whole design) leaves it unchanged — used to
@@ -1127,6 +1214,7 @@ export default function Designer() {
     t: visibleTextElements.map(t => [
       t.x - designMinX,
       t.y - designMinY,
+      t.z,
       t.content,
       t.fontSize,
       t.fontFamily,
@@ -1139,6 +1227,7 @@ export default function Designer() {
     g: visibleGraphicElements.map(g => [
       g.x - designMinX,
       g.y - designMinY,
+      g.z,
       g.width,
       g.height,
       g.src,
@@ -1274,49 +1363,56 @@ export default function Designer() {
       canvas.height = H
       const ctx = canvas.getContext("2d")
       if (!ctx) return
-      // Text first, graphics on top — matches the editor's layer order. Draw
-      // positions are rounded so a pure move yields a byte-identical crop (the
-      // stitched render is then reused instead of regenerated).
-      for (const t of texts) {
-        ctx.fillStyle = t.color
-        ctx.textBaseline = "top"
-        const fontSize = t.fontSize * scale
-        ctx.font = `${t.italic ? "italic " : ""}${t.bold ? 700 : 400} ${fontSize}px "${t.fontFamily}"`
-        const x = Math.round((t.x / 100) * W)
-        let y = (t.y / 100) * H
-        // Align each line within the block's widest line, matching the DOM box
-        // (left at x, width = max-content, text-align applied).
-        const lines = t.content.split("\n")
-        const lineWidths = lines.map(l => ctx.measureText(l).width)
-        const blockWidth = Math.max(0, ...lineWidths)
-        const align = t.textAlign ?? "left"
-        lines.forEach((line, i) => {
-          const dx =
-            align === "center"
-              ? (blockWidth - lineWidths[i]) / 2
-              : align === "right"
-                ? blockWidth - lineWidths[i]
-                : 0
-          const lx = Math.round(x + dx)
-          const ly = Math.round(y)
-          ctx.fillText(line, lx, ly)
-          if (t.underline && lineWidths[i] > 0) {
-            const uy = Math.round(ly + fontSize * 0.92)
-            ctx.fillRect(lx, uy, Math.round(lineWidths[i]), Math.max(1, Math.round(fontSize / 16)))
-          }
-          y += fontSize
-        })
-      }
-      for (const g of graphics) {
-        const img = await loadImage(g.src).catch(() => null)
-        if (!img) continue
-        ctx.drawImage(
-          img,
-          Math.round((g.x / 100) * W),
-          Math.round((g.y / 100) * H),
-          Math.round((g.width / 100) * W),
-          Math.round((g.height / 100) * H)
-        )
+      // Draw in the shared stacking order (z) so the stitched render matches the
+      // editor's layering. Positions are rounded so a pure move yields a
+      // byte-identical crop (the stitched render is then reused, not regenerated).
+      const ordered = [
+        ...texts.map(t => ({ kind: "text" as const, el: t })),
+        ...graphics.map(g => ({ kind: "graphic" as const, el: g })),
+      ].sort((a, b) => a.el.z - b.el.z)
+      for (const item of ordered) {
+        if (item.kind === "text") {
+          const t = item.el
+          ctx.fillStyle = t.color
+          ctx.textBaseline = "top"
+          const fontSize = t.fontSize * scale
+          ctx.font = `${t.italic ? "italic " : ""}${t.bold ? 700 : 400} ${fontSize}px "${t.fontFamily}"`
+          const x = Math.round((t.x / 100) * W)
+          let y = (t.y / 100) * H
+          // Align each line within the block's widest line, matching the DOM box
+          // (left at x, width = max-content, text-align applied).
+          const lines = t.content.split("\n")
+          const lineWidths = lines.map(l => ctx.measureText(l).width)
+          const blockWidth = Math.max(0, ...lineWidths)
+          const align = t.textAlign ?? "left"
+          lines.forEach((line, i) => {
+            const dx =
+              align === "center"
+                ? (blockWidth - lineWidths[i]) / 2
+                : align === "right"
+                  ? blockWidth - lineWidths[i]
+                  : 0
+            const lx = Math.round(x + dx)
+            const ly = Math.round(y)
+            ctx.fillText(line, lx, ly)
+            if (t.underline && lineWidths[i] > 0) {
+              const uy = Math.round(ly + fontSize * 0.92)
+              ctx.fillRect(lx, uy, Math.round(lineWidths[i]), Math.max(1, Math.round(fontSize / 16)))
+            }
+            y += fontSize
+          })
+        } else {
+          const g = item.el
+          const img = await loadImage(g.src).catch(() => null)
+          if (!img) continue
+          ctx.drawImage(
+            img,
+            Math.round((g.x / 100) * W),
+            Math.round((g.y / 100) * H),
+            Math.round((g.width / 100) * W),
+            Math.round((g.height / 100) * H)
+          )
+        }
       }
       // Crop to the design's content bounding box.
       const { data } = ctx.getImageData(0, 0, W, H)
@@ -2130,7 +2226,14 @@ export default function Designer() {
             )}
             <div
               ref={canvasScrollRef}
-              className="absolute inset-0 flex overflow-auto"
+              // On short viewports the product (centred in the full canvas) grows
+              // into the floating view switcher. Reserve bottom space so the
+              // product stays clear of the "FRONT" label (≥24px above it). The
+              // switcher itself is anchored to the sibling sizing wrapper, so the
+              // reserved region lines up with it.
+              className={`absolute inset-0 flex overflow-auto transition-[bottom] duration-300 ease-out ${
+                zoom === 1 ? "[@media(max-height:900px)]:bottom-[50px]" : ""
+              }`}
               onClick={e => {
                 if (e.target !== e.currentTarget) return
                 if (activePanel) setActivePanel(null)
@@ -2217,6 +2320,7 @@ export default function Designer() {
                             onMouseDown={e => e.stopPropagation()}
                             style={{
                               position: "absolute",
+                              zIndex: el.z,
                               left: `${el.x}%`,
                               top: `${el.y}%`,
                               color: el.color,
@@ -2260,6 +2364,7 @@ export default function Designer() {
                         onDoubleClick={() => setEditingTextId(el.id)}
                         style={{
                           position: "absolute",
+                          zIndex: el.z,
                           left: `${el.x}%`,
                           top: `${el.y}%`,
                           // Hide the flat glyphs while the stitched overlay is
@@ -2320,6 +2425,7 @@ export default function Designer() {
                       onMouseDown={e => startGraphicDrag(e, el)}
                       style={{
                         position: "absolute",
+                        zIndex: el.z,
                         left: `${el.x}%`,
                         top: `${el.y}%`,
                         width: `${el.width}%`,
@@ -2503,7 +2609,7 @@ export default function Designer() {
                     setZoomAnimate(true)
                     setZoom(z => Math.min(6, Math.round((z + 0.25) * 100) / 100))
                   }}
-                  className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-black hover:bg-neutral-100"
+                  className="flex h-9 w-9 -m-1 cursor-pointer items-center justify-center rounded-full text-black hover:bg-neutral-100"
                 >
                   <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
                     <path
@@ -2517,6 +2623,9 @@ export default function Designer() {
                   Zoom in
                 </span>
               </div>
+              {/* Container stays 96px (h-24) so the frame height is unchanged; the
+                  slider itself is 8px shorter and centred, leaving a 4px gap at each
+                  end between the slider and the +/- buttons' (enlarged) hit areas. */}
               <div className="flex h-24 w-6 items-center justify-center">
                 <div className="-rotate-90">
                   <WedgeSlider
@@ -2527,7 +2636,7 @@ export default function Designer() {
                       setZoomAnimate(false)
                       setZoom(v)
                     }}
-                    width={96}
+                    width={88}
                   />
                 </div>
               </div>
@@ -2539,7 +2648,7 @@ export default function Designer() {
                     setZoomAnimate(true)
                     setZoom(z => Math.max(1, Math.round((z - 0.25) * 100) / 100))
                   }}
-                  className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-black hover:bg-neutral-100"
+                  className="flex h-9 w-9 -m-1 cursor-pointer items-center justify-center rounded-full text-black hover:bg-neutral-100"
                 >
                   <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
                     <path
@@ -2558,7 +2667,7 @@ export default function Designer() {
             {/* Model circle (left) + print-technique selection (right), grouped
                 at the bottom-right of the canvas. */}
             {(currentModelImage || productData?.embroidery) && (
-              <div className="absolute bottom-6 right-6 z-20 flex items-center gap-2">
+              <div className="absolute bottom-6 right-6 z-20 flex items-center gap-1">
                 {/* Temporarily hidden — "See all pictures" model circle.
                 {currentModelImage && (
                   <div className="group/tooltip relative flex h-[48px] w-[48px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-white p-1 shadow-xs">
@@ -2772,7 +2881,7 @@ export default function Designer() {
                     {/* Embroidery size warning — overlaid on top of the model image. */}
                     {embroiderySizeWarning && (
                       <div className="pointer-events-none absolute top-2.5 right-2.5 left-2.5 flex flex-col gap-2 border border-[#EA580C] bg-white p-3 text-sm font-medium">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-[#EA580C] text-[11px] leading-none font-bold text-white">
                             !
                           </span>
@@ -2907,6 +3016,15 @@ export default function Designer() {
                 viewDropdownOpen ? "z-50" : "z-20"
               }`}
             >
+              {/* ===== LEGACY VERSION (disabled) =====================================
+                  The view-thumbnail dropdown + (hidden) trigger button + the first-run
+                  "where do you want to place?" picker. The dot switcher further down is
+                  the active version. To switch back to this version: flip `false` below
+                  to `true`, and re-enable the commented first-run logic in
+                  addGraphicElement / startAdd / the outside-click + runPendingAdd
+                  effects. ==================================================== */}
+              {false && (
+                <>
               <div
                 className={`absolute bottom-full left-1/2 mb-2 flex w-max max-w-[calc(100cqw-100px)] origin-bottom -translate-x-1/2 flex-col gap-3 rounded-2xl bg-white p-6 shadow-xl transition-all duration-150 ease-out ${
                   viewDropdownOpen
@@ -2990,6 +3108,10 @@ export default function Designer() {
                   })}
                 </div>
               </div>
+              {/* OLD view selector — the single rounded button that opened the
+                  thumbnail dropdown. Hidden for now (display:none) while we trial
+                  the dot-based switcher below; all its logic + the dropdown above
+                  (incl. the first-run "where to add" picker) are kept intact. */}
               <button
                 type="button"
                 onClick={() =>
@@ -3005,6 +3127,7 @@ export default function Designer() {
                     return next
                   })
                 }
+                style={{ display: "none" }}
                 className="flex h-[48px] items-center gap-2 rounded-full bg-white px-4 text-sm font-medium text-black shadow-xs hover:bg-neutral-50 cursor-pointer"
               >
                 {!viewPickerForAdd && (
@@ -3026,6 +3149,120 @@ export default function Designer() {
                   />
                 </svg>
               </button>
+                </>
+              )}
+              {/* ===== END LEGACY VERSION ===== */}
+
+              {/* NEW idea: dot-based view switcher. The active view name sits
+                  above a pill of prev/next chevrons and one dot per view (active
+                  = open ring, others = small filled dots). */}
+              {!viewPickerForAdd && (
+                <div className="flex flex-col items-center gap-1.5">
+                  {/* Keyed by the active view so the label re-mounts and fades in
+                      on every view change (same 300ms timing as the dots). */}
+                  <span
+                    key={activeViewId}
+                    className="font-sans text-[12px] font-semibold uppercase tracking-[0.1em] text-neutral-700 animate-in fade-in duration-300 ease-out"
+                  >
+                    {currentView?.name ?? productData.views[0]?.name}
+                  </span>
+                  <div className="relative flex h-[48px] items-center gap-[18px] rounded-full bg-white px-3 shadow-xs">
+                    {/* Preview popover for the hovered dot — floats 4px above the
+                        white pill and shows the view's design composited. */}
+                    <div
+                      className={`pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 -translate-x-1/2 origin-bottom transition-all duration-150 ease-out ${
+                        hoveredPreviewViewId ? "scale-100 opacity-100" : "scale-95 opacity-0"
+                      }`}
+                    >
+                      {previewThumb && (
+                        <div className="rounded-xl bg-white p-2 pb-3 shadow-xl">
+                          {/* Keyed by the view so the preview simply fades in when
+                              you move to another dot. */}
+                          <div
+                            key={previewViewId}
+                            className="flex flex-col items-center gap-3"
+                          >
+                            <div className="relative h-[160px] w-[160px] overflow-hidden rounded-xl">
+                              <ViewDesignThumb
+                                image={previewThumb}
+                                overlay={previewOverlay}
+                                textElements={previewTexts}
+                                graphicElements={previewGraphics}
+                                displaySize={liveCanvasContentSize / zoom}
+                                size={160}
+                              />
+                            </div>
+                            <span className="font-sans text-[12px] font-semibold uppercase tracking-[0.1em] text-black">
+                              {previewView?.name}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Previous view"
+                      disabled={activeViewIndex <= 0}
+                      onClick={() => goToViewIndex(activeViewIndex - 1)}
+                      className="flex size-9 -m-1 items-center justify-center rounded-full text-black transition-[color,background-color,opacity] duration-300 ease-out hover:bg-neutral-100 disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
+                    >
+                      <span
+                        aria-hidden
+                        className="size-5 bg-current"
+                        style={chevronMask("/icons/icon-chevron-left.svg")}
+                      />
+                    </button>
+                    {/* Dots hug their own size with a uniform gap, so spacing is
+                        measured edge-to-edge (active and inactive sit the same
+                        distance apart). Hover-grow uses a transform so it never
+                        shifts the layout. */}
+                    <div className="flex items-center gap-2.5">
+                      {productData.views.map((view, i) => {
+                        const active = view.id === activeViewId
+                        return (
+                          <button
+                            key={view.id}
+                            type="button"
+                            aria-label={view.name}
+                            aria-current={active}
+                            onClick={() => goToViewIndex(i)}
+                            onMouseEnter={() =>
+                              setHoveredPreviewViewId(active ? null : view.id)
+                            }
+                            onMouseLeave={() => setHoveredPreviewViewId(null)}
+                            // Each dot's hover area extends 5px per side (half the
+                            // 10px gap-2.5), so adjacent hover boxes meet exactly —
+                            // sweeping across never lands in a dead gap. The matching
+                            // negative margin keeps the visible dot spacing unchanged.
+                            className="group flex items-center justify-center cursor-pointer p-[5px] -m-[5px] transition-all duration-300 ease-out"
+                          >
+                            <span
+                              className={`rounded-full transition-all duration-300 ease-out ${
+                                active
+                                  ? "size-3 border-2 border-black bg-transparent"
+                                  : "size-1 bg-black group-hover:scale-[3]"
+                              }`}
+                            />
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Next view"
+                      disabled={activeViewIndex >= productData.views.length - 1}
+                      onClick={() => goToViewIndex(activeViewIndex + 1)}
+                      className="flex size-9 -m-1 items-center justify-center rounded-full text-black transition-[color,background-color,opacity] duration-300 ease-out hover:bg-neutral-100 disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
+                    >
+                      <span
+                        aria-hidden
+                        className="size-5 bg-current"
+                        style={chevronMask("/icons/icon-chevron-right.svg")}
+                      />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           </div>
@@ -3765,8 +4002,8 @@ function ViewDesignThumb({
 }: {
   image: string
   overlay: { left: number; top: number; width: number; height: number } | null
-  textElements: { id: string; x: number; y: number; color: string; fontSize: number; fontFamily: string; content: string }[]
-  graphicElements: { id: string; x: number; y: number; width: number; height: number; src: string }[]
+  textElements: { id: string; x: number; y: number; z: number; color: string; fontSize: number; fontFamily: string; content: string }[]
+  graphicElements: { id: string; x: number; y: number; z: number; width: number; height: number; src: string }[]
   displaySize: number
   size: number
 }) {
@@ -3807,6 +4044,7 @@ function ViewDesignThumb({
             key={el.id}
             style={{
               position: "absolute",
+              zIndex: el.z,
               left: `${el.x}%`,
               top: `${el.y}%`,
               color: el.color,
@@ -3827,6 +4065,7 @@ function ViewDesignThumb({
             className="pointer-events-none select-none"
             style={{
               position: "absolute",
+              zIndex: el.z,
               left: `${el.x}%`,
               top: `${el.y}%`,
               width: `${el.width}%`,
@@ -4319,40 +4558,4 @@ export function XLButton({ label, value, onValueChange, isRemoved, setIsRemoved,
         : null}
     </>
   )
-}
-
-// ----------------------
-// Helpers
-// ----------------------
-
-export function getVolumeDiscountText(totalSelected: number) {
-  const n = Math.max(0, Math.floor(totalSelected || 0))
-
-  if (n <= 5) return "From 5 items -10% reduction"
-  if (n <= 19) return "From 20 items -15% reduction"
-  if (n <= 49) return "From 50 items -25% reduction"
-  return `For ${n} items -50% reduction`
-}
-
-export function onlyDigits(input: string) {
-  // Keep digits only, max 5 chars.
-  const digits = input.replace(/[^0-9]+/g, "").slice(0, 5)
-  if (digits === "") return ""
-
-  // Remove leading zeros if there's a non-zero number at the end (e.g. 01 -> 1, 004 -> 4).
-  const trimmed = digits.replace(/^0+/, "")
-
-  // If input was all zeros, keep a single 0.
-  return trimmed === "" ? "0" : trimmed
-}
-
-export function shouldTriggerRemoveOnBlur(rawValue: string) {
-  const v = rawValue.trim()
-  // Empty OR any all-zero value should behave like selecting "Remove".
-  return v === "" || /^0+$/.test(v)
-}
-
-export function applyDropdownPick(opt: string): { removed: boolean; value: string } {
-  if (opt === "Remove") return { removed: true, value: "" }
-  return { removed: false, value: opt }
 }

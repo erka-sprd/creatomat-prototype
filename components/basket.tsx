@@ -7,6 +7,7 @@ export type BasketDesignText = {
   content: string
   x: number
   y: number
+  z?: number
   color: string
   fontSize: number
   fontFamily: string
@@ -17,6 +18,7 @@ export type BasketDesignGraphic = {
   src: string
   x: number
   y: number
+  z?: number
   width: number
   height: number
 }
@@ -292,6 +294,7 @@ function DesignThumbnail({ item, size }: { item: BasketItem; size: number }) {
             key={el.id}
             style={{
               position: "absolute",
+              zIndex: el.z,
               left: `${el.x}%`,
               top: `${el.y}%`,
               color: el.color,
@@ -312,6 +315,7 @@ function DesignThumbnail({ item, size }: { item: BasketItem; size: number }) {
             className="pointer-events-none select-none"
             style={{
               position: "absolute",
+              zIndex: el.z,
               left: `${el.x}%`,
               top: `${el.y}%`,
               width: `${el.width}%`,
