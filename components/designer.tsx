@@ -2946,6 +2946,12 @@ export default function Designer() {
                             setViewPickerForAdd(false)
                             setFirstAddDone(true)
                             setRunPendingAdd(true)
+                          } else {
+                            // The user opened the view dropdown and switched
+                            // sides on their own — they've discovered view
+                            // switching, so skip the first-run "where to add"
+                            // picker for the rest of the session.
+                            setFirstAddDone(true)
                           }
                         }}
                         className="group flex w-28 cursor-pointer flex-col items-center gap-1.5"
