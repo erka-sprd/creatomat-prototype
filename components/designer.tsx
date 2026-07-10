@@ -183,6 +183,9 @@ export default function Designer() {
     return () => el.removeEventListener("wheel", onWheel)
   }, [])
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false)
+  // Hover-open timer for the view dropdown — a short close delay bridges the gap
+  // between the trigger and the panel so moving up to it doesn't dismiss it.
+  const viewHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Which inactive view dot is hovered — drives the preview popover above the
   // switcher. lastPreviewViewRef keeps the last one rendered during fade-out.
   const [hoveredPreviewViewId, setHoveredPreviewViewId] = useState<string | null>(null)
@@ -1898,11 +1901,11 @@ export default function Designer() {
           <div
             id="left-section"
             className={`relative shrink-0 w-[100px] p-[6px] px-1.5 h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
-              viewDropdownOpen ? "pointer-events-none" : ""
+              viewPickerForAdd ? "pointer-events-none" : ""
             }`}
             style={{
               transition: "filter 0.3s ease",
-              filter: viewDropdownOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+              filter: viewPickerForAdd ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
             }}
           >
             {/* Intro skeleton overlay — mirrors the real button layout
@@ -2203,11 +2206,11 @@ export default function Designer() {
           <div
             id="canvas-section"
             className={`relative overflow-hidden w-full h-full bg-[#F4F4F4] rounded-[12px] ${
-              viewDropdownOpen ? "pointer-events-none" : ""
+              viewPickerForAdd ? "pointer-events-none" : ""
             }`}
             style={{
               transition: "filter 0.3s ease",
-              filter: viewDropdownOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+              filter: viewPickerForAdd ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
             }}
           >
             {/* Intro overlay: the loader animation runs from the start (1.85s),
@@ -3009,6 +3012,16 @@ export default function Designer() {
           {productData && productData.views.length > 1 && (
             <div
               data-view-dropdown
+              onMouseEnter={() => {
+                if (viewHoverTimerRef.current) clearTimeout(viewHoverTimerRef.current)
+                // Don't hijack the first-run picker (it's opened programmatically).
+                if (!viewPickerForAdd) setViewDropdownOpen(true)
+              }}
+              onMouseLeave={() => {
+                if (viewPickerForAdd) return
+                if (viewHoverTimerRef.current) clearTimeout(viewHoverTimerRef.current)
+                viewHoverTimerRef.current = setTimeout(() => setViewDropdownOpen(false), 150)
+              }}
               className={`absolute bottom-6 left-1/2 -translate-x-1/2 ${
                 viewDropdownOpen ? "z-50" : "z-20"
               }`}
@@ -3259,11 +3272,11 @@ export default function Designer() {
             ref={rightSectionRef}
             id="right-section"
             className={`relative shrink-0 w-[470px] p-[24px] pb-3 overflow-y-auto h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
-              viewDropdownOpen ? "pointer-events-none" : ""
+              viewPickerForAdd ? "pointer-events-none" : ""
             }`}
             style={{
               transition: "filter 0.3s ease",
-              filter: viewDropdownOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+              filter: viewPickerForAdd ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
             }}
           >
             {/* Intro skeleton overlay (fades out after the skeleton phase) */}
