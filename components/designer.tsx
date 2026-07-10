@@ -183,9 +183,6 @@ export default function Designer() {
     return () => el.removeEventListener("wheel", onWheel)
   }, [])
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false)
-  // Hover-open timer for the view dropdown — a short close delay bridges the gap
-  // between the trigger and the panel so moving up to it doesn't dismiss it.
-  const viewHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Which inactive view dot is hovered — drives the preview popover above the
   // switcher. lastPreviewViewRef keeps the last one rendered during fade-out.
   const [hoveredPreviewViewId, setHoveredPreviewViewId] = useState<string | null>(null)
@@ -204,20 +201,21 @@ export default function Designer() {
     src: string
     opts?: { centerX?: number; centerY?: number; widthPct?: number }
   } | null>(null)
-  // Close the view dropdown when clicking outside of it (cancels a pending add).
-  useEffect(() => {
-    if (!viewDropdownOpen) return
-    const onDown = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest("[data-view-dropdown]")) {
-        setViewDropdownOpen(false)
-        setViewPickerForAdd(false)
-        pendingAddIntentRef.current = null
-        pendingGraphicRef.current = null
-      }
-    }
-    document.addEventListener("mousedown", onDown)
-    return () => document.removeEventListener("mousedown", onDown)
-  }, [viewDropdownOpen])
+  // LEGACY (dropdown version): close the view dropdown when clicking outside
+  // (cancels a pending add). Disabled — the dots switcher has no dropdown.
+  // useEffect(() => {
+  //   if (!viewDropdownOpen) return
+  //   const onDown = (e: MouseEvent) => {
+  //     if (!(e.target as HTMLElement).closest("[data-view-dropdown]")) {
+  //       setViewDropdownOpen(false)
+  //       setViewPickerForAdd(false)
+  //       pendingAddIntentRef.current = null
+  //       pendingGraphicRef.current = null
+  //     }
+  //   }
+  //   document.addEventListener("mousedown", onDown)
+  //   return () => document.removeEventListener("mousedown", onDown)
+  // }, [viewDropdownOpen])
   // On zoom, keep the design centered: anchor on the centre of the combined
   // bounding box of all objects in the print area (treat them as one group).
   // Falls back to the product centre when there's no design. Runs in a layout
@@ -700,13 +698,15 @@ export default function Designer() {
     src: string,
     opts?: { centerX?: number; centerY?: number; widthPct?: number }
   ) => {
-    if (!firstAddDone && productData && productData.views.length > 1) {
-      pendingGraphicRef.current = { src, opts }
-      setActivePanel(null)
-      setViewPickerForAdd(true)
-      setViewDropdownOpen(true)
-      return
-    }
+    // LEGACY first-run "where to place" picker (disabled — the dots switcher
+    // version places the graphic directly on the current view):
+    // if (!firstAddDone && productData && productData.views.length > 1) {
+    //   pendingGraphicRef.current = { src, opts }
+    //   setActivePanel(null)
+    //   setViewPickerForAdd(true)
+    //   setViewDropdownOpen(true)
+    //   return
+    // }
     placeGraphicElement(src, opts)
   }
 
@@ -1086,28 +1086,28 @@ export default function Designer() {
   // Graphics/uploads open their panel right away — their view picker triggers
   // in addGraphicElement, once the user has actually picked an image.
   const startAdd = (intent: "text" | "uploads" | "graphics") => {
-    if (intent === "text" && !firstAddDone && productData && productData.views.length > 1) {
-      pendingAddIntentRef.current = intent
-      setViewPickerForAdd(true)
-      setViewDropdownOpen(true)
-    } else {
-      runAddIntent(intent)
-    }
+    // LEGACY first-run picker for text (disabled — dots version adds directly):
+    // if (intent === "text" && !firstAddDone && productData && productData.views.length > 1) {
+    //   pendingAddIntentRef.current = intent
+    //   setViewPickerForAdd(true)
+    //   setViewDropdownOpen(true)
+    //   return
+    // }
+    runAddIntent(intent)
   }
-  // After the user picks a view in the first-run flow, run the pending add
-  // (tool intent or picked image) once the new view has been applied, so it
-  // lands on the chosen print area.
-  useEffect(() => {
-    if (!runPendingAdd) return
-    setRunPendingAdd(false)
-    const intent = pendingAddIntentRef.current
-    pendingAddIntentRef.current = null
-    if (intent) runAddIntent(intent)
-    const graphic = pendingGraphicRef.current
-    pendingGraphicRef.current = null
-    if (graphic) placeGraphicElement(graphic.src, graphic.opts)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runPendingAdd])
+  // LEGACY: after the user picks a view in the first-run flow, run the pending
+  // add once the new view is applied. Disabled with the dropdown version.
+  // useEffect(() => {
+  //   if (!runPendingAdd) return
+  //   setRunPendingAdd(false)
+  //   const intent = pendingAddIntentRef.current
+  //   pendingAddIntentRef.current = null
+  //   if (intent) runAddIntent(intent)
+  //   const graphic = pendingGraphicRef.current
+  //   pendingGraphicRef.current = null
+  //   if (graphic) placeGraphicElement(graphic.src, graphic.opts)
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [runPendingAdd])
   const productImages = appearances.map(a => ({
     src: a.image,
     alt: a.name,
@@ -1901,11 +1901,11 @@ export default function Designer() {
           <div
             id="left-section"
             className={`relative shrink-0 w-[100px] p-[6px] px-1.5 h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
-              viewPickerForAdd ? "pointer-events-none" : ""
+              viewDropdownOpen ? "pointer-events-none" : ""
             }`}
             style={{
               transition: "filter 0.3s ease",
-              filter: viewPickerForAdd ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+              filter: viewDropdownOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
             }}
           >
             {/* Intro skeleton overlay — mirrors the real button layout
@@ -2206,11 +2206,11 @@ export default function Designer() {
           <div
             id="canvas-section"
             className={`relative overflow-hidden w-full h-full bg-[#F4F4F4] rounded-[12px] ${
-              viewPickerForAdd ? "pointer-events-none" : ""
+              viewDropdownOpen ? "pointer-events-none" : ""
             }`}
             style={{
               transition: "filter 0.3s ease",
-              filter: viewPickerForAdd ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+              filter: viewDropdownOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
             }}
           >
             {/* Intro overlay: the loader animation runs from the start (1.85s),
@@ -3012,23 +3012,19 @@ export default function Designer() {
           {productData && productData.views.length > 1 && (
             <div
               data-view-dropdown
-              onMouseEnter={() => {
-                if (viewHoverTimerRef.current) clearTimeout(viewHoverTimerRef.current)
-                // Don't hijack the first-run picker (it's opened programmatically).
-                if (!viewPickerForAdd) setViewDropdownOpen(true)
-              }}
-              onMouseLeave={() => {
-                if (viewPickerForAdd) return
-                if (viewHoverTimerRef.current) clearTimeout(viewHoverTimerRef.current)
-                viewHoverTimerRef.current = setTimeout(() => setViewDropdownOpen(false), 150)
-              }}
               className={`absolute bottom-6 left-1/2 -translate-x-1/2 ${
                 viewDropdownOpen ? "z-50" : "z-20"
               }`}
             >
-              {/* ===== ACTIVE VERSION: view-thumbnail dropdown + first-run
-                  "where do you want to place?" picker. (The dot switcher further
-                  down is disabled — see the `{false && ...}` guard there.) ===== */}
+              {/* ===== LEGACY VERSION (disabled) =====================================
+                  The view-thumbnail dropdown + (hidden) trigger button + the first-run
+                  "where do you want to place?" picker. The dot switcher further down is
+                  the active version. To switch back to this version: flip `false` below
+                  to `true`, and re-enable the commented first-run logic in
+                  addGraphicElement / startAdd / the outside-click + runPendingAdd
+                  effects. ==================================================== */}
+              {false && (
+                <>
               <div
                 className={`absolute bottom-full left-1/2 mb-2 flex w-max max-w-[calc(100cqw-100px)] origin-bottom -translate-x-1/2 flex-col gap-3 rounded-2xl bg-white p-6 shadow-xl transition-all duration-150 ease-out ${
                   viewDropdownOpen
@@ -3131,6 +3127,7 @@ export default function Designer() {
                     return next
                   })
                 }
+                style={{ display: "none" }}
                 className="flex h-[48px] items-center gap-2 rounded-full bg-white px-4 text-sm font-medium text-black shadow-xs hover:bg-neutral-50 cursor-pointer"
               >
                 {!viewPickerForAdd && (
@@ -3152,12 +3149,14 @@ export default function Designer() {
                   />
                 </svg>
               </button>
+                </>
+              )}
+              {/* ===== END LEGACY VERSION ===== */}
 
-              {/* ===== DISABLED: dot-based view switcher (the other version).
-                  Flip this `false` to re-enable it — and disable the dropdown above
-                  (+ its first-run logic in addGraphicElement / startAdd / the
-                  outside-click & runPendingAdd effects). ===== */}
-              {false && !viewPickerForAdd && (
+              {/* NEW idea: dot-based view switcher. The active view name sits
+                  above a pill of prev/next chevrons and one dot per view (active
+                  = open ring, others = small filled dots). */}
+              {!viewPickerForAdd && (
                 <div className="flex flex-col items-center gap-1.5">
                   {/* Keyed by the active view so the label re-mounts and fades in
                       on every view change (same 300ms timing as the dots). */}
@@ -3272,11 +3271,11 @@ export default function Designer() {
             ref={rightSectionRef}
             id="right-section"
             className={`relative shrink-0 w-[470px] p-[24px] pb-3 overflow-y-auto h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
-              viewPickerForAdd ? "pointer-events-none" : ""
+              viewDropdownOpen ? "pointer-events-none" : ""
             }`}
             style={{
               transition: "filter 0.3s ease",
-              filter: viewPickerForAdd ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+              filter: viewDropdownOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
             }}
           >
             {/* Intro skeleton overlay (fades out after the skeleton phase) */}
