@@ -182,6 +182,35 @@ export default function Designer() {
     el.addEventListener("wheel", onWheel, { passive: false })
     return () => el.removeEventListener("wheel", onWheel)
   }, [])
+  // Press-and-hold on the zoom +/- buttons keeps zooming instead of stopping
+  // after a single step. The first step is a discrete tap (animated); after a
+  // short hold it repeats continuously with animation off, so it tracks
+  // smoothly like the slider rather than re-animating each tick.
+  const zoomHoldRef = useRef<{ timeout: number | null; interval: number | null }>({
+    timeout: null,
+    interval: null,
+  })
+  const changeZoom = (delta: number, animate: boolean) => {
+    setZoomAnimate(animate)
+    setZoom(z => Math.min(6, Math.max(1, Math.round((z + delta) * 100) / 100)))
+  }
+  const startZoomHold = (dir: 1 | -1) => {
+    changeZoom(dir * 0.25, true)
+    zoomHoldRef.current.timeout = window.setTimeout(() => {
+      zoomHoldRef.current.interval = window.setInterval(() => changeZoom(dir * 0.1, false), 50)
+    }, 300)
+  }
+  const stopZoomHold = () => {
+    if (zoomHoldRef.current.timeout) {
+      window.clearTimeout(zoomHoldRef.current.timeout)
+      zoomHoldRef.current.timeout = null
+    }
+    if (zoomHoldRef.current.interval) {
+      window.clearInterval(zoomHoldRef.current.interval)
+      zoomHoldRef.current.interval = null
+    }
+  }
+  useEffect(() => stopZoomHold, [])
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false)
   // Which inactive view dot is hovered — drives the preview popover above the
   // switcher. lastPreviewViewRef keeps the last one rendered during fade-out.
@@ -2605,11 +2634,17 @@ export default function Designer() {
                 <button
                   type="button"
                   aria-label="Zoom in"
-                  onClick={() => {
-                    setZoomAnimate(true)
-                    setZoom(z => Math.min(6, Math.round((z + 0.25) * 100) / 100))
+                  onPointerDown={() => startZoomHold(1)}
+                  onPointerUp={stopZoomHold}
+                  onPointerLeave={stopZoomHold}
+                  onPointerCancel={stopZoomHold}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      changeZoom(0.25, true)
+                    }
                   }}
-                  className="flex h-9 w-9 -m-1 cursor-pointer items-center justify-center rounded-full text-black hover:bg-neutral-100"
+                  className="flex h-9 w-9 -m-1 cursor-pointer items-center justify-center rounded-full text-black transition-colors duration-300 hover:bg-neutral-100"
                 >
                   <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
                     <path
@@ -2644,11 +2679,17 @@ export default function Designer() {
                 <button
                   type="button"
                   aria-label="Zoom out"
-                  onClick={() => {
-                    setZoomAnimate(true)
-                    setZoom(z => Math.max(1, Math.round((z - 0.25) * 100) / 100))
+                  onPointerDown={() => startZoomHold(-1)}
+                  onPointerUp={stopZoomHold}
+                  onPointerLeave={stopZoomHold}
+                  onPointerCancel={stopZoomHold}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      changeZoom(-0.25, true)
+                    }
                   }}
-                  className="flex h-9 w-9 -m-1 cursor-pointer items-center justify-center rounded-full text-black hover:bg-neutral-100"
+                  className="flex h-9 w-9 -m-1 cursor-pointer items-center justify-center rounded-full text-black transition-colors duration-300 hover:bg-neutral-100"
                 >
                   <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
                     <path

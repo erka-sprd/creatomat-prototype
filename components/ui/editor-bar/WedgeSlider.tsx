@@ -55,6 +55,8 @@ export function WedgeSlider({ min, max, value, onChange, width = 140 }: WedgeSli
           "[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-black " +
           "[&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer " +
           "[&::-webkit-slider-thumb]:pointer-events-auto " +
+          "[&::-webkit-slider-thumb]:transition-shadow [&::-webkit-slider-thumb]:duration-300 " +
+          "[&::-moz-range-thumb]:transition-shadow [&::-moz-range-thumb]:duration-300 " +
           "[&::-moz-range-thumb]:size-5 [&::-moz-range-thumb]:rounded-full " +
           "[&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-black " +
           "[&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:cursor-pointer " +
