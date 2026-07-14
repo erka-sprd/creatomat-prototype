@@ -519,6 +519,70 @@ export default function Designer() {
     elY: number
     moved: boolean
   } | null>(null)
+  // Drag-to-pan the zoomed canvas. Only starts on empty canvas area (an object
+  // or resize handle sets its own state first, since mousedown bubbles up).
+  const [isPanning, setIsPanning] = useState(false)
+  const panStateRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null)
+  const startCanvasPan = (e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    if (dragStateRef.current || resizeStateRef.current) return
+    const el = canvasScrollRef.current
+    if (!el) return
+    const scrollable =
+      el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1
+    if (!scrollable) return
+    e.preventDefault()
+    panStateRef.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
+    setIsPanning(true)
+  }
+  // Double-click (mouse or trackpad) zooms in one level, toward the clicked
+  // point (via the same cursor-anchor the wheel/pinch uses). Ignored on objects
+  // so double-clicking text still enters edit mode.
+  const handleCanvasDoubleClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("[data-text-element],[data-graphic-element]")) return
+    const el = canvasScrollRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const offsetX = e.clientX - rect.left
+    const offsetY = e.clientY - rect.top
+    pinchAnchorRef.current = {
+      fracX: el.scrollWidth ? (el.scrollLeft + offsetX) / el.scrollWidth : 0.5,
+      fracY: el.scrollHeight ? (el.scrollTop + offsetY) / el.scrollHeight : 0.5,
+      offsetX,
+      offsetY,
+    }
+    if (pinchEndTimerRef.current) window.clearTimeout(pinchEndTimerRef.current)
+    pinchEndTimerRef.current = window.setTimeout(() => {
+      pinchAnchorRef.current = null
+    }, 300)
+    // Animation off (like pinch/wheel): the size changes instantly so the
+    // cursor-anchored scroll lands exactly — animating the height would make
+    // the view jump while the canvas is still growing.
+    setZoomAnimate(false)
+    setZoom(z => Math.min(6, Math.round((z + 1) * 100) / 100))
+  }
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const ps = panStateRef.current
+      const el = canvasScrollRef.current
+      if (!ps || !el) return
+      e.preventDefault()
+      el.scrollLeft = ps.left - (e.clientX - ps.x)
+      el.scrollTop = ps.top - (e.clientY - ps.y)
+    }
+    const onUp = () => {
+      if (panStateRef.current) {
+        panStateRef.current = null
+        setIsPanning(false)
+      }
+    }
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
+    return () => {
+      window.removeEventListener("mousemove", onMove)
+      window.removeEventListener("mouseup", onUp)
+    }
+  }, [])
   const resizeStateRef = useRef<{
     kind: "text" | "graphic"
     id: string
@@ -1916,6 +1980,13 @@ export default function Designer() {
       <style>{`
         #color-buttons-row::-webkit-scrollbar{display:none;}
         #color-buttons-row{scrollbar-width:none;}
+        /* Canvas scrollbars (visible only when zoomed): transparent track, subtle thumb */
+        .canvas-scroll{scrollbar-color:rgba(0,0,0,0.25) transparent;}
+        .canvas-scroll::-webkit-scrollbar{width:10px;height:10px;background:transparent;}
+        .canvas-scroll::-webkit-scrollbar-track{background:transparent;}
+        .canvas-scroll::-webkit-scrollbar-corner{background:transparent;}
+        .canvas-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.22);background-clip:content-box;border:3px solid transparent;border-radius:999px;}
+        .canvas-scroll::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,0.35);background-clip:content-box;border:3px solid transparent;}
       `}</style>
 
       <div className="h-screen w-full flex flex-col">
@@ -2260,9 +2331,14 @@ export default function Designer() {
               // product stays clear of the "FRONT" label (≥24px above it). The
               // switcher itself is anchored to the sibling sizing wrapper, so the
               // reserved region lines up with it.
-              className={`absolute inset-0 flex overflow-auto transition-[bottom] duration-300 ease-out ${
+              // z-0 makes this scroll area its own stacking context, so canvas
+              // objects (each with their own z) stay under the floating controls
+              // (zoom pill, editor bar) instead of competing with them.
+              className={`canvas-scroll absolute inset-0 z-0 flex overflow-auto transition-[bottom] duration-300 ease-out ${
                 zoom === 1 ? "[@media(max-height:900px)]:bottom-[50px]" : ""
-              }`}
+              } ${isPanning ? "cursor-grabbing" : zoom > 1 ? "cursor-grab" : ""}`}
+              onMouseDown={startCanvasPan}
+              onDoubleClick={handleCanvasDoubleClick}
               onClick={e => {
                 if (e.target !== e.currentTarget) return
                 if (activePanel) setActivePanel(null)
@@ -2283,7 +2359,8 @@ export default function Designer() {
               <img
                 src={currentViewImage || "/placeholder.svg"}
                 alt={productImages[activeColorIndex]?.alt || ""}
-                className="h-full w-full object-contain"
+                draggable={false}
+                className="h-full w-full object-contain select-none"
               />
               {printAreaOverlay && (selectedTextId || editingTextId || selectedGraphicId) && (
                 <svg
