@@ -523,6 +523,18 @@ export default function Designer() {
   // or resize handle sets its own state first, since mousedown bubbles up).
   const [isPanning, setIsPanning] = useState(false)
   const panStateRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null)
+  // True once a pan press has actually moved (a drag) — lets us tell a drag from
+  // a tap so a drag doesn't deselect / exit text editing on release.
+  const panMovedRef = useRef(false)
+  // Swallows the click that fires right after a drag / resize / pan, so the
+  // outside-click handler doesn't deselect the object the user just manipulated.
+  const suppressClickRef = useRef(false)
+  const suppressNextClick = () => {
+    suppressClickRef.current = true
+    setTimeout(() => {
+      suppressClickRef.current = false
+    }, 0)
+  }
   const startCanvasPan = (e: React.MouseEvent) => {
     if (e.button !== 0) return
     if (dragStateRef.current || resizeStateRef.current) return
@@ -531,7 +543,11 @@ export default function Designer() {
     const scrollable =
       el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1
     if (!scrollable) return
+    // Hold focus until we know tap vs drag: a tap deselects/exits editing on
+    // release; a drag pans and keeps the selection. (Selection during the drag
+    // is suppressed by the mousemove handler below.)
     e.preventDefault()
+    panMovedRef.current = false
     panStateRef.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
     setIsPanning(true)
   }
@@ -567,13 +583,21 @@ export default function Designer() {
       const el = canvasScrollRef.current
       if (!ps || !el) return
       e.preventDefault()
+      if (!panMovedRef.current && (Math.abs(e.clientX - ps.x) > 4 || Math.abs(e.clientY - ps.y) > 4)) {
+        panMovedRef.current = true
+      }
       el.scrollLeft = ps.left - (e.clientX - ps.x)
       el.scrollTop = ps.top - (e.clientY - ps.y)
     }
     const onUp = () => {
-      if (panStateRef.current) {
-        panStateRef.current = null
-        setIsPanning(false)
+      if (!panStateRef.current) return
+      panStateRef.current = null
+      setIsPanning(false)
+      // If it was a drag, keep the moved flag through the click it produces (so
+      // outside-click deselect is skipped), then clear it on the next tick.
+      if (panMovedRef.current) {
+        panMovedRef.current = false
+        suppressNextClick()
       }
     }
     window.addEventListener("mousemove", onMove)
@@ -849,6 +873,8 @@ export default function Designer() {
   // Deselect text on clicks anywhere outside the text element / editor bar / color panel.
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
+      // A drag / resize / pan just ended — ignore the click it produced.
+      if (suppressClickRef.current) return
       const target = e.target as HTMLElement | null
       if (!target) return
       if (
@@ -862,6 +888,9 @@ export default function Designer() {
       }
       setSelectedTextId(null)
       setSelectedGraphicId(null)
+      // We suppress blur on canvas press (to distinguish tap vs drag), so exit
+      // editing here on a genuine outside tap.
+      setEditingTextId(null)
       setTextColorPanelOpen(false)
       setFontPanelOpen(false)
     }
@@ -991,13 +1020,17 @@ export default function Designer() {
         resizeStateRef.current = null
         // Resize changed the design — wait for the flatten before revealing.
         setEmbroiderySettling(true)
+        suppressNextClick() // don't let the release click deselect the object
         return
       }
       const ds = dragStateRef.current
       if (!ds) return
       // A move happened — wait for the flatten to settle the position so the
       // stitched render reappears at the final spot without jumping.
-      if (ds.moved) setEmbroiderySettling(true)
+      if (ds.moved) {
+        setEmbroiderySettling(true)
+        suppressNextClick() // don't let the release click deselect the object
+      }
       // Always select on mouseup so a drag keeps the element as the active
       // selection, and bring the clicked element to the front.
       if (ds.kind === "graphic") {
@@ -1023,6 +1056,21 @@ export default function Designer() {
   const startTextDrag = (e: React.MouseEvent, el: TextElement) => {
     if (editingTextId === el.id) return
     e.preventDefault()
+    dragStateRef.current = {
+      kind: "text",
+      id: el.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      elX: el.x,
+      elY: el.y,
+      moved: false,
+    }
+  }
+  // Move a text while it's being edited — grabbing its border. No editing guard,
+  // and preventDefault keeps the textarea focused so editing continues.
+  const startTextMove = (e: React.MouseEvent, el: TextElement) => {
+    e.preventDefault()
+    e.stopPropagation()
     dragStateRef.current = {
       kind: "text",
       id: el.id,
@@ -2340,6 +2388,7 @@ export default function Designer() {
               onMouseDown={startCanvasPan}
               onDoubleClick={handleCanvasDoubleClick}
               onClick={e => {
+                if (suppressClickRef.current) return
                 if (e.target !== e.currentTarget) return
                 if (activePanel) setActivePanel(null)
                 setSelectedTextId(null)
@@ -2407,55 +2456,112 @@ export default function Designer() {
                       (() => {
                         const box = measureTextBox(el.content, el.fontSize * zoom, el.fontFamily)
                         return (
-                          <textarea
+                          <div
                             key={el.id}
-                            autoFocus
-                            value={el.content}
-                            rows={1}
-                            onChange={e => {
-                              const v = e.target.value
-                              setTextElements(prev =>
-                                prev.map(t => (t.id === el.id ? { ...t, content: v } : t))
-                              )
+                            data-text-element="true"
+                            ref={node => {
+                              if (node) textElementRefs.current[el.id] = node
+                              else delete textElementRefs.current[el.id]
                             }}
-                            onBlur={() => setEditingTextId(null)}
-                            onKeyDown={e => {
-                              if (e.key === "Escape")
-                                (e.target as HTMLTextAreaElement).blur()
-                            }}
-                            onMouseDown={e => e.stopPropagation()}
                             style={{
                               position: "absolute",
                               zIndex: el.z,
                               left: `${el.x}%`,
                               top: `${el.y}%`,
-                              color: el.color,
-                              fontSize: `${el.fontSize * zoom}px`,
-                              fontFamily: `"${el.fontFamily}"`,
-                              textAlign: el.textAlign ?? "left",
-                              fontWeight: el.bold ? 700 : 400,
-                              fontStyle: el.italic ? "italic" : "normal",
-                              textDecoration: el.underline ? "underline" : "none",
                               width: `${box.width + 4}px`,
                               height: `${box.height}px`,
-                              minWidth: `${el.fontSize * zoom * 0.5}px`,
-                              padding: 0,
-                              margin: 0,
-                              border: "none",
-                              resize: "none",
-                              overflow: "hidden",
-                              whiteSpace: "pre",
-                              boxShadow: "0 0 0 1px #6366F1",
                             }}
-                            ref={node => {
-                              if (!node) return
-                              if (node.dataset.initialSelectDone === "1") return
-                              node.setSelectionRange(0, node.value.length)
-                              node.dataset.initialSelectDone = "1"
-                            }}
-                            data-text-element="true"
-                            className="pointer-events-auto bg-transparent outline-none leading-none"
-                          />
+                            className="pointer-events-auto"
+                          >
+                            <textarea
+                              autoFocus
+                              value={el.content}
+                              rows={1}
+                              onChange={e => {
+                                const v = e.target.value
+                                setTextElements(prev =>
+                                  prev.map(t => (t.id === el.id ? { ...t, content: v } : t))
+                                )
+                              }}
+                              onBlur={() => setEditingTextId(null)}
+                              onKeyDown={e => {
+                                if (e.key === "Escape")
+                                  (e.target as HTMLTextAreaElement).blur()
+                              }}
+                              onMouseDown={e => e.stopPropagation()}
+                              style={{
+                                position: "absolute",
+                                inset: 0,
+                                width: "100%",
+                                height: "100%",
+                                color: el.color,
+                                fontSize: `${el.fontSize * zoom}px`,
+                                fontFamily: `"${el.fontFamily}"`,
+                                textAlign: el.textAlign ?? "left",
+                                fontWeight: el.bold ? 700 : 400,
+                                fontStyle: el.italic ? "italic" : "normal",
+                                textDecoration: el.underline ? "underline" : "none",
+                                minWidth: `${el.fontSize * zoom * 0.5}px`,
+                                padding: 0,
+                                margin: 0,
+                                border: "none",
+                                resize: "none",
+                                overflow: "hidden",
+                                whiteSpace: "pre",
+                                boxShadow: "0 0 0 1px #6366F1",
+                              }}
+                              ref={node => {
+                                if (!node) return
+                                if (node.dataset.initialSelectDone === "1") return
+                                node.setSelectionRange(0, node.value.length)
+                                node.dataset.initialSelectDone = "1"
+                              }}
+                              className="pointer-events-auto bg-transparent outline-none leading-none"
+                            />
+                            {/* Border strips: grab the box edge to move the text while
+                                editing (the centre stays a text caret). */}
+                            {(["top", "bottom", "left", "right"] as const).map(side => {
+                              const pos =
+                                side === "top"
+                                  ? "top-0 right-0 left-0 h-[7px]"
+                                  : side === "bottom"
+                                    ? "bottom-0 right-0 left-0 h-[7px]"
+                                    : side === "left"
+                                      ? "top-0 bottom-0 left-0 w-[7px]"
+                                      : "top-0 right-0 bottom-0 w-[7px]"
+                              return (
+                                <span
+                                  key={side}
+                                  onMouseDown={e => startTextMove(e, el)}
+                                  className={`absolute ${pos} z-20 cursor-move`}
+                                />
+                              )
+                            })}
+                            {/* Resize handles stay available while editing. startResize
+                                preventDefaults, so the textarea keeps focus (editing
+                                is not exited). */}
+                            {(["nw", "ne", "sw", "se"] as const).map(corner => {
+                              const cursor =
+                                corner === "nw" || corner === "se"
+                                  ? "cursor-nwse-resize"
+                                  : "cursor-nesw-resize"
+                              const pos =
+                                corner === "nw"
+                                  ? "-top-[7.5px] -left-[7.5px]"
+                                  : corner === "ne"
+                                    ? "-top-[7.5px] -right-[7.5px]"
+                                    : corner === "sw"
+                                      ? "-bottom-[7.5px] -left-[7.5px]"
+                                      : "-bottom-[7.5px] -right-[7.5px]"
+                              return (
+                                <span
+                                  key={corner}
+                                  onMouseDown={e => startResize(e, el, corner)}
+                                  className={`absolute ${pos} ${cursor} z-30 block size-[15px] rounded-full border-2 border-[#6366F1] bg-white`}
+                                />
+                              )
+                            })}
+                          </div>
                         )
                       })()
                     ) : (
