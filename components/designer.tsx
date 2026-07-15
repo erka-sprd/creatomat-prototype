@@ -230,21 +230,21 @@ export default function Designer() {
     src: string
     opts?: { centerX?: number; centerY?: number; widthPct?: number }
   } | null>(null)
-  // LEGACY (dropdown version): close the view dropdown when clicking outside
-  // (cancels a pending add). Disabled — the dots switcher has no dropdown.
-  // useEffect(() => {
-  //   if (!viewDropdownOpen) return
-  //   const onDown = (e: MouseEvent) => {
-  //     if (!(e.target as HTMLElement).closest("[data-view-dropdown]")) {
-  //       setViewDropdownOpen(false)
-  //       setViewPickerForAdd(false)
-  //       pendingAddIntentRef.current = null
-  //       pendingGraphicRef.current = null
-  //     }
-  //   }
-  //   document.addEventListener("mousedown", onDown)
-  //   return () => document.removeEventListener("mousedown", onDown)
-  // }, [viewDropdownOpen])
+  // Dropdown version: close the view dropdown when clicking outside (cancels a
+  // pending add).
+  useEffect(() => {
+    if (!viewDropdownOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-view-dropdown]")) {
+        setViewDropdownOpen(false)
+        setViewPickerForAdd(false)
+        pendingAddIntentRef.current = null
+        pendingGraphicRef.current = null
+      }
+    }
+    document.addEventListener("mousedown", onDown)
+    return () => document.removeEventListener("mousedown", onDown)
+  }, [viewDropdownOpen])
   // On zoom, keep the design centered: anchor on the centre of the combined
   // bounding box of all objects in the print area (treat them as one group).
   // Falls back to the product centre when there's no design. Runs in a layout
@@ -826,15 +826,15 @@ export default function Designer() {
     src: string,
     opts?: { centerX?: number; centerY?: number; widthPct?: number }
   ) => {
-    // LEGACY first-run "where to place" picker (disabled — the dots switcher
-    // version places the graphic directly on the current view):
-    // if (!firstAddDone && productData && productData.views.length > 1) {
-    //   pendingGraphicRef.current = { src, opts }
-    //   setActivePanel(null)
-    //   setViewPickerForAdd(true)
-    //   setViewDropdownOpen(true)
-    //   return
-    // }
+    // First-run "where to place" picker: on a multi-view product the picked
+    // image waits while the user chooses the target view.
+    if (!firstAddDone && productData && productData.views.length > 1) {
+      pendingGraphicRef.current = { src, opts }
+      setActivePanel(null)
+      setViewPickerForAdd(true)
+      setViewDropdownOpen(true)
+      return
+    }
     placeGraphicElement(src, opts)
   }
 
@@ -1238,28 +1238,28 @@ export default function Designer() {
   // Graphics/uploads open their panel right away — their view picker triggers
   // in addGraphicElement, once the user has actually picked an image.
   const startAdd = (intent: "text" | "uploads" | "graphics") => {
-    // LEGACY first-run picker for text (disabled — dots version adds directly):
-    // if (intent === "text" && !firstAddDone && productData && productData.views.length > 1) {
-    //   pendingAddIntentRef.current = intent
-    //   setViewPickerForAdd(true)
-    //   setViewDropdownOpen(true)
-    //   return
-    // }
+    // First-run picker for text: ask where to place before adding.
+    if (intent === "text" && !firstAddDone && productData && productData.views.length > 1) {
+      pendingAddIntentRef.current = intent
+      setViewPickerForAdd(true)
+      setViewDropdownOpen(true)
+      return
+    }
     runAddIntent(intent)
   }
-  // LEGACY: after the user picks a view in the first-run flow, run the pending
-  // add once the new view is applied. Disabled with the dropdown version.
-  // useEffect(() => {
-  //   if (!runPendingAdd) return
-  //   setRunPendingAdd(false)
-  //   const intent = pendingAddIntentRef.current
-  //   pendingAddIntentRef.current = null
-  //   if (intent) runAddIntent(intent)
-  //   const graphic = pendingGraphicRef.current
-  //   pendingGraphicRef.current = null
-  //   if (graphic) placeGraphicElement(graphic.src, graphic.opts)
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, [runPendingAdd])
+  // After the user picks a view in the first-run flow, run the pending add once
+  // the new view is applied.
+  useEffect(() => {
+    if (!runPendingAdd) return
+    setRunPendingAdd(false)
+    const intent = pendingAddIntentRef.current
+    pendingAddIntentRef.current = null
+    if (intent) runAddIntent(intent)
+    const graphic = pendingGraphicRef.current
+    pendingGraphicRef.current = null
+    if (graphic) placeGraphicElement(graphic.src, graphic.opts)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runPendingAdd])
   const productImages = appearances.map(a => ({
     src: a.image,
     alt: a.name,
@@ -3283,7 +3283,7 @@ export default function Designer() {
                   to `true`, and re-enable the commented first-run logic in
                   addGraphicElement / startAdd / the outside-click + runPendingAdd
                   effects. ==================================================== */}
-              {false && (
+              {true && (
                 <>
               <div
                 className={`absolute bottom-full left-1/2 mb-2 flex w-max max-w-[calc(100cqw-100px)] origin-bottom -translate-x-1/2 flex-col gap-3 rounded-2xl bg-white p-6 shadow-xl transition-all duration-150 ease-out ${
@@ -3342,7 +3342,7 @@ export default function Designer() {
                           }`}
                         >
                           {thumb && (
-                            <div className="relative h-[100px] w-[100px]">
+                            <div className="relative h-[100px] w-[100px] overflow-hidden rounded-[8px]">
                               <ViewDesignThumb
                                 image={thumb}
                                 overlay={viewOverlay}
@@ -3387,7 +3387,6 @@ export default function Designer() {
                     return next
                   })
                 }
-                style={{ display: "none" }}
                 className="flex h-[48px] items-center gap-2 rounded-full bg-white px-4 text-sm font-medium text-black shadow-xs hover:bg-neutral-50 cursor-pointer"
               >
                 {!viewPickerForAdd && (
@@ -3413,10 +3412,10 @@ export default function Designer() {
               )}
               {/* ===== END LEGACY VERSION ===== */}
 
-              {/* NEW idea: dot-based view switcher. The active view name sits
-                  above a pill of prev/next chevrons and one dot per view (active
-                  = open ring, others = small filled dots). */}
-              {!viewPickerForAdd && (
+              {/* Dot-based view switcher (disabled — dropdown version active). The
+                  active view name sits above a pill of prev/next chevrons and one
+                  dot per view (active = open ring, others = small filled dots). */}
+              {false && (
                 <div className="flex flex-col items-center gap-1.5">
                   {/* Keyed by the active view so the label re-mounts and fades in
                       on every view change (same 300ms timing as the dots). */}
@@ -3444,7 +3443,7 @@ export default function Designer() {
                           >
                             <div className="relative h-[160px] w-[160px] overflow-hidden rounded-xl">
                               <ViewDesignThumb
-                                image={previewThumb}
+                                image={previewThumb ?? ""}
                                 overlay={previewOverlay}
                                 textElements={previewTexts}
                                 graphicElements={previewGraphics}
