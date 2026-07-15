@@ -652,8 +652,11 @@ export default function Designer() {
           const leftChest = productId === "2116" && currentPrintAreaId === "6322"
           const targetWidthPx = printAreaPxSize.width * (leftChest ? 0.26 : 0.5)
           const computedFontSize = (targetWidthPx / widthAt100) * 100
+          // Floor at MIN_TEXT_FONT_SIZE (not 14): on narrow areas (e.g. a hoodie
+          // arm) the 50%-width font can be < 14px, and a hard 14px floor would
+          // make the text wider than the print area and overflow it.
           fontSize = Math.max(
-            14,
+            MIN_TEXT_FONT_SIZE,
             Math.floor(Math.min(computedFontSize, printAreaPxSize.height))
           )
           const actualWidthPx = (widthAt100 / 100) * fontSize
