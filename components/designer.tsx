@@ -57,6 +57,16 @@ const DEFAULT_PRODUCT_ID = "812" // Men's Premium Organic T-Shirt
 let uidCounter = 0
 const uid = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(uidCounter++).toString(36)}`
 
+// Degrees of tolerance around 0/90/180/270 where rotation snaps to the cardinal
+// angle. Wide enough that vertical/horizontal lock in sharply.
+const ROTATE_SNAP_DEG = 8
+
+// Custom cursor for the rotate handle: a circular arrow with a white halo so it
+// reads on any background. Hotspot centred at 12,12.
+const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 12 12"><path fill-rule="evenodd" clip-rule="evenodd" d="M5.97279 2.70765e-05C8.99188 0.00908166 11.534 2.26003 11.9085 5.25582C12.283 8.25161 10.3731 11.0591 7.44915 11.811C5.1471 12.4029 2.78103 11.5756 1.33347 9.82817L1.33341 11.3069C1.33341 11.6488 1.07605 11.9305 0.744489 11.9691L0.666742 11.9735C0.324851 11.9735 0.0430704 11.7162 0.00456036 11.3846L7.52098e-05 11.3069V7.97354C7.52098e-05 7.63165 0.257435 7.34986 0.588994 7.31135L0.666742 7.30687H4.00008C4.36827 7.30687 4.66674 7.60535 4.66674 7.97354C4.66674 8.31543 4.40938 8.59721 4.07782 8.63572L4.00008 8.6402L2.10646 8.64083C3.19414 10.2276 5.18461 11.0166 7.11708 10.5196C9.39128 9.93483 10.8767 7.75126 10.5855 5.4212C10.2942 3.09114 8.31698 1.3404 5.9688 1.33335C3.62061 1.32635 1.63294 3.06524 1.32775 5.39351C1.2799 5.75858 0.945165 6.01573 0.580098 5.96788C0.215031 5.92003 -0.0421227 5.58529 0.00572962 5.22023C0.398111 2.22673 2.95368 -0.00897306 5.97279 2.70765e-05Z" fill="#1f2937" stroke="#ffffff" stroke-width="0.7" paint-order="stroke"/></svg>`
+)}") 12 12, grab`
+
 // Mask an icon so a `bg-current` element paints it in the current text colour —
 // used for the thicker filled chevron assets (same approach as product-tile).
 const chevronMask = (icon: string): CSSProperties => ({
@@ -622,13 +632,22 @@ export default function Designer() {
     id: string
     initialFontSize: number
     initialDist: number
-    oppX: number
-    oppY: number
     corner: "nw" | "ne" | "sw" | "se"
     initialWidthPct: number
     initialHeightPct: number
-    anchorXPct: number
-    anchorYPct: number
+    // Rotation-aware anchoring, all in screen px. The visual (rotated) corner
+    // opposite the dragged one stays pinned; the box scales about it.
+    theta: number
+    w0: number
+    h0: number
+    anchorOffX: number
+    anchorOffY: number
+    anchorScreenX: number
+    anchorScreenY: number
+    paLeft: number
+    paTop: number
+    paWidth: number
+    paHeight: number
   } | null>(null)
   // Drag-to-rotate a text via the handle below its box. Angles are measured from
   // the box centre; rotation is stored in degrees on the element.
@@ -951,9 +970,10 @@ export default function Designer() {
         const angle = (Math.atan2(e.clientY - rot.cy, e.clientX - rot.cx) * 180) / Math.PI
         let next = rot.startRotation + (angle - rot.startAngle)
         // Snap to 0/90/180/270 (and normalise to -180..180) for easy alignment.
+        // A wide window makes vertical/horizontal lock in sharply.
         next = ((next % 360) + 360) % 360
         for (const snap of [0, 90, 180, 270, 360]) {
-          if (Math.abs(next - snap) <= 4) next = snap % 360
+          if (Math.abs(next - snap) <= ROTATE_SNAP_DEG) next = snap % 360
         }
         if (next > 180) next -= 360
         setTextElements(prev =>
@@ -965,40 +985,34 @@ export default function Designer() {
       if (rs) {
         setIsManipulating(true)
         if (rs.initialDist > 0) {
-          const newDist = Math.hypot(e.clientX - rs.oppX, e.clientY - rs.oppY)
-          const scale = newDist / rs.initialDist
-          // Scale uniformly from the dragged corner, preserving aspect ratio.
-          // Text drives off font size; graphics scale width/height directly.
+          const newDist = Math.hypot(e.clientX - rs.anchorScreenX, e.clientY - rs.anchorScreenY)
+          const rawScale = newDist / rs.initialDist
+          // Scale uniformly about the pinned (rotated) anchor corner, preserving
+          // aspect ratio. Text drives off font size; graphics scale directly.
           let nextFontSize = rs.initialFontSize
           let sizeScale: number
           if (rs.kind === "graphic") {
-            sizeScale = Math.max(MIN_GRAPHIC_WIDTH_PCT / rs.initialWidthPct, scale)
+            sizeScale = Math.max(MIN_GRAPHIC_WIDTH_PCT / rs.initialWidthPct, rawScale)
           } else {
-            nextFontSize = Math.max(MIN_TEXT_FONT_SIZE, rs.initialFontSize * scale)
+            nextFontSize = Math.max(MIN_TEXT_FONT_SIZE, rs.initialFontSize * rawScale)
             sizeScale = nextFontSize / rs.initialFontSize
           }
           const newWidthPct = rs.initialWidthPct * sizeScale
           const newHeightPct = rs.initialHeightPct * sizeScale
-          let newX = rs.anchorXPct
-          let newY = rs.anchorYPct
-          switch (rs.corner) {
-            case "nw":
-              newX = rs.anchorXPct - newWidthPct
-              newY = rs.anchorYPct - newHeightPct
-              break
-            case "ne":
-              newX = rs.anchorXPct
-              newY = rs.anchorYPct - newHeightPct
-              break
-            case "sw":
-              newX = rs.anchorXPct - newWidthPct
-              newY = rs.anchorYPct
-              break
-            case "se":
-              newX = rs.anchorXPct
-              newY = rs.anchorYPct
-              break
-          }
+          // New centre in screen px: keep the rotated anchor corner fixed while
+          // its offset from the centre scales with the box.
+          const cos = Math.cos(rs.theta)
+          const sin = Math.sin(rs.theta)
+          const offX = rs.anchorOffX * sizeScale
+          const offY = rs.anchorOffY * sizeScale
+          const centerX = rs.anchorScreenX - (offX * cos - offY * sin)
+          const centerY = rs.anchorScreenY - (offX * sin + offY * cos)
+          // Unrotated top-left px → print-area %. CSS positions the unrotated box
+          // via left/top and then rotates it about its centre.
+          const topLeftX = centerX - (rs.w0 * sizeScale) / 2
+          const topLeftY = centerY - (rs.h0 * sizeScale) / 2
+          const newX = ((topLeftX - rs.paLeft) / rs.paWidth) * 100
+          const newY = ((topLeftY - rs.paTop) / rs.paHeight) * 100
           if (rs.kind === "graphic") {
             setGraphicElements(prev =>
               prev.map(g =>
@@ -1034,16 +1048,23 @@ export default function Designer() {
       const draggedNode = (
         ds.kind === "graphic" ? graphicElementRefs : textElementRefs
       ).current[ds.id]
-      const elWidthPct = draggedNode
-        ? (draggedNode.getBoundingClientRect().width / paRect.width) * 100
-        : 0
-      const elHeightPct = draggedNode
-        ? (draggedNode.getBoundingClientRect().height / paRect.height) * 100
-        : 0
-      const clampedX = Math.max(0, Math.min(100 - elWidthPct, newXPct))
-      const clampedY = Math.max(0, Math.min(100 - elHeightPct, newYPct))
-      const centerXpct = clampedX + elWidthPct / 2
-      const centerYpct = clampedY + elHeightPct / 2
+      // Unrotated box (offset*) drives the model x/y (CSS positions the box then
+      // rotates it about its centre). The rotated bbox (getBoundingClientRect)
+      // drives the clamp, so a rotated element stays inside the print area on its
+      // real footprint and can still reach every edge/corner.
+      const unrotWPct = draggedNode ? (draggedNode.offsetWidth / paRect.width) * 100 : 0
+      const unrotHPct = draggedNode ? (draggedNode.offsetHeight / paRect.height) * 100 : 0
+      const bbox = draggedNode?.getBoundingClientRect()
+      const bboxWPct = bbox ? (bbox.width / paRect.width) * 100 : unrotWPct
+      const bboxHPct = bbox ? (bbox.height / paRect.height) * 100 : unrotHPct
+      // Clamp the element centre so the rotated bbox stays within [0, 100].
+      const clampCenter = (c: number, bboxPct: number) => {
+        const lo = bboxPct / 2
+        const hi = 100 - bboxPct / 2
+        return lo > hi ? 50 : Math.max(lo, Math.min(hi, c))
+      }
+      let centerXpct = clampCenter(newXPct + unrotWPct / 2, bboxWPct)
+      let centerYpct = clampCenter(newYPct + unrotHPct / 2, bboxHPct)
       const snapVThresholdPct = (SNAP_THRESHOLD_PX / paRect.width) * 100
       const snapHThresholdPct = (SNAP_THRESHOLD_PX / paRect.height) * 100
       const snapV = Math.abs(centerXpct - 50) < snapVThresholdPct
@@ -1051,8 +1072,10 @@ export default function Designer() {
       setSnapGuides(prev =>
         prev.h === snapH && prev.v === snapV ? prev : { h: snapH, v: snapV }
       )
-      const snappedX = snapV ? (100 - elWidthPct) / 2 : clampedX
-      const snappedY = snapH ? (100 - elHeightPct) / 2 : clampedY
+      if (snapV) centerXpct = 50
+      if (snapH) centerYpct = 50
+      const snappedX = centerXpct - unrotWPct / 2
+      const snappedY = centerYpct - unrotHPct / 2
       if (ds.kind === "graphic") {
         setGraphicElements(prev =>
           prev.map(g => (g.id === ds.id ? { ...g, x: snappedX, y: snappedY } : g))
@@ -1161,44 +1184,48 @@ export default function Designer() {
     if (!node || !pa) return
     const rect = node.getBoundingClientRect()
     const paRect = pa.getBoundingClientRect()
-    const oppX = corner.endsWith("e") ? rect.left : rect.right
-    const oppY = corner.startsWith("s") ? rect.top : rect.bottom
-    const initialDist = Math.hypot(e.clientX - oppX, e.clientY - oppY)
-    const initialWidthPct = (rect.width / paRect.width) * 100
-    const initialHeightPct = (rect.height / paRect.height) * 100
-    // Anchor corner = opposite of the dragged corner, in print-area % coordinates.
-    let anchorXPct = el.x
-    let anchorYPct = el.y
-    switch (corner) {
-      case "nw": // anchor = SE
-        anchorXPct = el.x + initialWidthPct
-        anchorYPct = el.y + initialHeightPct
-        break
-      case "ne": // anchor = SW
-        anchorXPct = el.x
-        anchorYPct = el.y + initialHeightPct
-        break
-      case "sw": // anchor = NE
-        anchorXPct = el.x + initialWidthPct
-        anchorYPct = el.y
-        break
-      case "se": // anchor = NW
-        anchorXPct = el.x
-        anchorYPct = el.y
-        break
-    }
+    // Unrotated on-screen box size. offsetWidth/offsetHeight ignore the CSS
+    // rotate transform, so they give the true (axis-aligned) element size;
+    // getBoundingClientRect() would return the inflated rotated bbox.
+    const w0 = node.offsetWidth
+    const h0 = node.offsetHeight
+    // getBoundingClientRect's centre equals the true centre for a rotate about
+    // the box centre, so use it to recover the rotated anchor corner.
+    const cx = rect.left + rect.width / 2
+    const cy = rect.top + rect.height / 2
+    const rotation = kind === "text" ? textElements.find(t => t.id === el.id)?.rotation ?? 0 : 0
+    const theta = (rotation * Math.PI) / 180
+    const cos = Math.cos(theta)
+    const sin = Math.sin(theta)
+    // Vector centre → anchor corner (the corner opposite the dragged one),
+    // in unrotated screen px.
+    const anchorOffX = corner.endsWith("e") ? -w0 / 2 : w0 / 2
+    const anchorOffY = corner.startsWith("s") ? -h0 / 2 : h0 / 2
+    // Same corner, rotated into screen space and pinned there during the drag.
+    const anchorScreenX = cx + (anchorOffX * cos - anchorOffY * sin)
+    const anchorScreenY = cy + (anchorOffX * sin + anchorOffY * cos)
+    const initialDist = Math.hypot(e.clientX - anchorScreenX, e.clientY - anchorScreenY)
+    const initialWidthPct = (w0 / paRect.width) * 100
+    const initialHeightPct = (h0 / paRect.height) * 100
     resizeStateRef.current = {
       kind,
       id: el.id,
       initialFontSize: el.fontSize ?? 0,
       initialDist,
-      oppX,
-      oppY,
       corner,
       initialWidthPct,
       initialHeightPct,
-      anchorXPct,
-      anchorYPct,
+      theta,
+      w0,
+      h0,
+      anchorOffX,
+      anchorOffY,
+      anchorScreenX,
+      anchorScreenY,
+      paLeft: paRect.left,
+      paTop: paRect.top,
+      paWidth: paRect.width,
+      paHeight: paRect.height,
     }
   }
   const [hasMounted, setHasMounted] = useState(false)
@@ -2666,7 +2693,8 @@ export default function Designer() {
                             })}
                             <span
                               onMouseDown={e => startTextRotate(e, el)}
-                              className="absolute -bottom-[34px] left-1/2 z-30 flex size-[22px] -translate-x-1/2 cursor-grab items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-sm active:cursor-grabbing"
+                              style={{ cursor: ROTATE_CURSOR }}
+                              className="absolute -bottom-[34px] left-1/2 z-30 flex size-[22px] -translate-x-1/2 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-sm"
                             >
                               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                                 <path fillRule="evenodd" clipRule="evenodd" d="M5.97279 2.70765e-05C8.99188 0.00908166 11.534 2.26003 11.9085 5.25582C12.283 8.25161 10.3731 11.0591 7.44915 11.811C5.1471 12.4029 2.78103 11.5756 1.33347 9.82817L1.33341 11.3069C1.33341 11.6488 1.07605 11.9305 0.744489 11.9691L0.666742 11.9735C0.324851 11.9735 0.0430704 11.7162 0.00456036 11.3846L7.52098e-05 11.3069V7.97354C7.52098e-05 7.63165 0.257435 7.34986 0.588994 7.31135L0.666742 7.30687H4.00008C4.36827 7.30687 4.66674 7.60535 4.66674 7.97354C4.66674 8.31543 4.40938 8.59721 4.07782 8.63572L4.00008 8.6402L2.10646 8.64083C3.19414 10.2276 5.18461 11.0166 7.11708 10.5196C9.39128 9.93483 10.8767 7.75126 10.5855 5.4212C10.2942 3.09114 8.31698 1.3404 5.9688 1.33335C3.62061 1.32635 1.63294 3.06524 1.32775 5.39351C1.2799 5.75858 0.945165 6.01573 0.580098 5.96788C0.215031 5.92003 -0.0421227 5.58529 0.00572962 5.22023C0.398111 2.22673 2.95368 -0.00897306 5.97279 2.70765e-05Z" fill="currentColor"/>
@@ -2739,7 +2767,8 @@ export default function Designer() {
                         {selectedTextId === el.id && (
                           <span
                             onMouseDown={e => startTextRotate(e, el)}
-                            className="absolute -bottom-[34px] left-1/2 z-30 flex size-[22px] -translate-x-1/2 cursor-grab items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-sm active:cursor-grabbing"
+                            style={{ cursor: ROTATE_CURSOR }}
+                            className="absolute -bottom-[34px] left-1/2 z-30 flex size-[22px] -translate-x-1/2 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-sm"
                           >
                             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                               <path fillRule="evenodd" clipRule="evenodd" d="M5.97279 2.70765e-05C8.99188 0.00908166 11.534 2.26003 11.9085 5.25582C12.283 8.25161 10.3731 11.0591 7.44915 11.811C5.1471 12.4029 2.78103 11.5756 1.33347 9.82817L1.33341 11.3069C1.33341 11.6488 1.07605 11.9305 0.744489 11.9691L0.666742 11.9735C0.324851 11.9735 0.0430704 11.7162 0.00456036 11.3846L7.52098e-05 11.3069V7.97354C7.52098e-05 7.63165 0.257435 7.34986 0.588994 7.31135L0.666742 7.30687H4.00008C4.36827 7.30687 4.66674 7.60535 4.66674 7.97354C4.66674 8.31543 4.40938 8.59721 4.07782 8.63572L4.00008 8.6402L2.10646 8.64083C3.19414 10.2276 5.18461 11.0166 7.11708 10.5196C9.39128 9.93483 10.8767 7.75126 10.5855 5.4212C10.2942 3.09114 8.31698 1.3404 5.9688 1.33335C3.62061 1.32635 1.63294 3.06524 1.32775 5.39351C1.2799 5.75858 0.945165 6.01573 0.580098 5.96788C0.215031 5.92003 -0.0421227 5.58529 0.00572962 5.22023C0.398111 2.22673 2.95368 -0.00897306 5.97279 2.70765e-05Z" fill="currentColor"/>
