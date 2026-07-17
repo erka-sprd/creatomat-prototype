@@ -533,15 +533,10 @@ export default function Designer() {
   } | null>(null)
   // Drag-to-pan the zoomed canvas. Only starts on empty canvas area (an object
   // or resize handle sets its own state first, since mousedown bubbles up).
-  const [isPanning, setIsPanning] = useState(false)
   // True while hovering any of the editing text box's border strips — thickens
   // ALL four borders together (not just the hovered side).
   const [textBorderHover, setTextBorderHover] = useState(false)
-  const panStateRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null)
-  // True once a pan press has actually moved (a drag) — lets us tell a drag from
-  // a tap so a drag doesn't deselect / exit text editing on release.
-  const panMovedRef = useRef(false)
-  // Swallows the click that fires right after a drag / resize / pan, so the
+  // Swallows the click that fires right after a drag / resize, so the
   // outside-click handler doesn't deselect the object the user just manipulated.
   const suppressClickRef = useRef(false)
   const suppressNextClick = () => {
@@ -549,22 +544,6 @@ export default function Designer() {
     setTimeout(() => {
       suppressClickRef.current = false
     }, 0)
-  }
-  const startCanvasPan = (e: React.MouseEvent) => {
-    if (e.button !== 0) return
-    if (dragStateRef.current || resizeStateRef.current) return
-    const el = canvasScrollRef.current
-    if (!el) return
-    const scrollable =
-      el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1
-    if (!scrollable) return
-    // Hold focus until we know tap vs drag: a tap deselects/exits editing on
-    // release; a drag pans and keeps the selection. (Selection during the drag
-    // is suppressed by the mousemove handler below.)
-    e.preventDefault()
-    panMovedRef.current = false
-    panStateRef.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
-    setIsPanning(true)
   }
   // Double-click (mouse or trackpad) zooms in one level, toward the clicked
   // point (via the same cursor-anchor the wheel/pinch uses). Ignored on objects
@@ -592,36 +571,6 @@ export default function Designer() {
     setZoomAnimate(false)
     setZoom(z => Math.min(6, Math.round((z + 1) * 100) / 100))
   }
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      const ps = panStateRef.current
-      const el = canvasScrollRef.current
-      if (!ps || !el) return
-      e.preventDefault()
-      if (!panMovedRef.current && (Math.abs(e.clientX - ps.x) > 4 || Math.abs(e.clientY - ps.y) > 4)) {
-        panMovedRef.current = true
-      }
-      el.scrollLeft = ps.left - (e.clientX - ps.x)
-      el.scrollTop = ps.top - (e.clientY - ps.y)
-    }
-    const onUp = () => {
-      if (!panStateRef.current) return
-      panStateRef.current = null
-      setIsPanning(false)
-      // If it was a drag, keep the moved flag through the click it produces (so
-      // outside-click deselect is skipped), then clear it on the next tick.
-      if (panMovedRef.current) {
-        panMovedRef.current = false
-        suppressNextClick()
-      }
-    }
-    window.addEventListener("mousemove", onMove)
-    window.addEventListener("mouseup", onUp)
-    return () => {
-      window.removeEventListener("mousemove", onMove)
-      window.removeEventListener("mouseup", onUp)
-    }
-  }, [])
   // Clear the border-hover state whenever editing ends, so borders don't stay
   // thick on the next edit.
   useEffect(() => {
@@ -2487,8 +2436,7 @@ export default function Designer() {
               // (zoom pill, editor bar) instead of competing with them.
               className={`canvas-scroll absolute inset-0 z-0 flex overflow-auto transition-[bottom] duration-300 ease-out ${
                 zoom === 1 ? "[@media(max-height:900px)]:bottom-[50px]" : ""
-              } ${isPanning ? "cursor-grabbing" : zoom > 1 ? "cursor-grab" : ""}`}
-              onMouseDown={startCanvasPan}
+              }`}
               onDoubleClick={handleCanvasDoubleClick}
               onClick={e => {
                 if (suppressClickRef.current) return
