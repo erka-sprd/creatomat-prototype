@@ -64,8 +64,18 @@ const ROTATE_SNAP_DEG = 8
 // Custom cursor for the rotate handle: a circular arrow with a white halo so it
 // reads on any background. Hotspot centred at 12,12.
 const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 12 12"><path fill-rule="evenodd" clip-rule="evenodd" d="M5.97279 2.70765e-05C8.99188 0.00908166 11.534 2.26003 11.9085 5.25582C12.283 8.25161 10.3731 11.0591 7.44915 11.811C5.1471 12.4029 2.78103 11.5756 1.33347 9.82817L1.33341 11.3069C1.33341 11.6488 1.07605 11.9305 0.744489 11.9691L0.666742 11.9735C0.324851 11.9735 0.0430704 11.7162 0.00456036 11.3846L7.52098e-05 11.3069V7.97354C7.52098e-05 7.63165 0.257435 7.34986 0.588994 7.31135L0.666742 7.30687H4.00008C4.36827 7.30687 4.66674 7.60535 4.66674 7.97354C4.66674 8.31543 4.40938 8.59721 4.07782 8.63572L4.00008 8.6402L2.10646 8.64083C3.19414 10.2276 5.18461 11.0166 7.11708 10.5196C9.39128 9.93483 10.8767 7.75126 10.5855 5.4212C10.2942 3.09114 8.31698 1.3404 5.9688 1.33335C3.62061 1.32635 1.63294 3.06524 1.32775 5.39351C1.2799 5.75858 0.945165 6.01573 0.580098 5.96788C0.215031 5.92003 -0.0421227 5.58529 0.00572962 5.22023C0.398111 2.22673 2.95368 -0.00897306 5.97279 2.70765e-05Z" fill="#1f2937" stroke="#ffffff" stroke-width="0.7" paint-order="stroke"/></svg>`
-)}") 12 12, grab`
+  `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"><g transform="translate(6 6)"><path fill-rule="evenodd" clip-rule="evenodd" d="M5.97279 2.70765e-05C8.99188 0.00908166 11.534 2.26003 11.9085 5.25582C12.283 8.25161 10.3731 11.0591 7.44915 11.811C5.1471 12.4029 2.78103 11.5756 1.33347 9.82817L1.33341 11.3069C1.33341 11.6488 1.07605 11.9305 0.744489 11.9691L0.666742 11.9735C0.324851 11.9735 0.0430704 11.7162 0.00456036 11.3846L7.52098e-05 11.3069V7.97354C7.52098e-05 7.63165 0.257435 7.34986 0.588994 7.31135L0.666742 7.30687H4.00008C4.36827 7.30687 4.66674 7.60535 4.66674 7.97354C4.66674 8.31543 4.40938 8.59721 4.07782 8.63572L4.00008 8.6402L2.10646 8.64083C3.19414 10.2276 5.18461 11.0166 7.11708 10.5196C9.39128 9.93483 10.8767 7.75126 10.5855 5.4212C10.2942 3.09114 8.31698 1.3404 5.9688 1.33335C3.62061 1.32635 1.63294 3.06524 1.32775 5.39351C1.2799 5.75858 0.945165 6.01573 0.580098 5.96788C0.215031 5.92003 -0.0421227 5.58529 0.00572962 5.22023C0.398111 2.22673 2.95368 -0.00897306 5.97279 2.70765e-05Z" fill="#111827" stroke="#ffffff" stroke-width="1.6" paint-order="stroke"/></g></svg>`
+)}") 16 16,grab`
+
+// Canva-style diagonal resize cursors: a slim double-headed arrow with a white
+// halo so it stays crisp on any fabric colour. macOS renders the plain resize
+// keywords as legacy glyphs, so we ship our own image (keyword kept as fallback).
+const RESIZE_NWSE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6 L18 18 M6 6 L6 10 M6 6 L10 6 M18 18 L14 18 M18 18 L18 14" stroke="#ffffff" stroke-width="3.5"/><path d="M6 6 L18 18 M6 6 L6 10 M6 6 L10 6 M18 18 L14 18 M18 18 L18 14" stroke="#111827" stroke-width="1.7"/></g></svg>`
+)}") 16 16,nwse-resize`
+const RESIZE_NESW_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 L6 18 M18 6 L14 6 M18 6 L18 10 M6 18 L10 18 M6 18 L6 14" stroke="#ffffff" stroke-width="3.5"/><path d="M18 6 L6 18 M18 6 L14 6 M18 6 L18 10 M6 18 L10 18 M6 18 L6 14" stroke="#111827" stroke-width="1.7"/></g></svg>`
+)}") 16 16,nesw-resize`
 
 // Mask an icon so a `bg-current` element paints it in the current text colour —
 // used for the thicker filled chevron assets (same approach as product-tile).
@@ -147,6 +157,20 @@ export default function Designer() {
   // gestures (pinch, slider drag) keep it off so they don't feel laggy.
   const [zoomAnimate, setZoomAnimate] = useState(false)
   const canvasScrollRef = useRef<HTMLDivElement>(null)
+  // Live mirror of zoom so the +/- easing can read the current value.
+  const zoomRef = useRef(zoom)
+  useEffect(() => {
+    zoomRef.current = zoom
+  }, [zoom])
+  // rAF handle for the +/- zoom easing (see animateZoomTo).
+  const zoomRafRef = useRef<number | null>(null)
+  const cancelZoomAnim = () => {
+    if (zoomRafRef.current != null) {
+      cancelAnimationFrame(zoomRafRef.current)
+      zoomRafRef.current = null
+    }
+  }
+  useEffect(() => cancelZoomAnim, [])
   // While a pinch is in flight, the zoom anchors on the cursor's content point
   // instead of the design's group centre. Recomputing the group centre on every
   // tick reads object rects that depend on the scroll we just set — a feedback
@@ -168,6 +192,7 @@ export default function Designer() {
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
+      cancelZoomAnim()
       // Capture the content point under the cursor so the centering effect can
       // keep it fixed across the zoom (stable; no group-centre feedback loop).
       const rect = el.getBoundingClientRect()
@@ -192,35 +217,41 @@ export default function Designer() {
     el.addEventListener("wheel", onWheel, { passive: false })
     return () => el.removeEventListener("wheel", onWheel)
   }, [])
-  // Press-and-hold on the zoom +/- buttons keeps zooming instead of stopping
-  // after a single step. The first step is a discrete tap (animated); after a
-  // short hold it repeats continuously with animation off, so it tracks
-  // smoothly like the slider rather than re-animating each tick.
-  const zoomHoldRef = useRef<{ timeout: number | null; interval: number | null }>({
-    timeout: null,
-    interval: null,
-  })
-  const changeZoom = (delta: number, animate: boolean) => {
-    setZoomAnimate(animate)
-    setZoom(z => Math.min(6, Math.max(1, Math.round((z + delta) * 100) / 100)))
-  }
-  const startZoomHold = (dir: 1 | -1) => {
-    changeZoom(dir * 0.25, true)
-    zoomHoldRef.current.timeout = window.setTimeout(() => {
-      zoomHoldRef.current.interval = window.setInterval(() => changeZoom(dir * 0.1, false), 50)
-    }, 300)
-  }
-  const stopZoomHold = () => {
-    if (zoomHoldRef.current.timeout) {
-      window.clearTimeout(zoomHoldRef.current.timeout)
-      zoomHoldRef.current.timeout = null
+  // The zoom +/- buttons jump between fixed stops (1× → 3× → 6×). We ease the
+  // zoom value ourselves with rAF (each frame is instant, no CSS height
+  // transition) so it animates smoothly AND the group-centering effect re-centres
+  // every frame — a CSS height transition would clamp the scroll mid-animation
+  // and drift off the objects / print area.
+  const ZOOM_STOPS = [1, 3, 6] as const
+  const animateZoomTo = (target: number) => {
+    cancelZoomAnim()
+    setZoomAnimate(false)
+    const start = zoomRef.current
+    if (Math.abs(target - start) < 0.001) return
+    const duration = 260
+    const startTime = performance.now()
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - startTime) / duration)
+      const v = start + (target - start) * easeOutCubic(t)
+      setZoom(Math.round(v * 100) / 100)
+      if (t < 1) {
+        zoomRafRef.current = requestAnimationFrame(tick)
+      } else {
+        zoomRafRef.current = null
+        setZoom(target)
+      }
     }
-    if (zoomHoldRef.current.interval) {
-      window.clearInterval(zoomHoldRef.current.interval)
-      zoomHoldRef.current.interval = null
-    }
+    zoomRafRef.current = requestAnimationFrame(tick)
   }
-  useEffect(() => stopZoomHold, [])
+  const stepZoomStop = (dir: 1 | -1) => {
+    const cur = zoomRef.current
+    const target =
+      dir === 1
+        ? (ZOOM_STOPS.find(s => s > cur + 0.001) ?? ZOOM_STOPS[ZOOM_STOPS.length - 1])
+        : ([...ZOOM_STOPS].reverse().find(s => s < cur - 0.001) ?? ZOOM_STOPS[0])
+    animateZoomTo(target)
+  }
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false)
   // Which inactive view dot is hovered — drives the preview popover above the
   // switcher. lastPreviewViewRef keeps the last one rendered during fade-out.
@@ -569,6 +600,7 @@ export default function Designer() {
     // cursor-anchored scroll lands exactly — animating the height would make
     // the view jump while the canvas is still growing.
     setZoomAnimate(false)
+    cancelZoomAnim()
     setZoom(z => Math.min(6, Math.round((z + 1) * 100) / 100))
   }
   // Clear the border-hover state whenever editing ends, so borders don't stay
@@ -816,15 +848,17 @@ export default function Designer() {
     src: string,
     opts?: { centerX?: number; centerY?: number; widthPct?: number }
   ) => {
-    // First-run "where to place" picker: on a multi-view product the picked
-    // image waits while the user chooses the target view.
-    if (!firstAddDone && productData && productData.views.length > 1) {
-      pendingGraphicRef.current = { src, opts }
-      setActivePanel(null)
-      setViewPickerForAdd(true)
-      setViewDropdownOpen(true)
-      return
-    }
+    // First-run "Where do you want to place?" picker — intentionally disabled:
+    // we let the user discover view switching (the placement dropdown) on their
+    // own instead of forcing the picker open before the first graphic is added.
+    // To bring it back, uncomment the block below.
+    // if (!firstAddDone && productData && productData.views.length > 1) {
+    //   pendingGraphicRef.current = { src, opts }
+    //   setActivePanel(null)
+    //   setViewPickerForAdd(true)
+    //   setViewDropdownOpen(true)
+    //   return
+    // }
     placeGraphicElement(src, opts)
   }
 
@@ -1258,13 +1292,16 @@ export default function Designer() {
   // Graphics/uploads open their panel right away — their view picker triggers
   // in addGraphicElement, once the user has actually picked an image.
   const startAdd = (intent: "text" | "uploads" | "graphics") => {
-    // First-run picker for text: ask where to place before adding.
-    if (intent === "text" && !firstAddDone && productData && productData.views.length > 1) {
-      pendingAddIntentRef.current = intent
-      setViewPickerForAdd(true)
-      setViewDropdownOpen(true)
-      return
-    }
+    // First-run "Where do you want to place?" picker — intentionally disabled:
+    // we let the user discover view switching (the placement dropdown) on their
+    // own instead of forcing the picker open before the first text is added.
+    // To bring it back, uncomment the block below.
+    // if (intent === "text" && !firstAddDone && productData && productData.views.length > 1) {
+    //   pendingAddIntentRef.current = intent
+    //   setViewPickerForAdd(true)
+    //   setViewDropdownOpen(true)
+    //   return
+    // }
     runAddIntent(intent)
   }
   // After the user picks a view in the first-run flow, run the pending add once
@@ -2621,8 +2658,8 @@ export default function Designer() {
                             {(["nw", "ne", "sw", "se"] as const).map(corner => {
                               const cursor =
                                 corner === "nw" || corner === "se"
-                                  ? "cursor-nwse-resize"
-                                  : "cursor-nesw-resize"
+                                  ? RESIZE_NWSE_CURSOR
+                                  : RESIZE_NESW_CURSOR
                               const pos =
                                 corner === "nw"
                                   ? "-top-[7.5px] -left-[7.5px]"
@@ -2634,8 +2671,8 @@ export default function Designer() {
                               return (
                                 <span
                                   key={corner}
-                                  onMouseDown={e => startResize(e, el, corner)}
-                                  className={`absolute ${pos} ${cursor} z-30 block size-[15px] rounded-full border-2 border-[#6366F1] bg-white`}
+                                  style={{ cursor }} onMouseDown={e => startResize(e, el, corner)}
+                                  className={`absolute ${pos} z-30 block size-[15px] rounded-full border-2 border-[#6366F1] bg-white transition-colors hover:border-white hover:bg-[#6366F1]`}
                                 />
                               )
                             })}
@@ -2694,8 +2731,8 @@ export default function Designer() {
                           (["nw", "ne", "sw", "se"] as const).map(corner => {
                             const cursor =
                               corner === "nw" || corner === "se"
-                                ? "cursor-nwse-resize"
-                                : "cursor-nesw-resize"
+                                ? RESIZE_NWSE_CURSOR
+                                : RESIZE_NESW_CURSOR
                             const pos =
                               corner === "nw"
                                 ? "-top-[7.5px] -left-[7.5px]"
@@ -2707,8 +2744,8 @@ export default function Designer() {
                             return (
                               <span
                                 key={corner}
-                                onMouseDown={e => startResize(e, el, corner)}
-                                className={`absolute ${pos} ${cursor} z-30 block size-[15px] rounded-full border-2 border-[#6366F1] bg-white`}
+                                style={{ cursor }} onMouseDown={e => startResize(e, el, corner)}
+                                className={`absolute ${pos} z-30 block size-[15px] rounded-full border-2 border-[#6366F1] bg-white transition-colors hover:border-white hover:bg-[#6366F1]`}
                               />
                             )
                           })}
@@ -2759,8 +2796,8 @@ export default function Designer() {
                         (["nw", "ne", "sw", "se"] as const).map(corner => {
                           const cursor =
                             corner === "nw" || corner === "se"
-                              ? "cursor-nwse-resize"
-                              : "cursor-nesw-resize"
+                              ? RESIZE_NWSE_CURSOR
+                              : RESIZE_NESW_CURSOR
                           const pos =
                             corner === "nw"
                               ? "-top-[7.5px] -left-[7.5px]"
@@ -2772,8 +2809,8 @@ export default function Designer() {
                           return (
                             <span
                               key={corner}
-                              onMouseDown={e => startResize(e, el, corner, "graphic")}
-                              className={`absolute ${pos} ${cursor} block size-[15px] rounded-full border-2 border-[#6366F1] bg-white`}
+                              style={{ cursor }} onMouseDown={e => startResize(e, el, corner, "graphic")}
+                              className={`absolute ${pos} ${cursor} block size-[15px] rounded-full border-2 border-[#6366F1] bg-white transition-colors hover:border-white hover:bg-[#6366F1]`}
                             />
                           )
                         })}
@@ -2917,16 +2954,7 @@ export default function Designer() {
                 <button
                   type="button"
                   aria-label="Zoom in"
-                  onPointerDown={() => startZoomHold(1)}
-                  onPointerUp={stopZoomHold}
-                  onPointerLeave={stopZoomHold}
-                  onPointerCancel={stopZoomHold}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault()
-                      changeZoom(0.25, true)
-                    }
-                  }}
+                  onClick={() => stepZoomStop(1)}
                   className="flex h-9 w-9 -m-1 cursor-pointer items-center justify-center rounded-full text-black transition-colors duration-300 hover:bg-neutral-100"
                 >
                   <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
@@ -2951,6 +2979,7 @@ export default function Designer() {
                     max={6}
                     value={zoom}
                     onChange={v => {
+                      cancelZoomAnim()
                       setZoomAnimate(false)
                       setZoom(v)
                     }}
@@ -2962,16 +2991,7 @@ export default function Designer() {
                 <button
                   type="button"
                   aria-label="Zoom out"
-                  onPointerDown={() => startZoomHold(-1)}
-                  onPointerUp={stopZoomHold}
-                  onPointerLeave={stopZoomHold}
-                  onPointerCancel={stopZoomHold}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault()
-                      changeZoom(-0.25, true)
-                    }
-                  }}
+                  onClick={() => stepZoomStop(-1)}
                   className="flex h-9 w-9 -m-1 cursor-pointer items-center justify-center rounded-full text-black transition-colors duration-300 hover:bg-neutral-100"
                 >
                   <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">

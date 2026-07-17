@@ -8,13 +8,16 @@ type WedgeSliderProps = {
   value: number
   onChange: (value: number) => void
   width?: number
+  // Glide the thumb to the new value (used for +/- steps). Always off while the
+  // user is actively dragging so the thumb tracks the pointer 1:1.
+  animate?: boolean
 }
 
 // Drag-relative slider: pressing the thumb does NOT change the value — only
 // actual pointer movement does. A native <input type="range"> jumps the value to
 // wherever you click (so grabbing the thumb near its edge nudges it), which felt
 // wrong for the zoom handle. Here we track movement from the press point instead.
-export function WedgeSlider({ min, max, value, onChange, width = 140 }: WedgeSliderProps) {
+export function WedgeSlider({ min, max, value, onChange, width = 140, animate = false }: WedgeSliderProps) {
   const [isDragging, setIsDragging] = useState(false)
   const trackRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{
@@ -104,7 +107,11 @@ export function WedgeSlider({ min, max, value, onChange, width = 140 }: WedgeSli
       </svg>
       <div
         className="pointer-events-none absolute"
-        style={{ left: `${percentage}%`, transform: `translateX(-${percentage}%)` }}
+        style={{
+          left: `${percentage}%`,
+          transform: `translateX(-${percentage}%)`,
+          transition: animate && !isDragging ? "left 250ms ease, transform 250ms ease" : "none",
+        }}
       >
         <div
           className={
