@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react"
 // start hitch — canvas avoids it, so the animation starts smooth in Chrome too.
 import lottie from "lottie-web/build/player/lottie_canvas"
 
-import animationData from "@/components/ui/lottie/designer-loader.json"
+import animationData from "@/components/ui/lottie/preloader-2.json"
 
 type LottieLoaderProps = {
   size?: number
