@@ -105,6 +105,25 @@ const isDarkProductColor = (hex?: string): boolean => {
   return brightness < 80
 }
 
+// White / near-white products blend into the light (#F4F4F4) tile, so only they
+// get a drop shadow to lift the product image off the background.
+const isLightProductColor = (hex?: string): boolean => {
+  if (!hex) return false
+  const h = hex.replace("#", "")
+  if (h.length !== 6) return false
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  if ([r, g, b].some(n => Number.isNaN(n))) return false
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000
+  return brightness > 225
+}
+
+// Shadow for white/near-white product images. Sharp and tight: small blur (low
+// "spread"), a small vertical offset, and a touch more opacity so it stays
+// visible on the light (#F4F4F4) tile. Tweak the values here.
+const LIGHT_PRODUCT_IMAGE_SHADOW = "drop-shadow(0px 0px 1px rgba(0, 0, 0, 0.55))"
+
 // Embroidery can't stitch arbitrarily large designs. Ported from the dock-change
 // prototype: clamp the design to at most 1/7 of the print area (by area),
 // anchored to its center. Returns the same bbox if it already fits.
@@ -3691,6 +3710,11 @@ export default function Designer() {
                             src={img.src || "/placeholder.svg"}
                             alt={img.alt}
                             className="max-w-full max-h-full object-contain block"
+                            style={
+                              isLightProductColor(img.color)
+                                ? { filter: LIGHT_PRODUCT_IMAGE_SHADOW }
+                                : undefined
+                            }
                           />
                         </button>
                       ))}
@@ -3791,6 +3815,11 @@ export default function Designer() {
                           src={img.src || "/placeholder.svg"}
                           alt={img.alt}
                           className="max-w-full max-h-full object-contain block"
+                          style={
+                            isLightProductColor(img.color)
+                              ? { filter: LIGHT_PRODUCT_IMAGE_SHADOW }
+                              : undefined
+                          }
                         />
                       </button>
                     ))}
