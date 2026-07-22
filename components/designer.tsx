@@ -2546,7 +2546,7 @@ export default function Designer() {
                   loadPhase === "ready" ? "pointer-events-none opacity-0" : "opacity-100"
                 }`}
               >
-                <LottieLoader size={220} />
+                <LottieLoader size={176} />
               </div>
             )}
             <div
