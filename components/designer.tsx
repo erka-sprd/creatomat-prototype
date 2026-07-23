@@ -2519,7 +2519,26 @@ export default function Designer() {
                   loadPhase === "ready" ? "pointer-events-none opacity-0" : "opacity-100"
                 }`}
               >
-                <LottieLoader size={100} />
+                {/* Frosted-glass frame: mostly white/translucent like the
+                    dock-change "+ Add design/text" pill, with very faint washes
+                    of the createomat gradient (red / blue / green). */}
+                <div
+                  className="flex items-center justify-center"
+                  style={{
+                    padding: 36,
+                    borderRadius: "9999px", // circle (frame stays 152px: 80 loader + 36 padding each side)
+                    background:
+                      "radial-gradient(120% 120% at 0% 0%, rgba(220,38,38,0.08), transparent 58%)," +
+                      "radial-gradient(120% 120% at 100% 12%, rgba(77,82,210,0.08), transparent 58%)," +
+                      "radial-gradient(120% 120% at 55% 120%, rgba(22,163,74,0.08), transparent 58%)," +
+                      "rgba(255,255,255,0.72)",
+                    backdropFilter: "blur(24px)",
+                    WebkitBackdropFilter: "blur(24px)",
+                    border: "1px solid rgba(255,255,255,0.6)",
+                  }}
+                >
+                  <LottieLoader size={80} />
+                </div>
               </div>
             )}
             <div
