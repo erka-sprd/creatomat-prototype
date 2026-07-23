@@ -428,3 +428,18 @@
     animation: none;
   }
 }
+
+/* CS-mode gear button: the icon rotates a half turn on hover (slow, smooth) and
+   reverses back when the pointer leaves. */
+.cs-gear {
+  transform-origin: center;
+  transition: transform 0.9s ease;
+}
+.cs-spin-host:hover .cs-gear {
+  transform: rotate(180deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-gear {
+    transition: none;
+  }
+}

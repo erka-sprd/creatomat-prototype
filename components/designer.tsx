@@ -34,6 +34,7 @@ import {
 import { FontPanel } from "@/components/ui/font-panel/FontPanel"
 import { useFonts, getFontVariants } from "@/hooks/useFonts"
 import LottieLoader from "@/components/ui/lottie/LottieLoader"
+import CustomerServiceMode from "@/components/cs-mode/CustomerServiceMode"
 import DockHoverIcon from "@/components/ui/lottie/DockHoverIcon"
 import aiImageAnim from "@/components/ui/lottie/ai-image.json"
 import graphicsAnim from "@/components/ui/lottie/graphics.json"
@@ -148,7 +149,7 @@ function clampEmbroideryBbox(b: DesignBbox): DesignBbox {
   return { x: cx - w / 2, y: cy - h / 2, w, h }
 }
 
-export default function Designer() {
+export default function Designer({ csMode = false }: { csMode?: boolean }) {
   // Product catalogue is fetched once from the central host at runtime.
   const [products, setProducts] = useState<StaticProduct[]>([])
   useEffect(() => {
@@ -1393,6 +1394,45 @@ export default function Designer() {
   const visibleGraphicElements = currentPrintAreaId
     ? graphicElements.filter(g => g.printAreaId === currentPrintAreaId)
     : []
+
+  // Per-view object summary for the customer-service modal (Print / Layers tabs).
+  // Objects (text + graphics) are grouped by each view's print area, top layer first.
+  const csViews = useMemo(() => {
+    if (!productData) return []
+    return productData.views.map(v => {
+      const pa = v.viewMaps[0]?.printAreaId
+      const objects = [
+        ...textElements
+          .filter(t => t.printAreaId === pa)
+          .map(t => ({ id: t.id, kind: "text" as const, label: t.content.trim() || "Text", z: t.z })),
+        ...graphicElements
+          .filter(g => g.printAreaId === pa)
+          .map(g => ({ id: g.id, kind: "graphic" as const, label: "Graphic", z: g.z })),
+      ].sort((a, b) => b.z - a.z)
+      return { id: v.id, name: v.name, objects }
+    })
+  }, [productData, textElements, graphicElements])
+
+  // Reorder layers from the CS modal: reassign the print area's existing z "slots"
+  // to the new top->bottom order (top gets the highest z). Only the objects in
+  // that print area are permuted, so canvas stacking (zIndex: el.z) follows.
+  const reorderLayers = (viewId: string, orderedTopFirstIds: string[]) => {
+    const view = productData?.views.find(v => v.id === viewId)
+    const pa = view?.viewMaps[0]?.printAreaId
+    if (!pa) return
+    const slots = [
+      ...textElements.filter(t => t.printAreaId === pa).map(t => t.z),
+      ...graphicElements.filter(g => g.printAreaId === pa).map(g => g.z),
+    ].sort((a, b) => a - b)
+    const zById: Record<string, number> = {}
+    ;[...orderedTopFirstIds].reverse().forEach((id, i) => {
+      if (i < slots.length) zById[id] = slots[i]
+    })
+    setTextElements(prev => prev.map(t => (zById[t.id] !== undefined ? { ...t, z: zById[t.id] } : t)))
+    setGraphicElements(prev =>
+      prev.map(g => (zById[g.id] !== undefined ? { ...g, z: zById[g.id] } : g))
+    )
+  }
 
   // Pending upload from the hero "Upload your logo" button: a data URL stashed in
   // sessionStorage. Once the print area is ready, open the uploads panel and hand
@@ -3027,6 +3067,16 @@ export default function Designer() {
               />
             )}
 
+            {/* Customer-service mode: draggable gear + modal, bounded to the canvas area. */}
+            {csMode && (
+              <CustomerServiceMode
+                views={csViews}
+                activeViewId={activeViewId}
+                container={creatomatContainer}
+                onReorderLayers={reorderLayers}
+              />
+            )}
+
             {/* Zoom control — vertical, bottom-left of the canvas area. Plus on
                 top, minus at the bottom; the WedgeSlider is rotated upright. */}
             <div className="absolute bottom-6 left-6 z-[5] flex w-[48px] flex-col items-center gap-1 rounded-full bg-white py-2.5 shadow-xs transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-105">
@@ -3089,8 +3139,9 @@ export default function Designer() {
             </div>
 
             {/* Model circle (left) + print-technique selection (right), grouped
-                at the bottom-right of the canvas. */}
-            {(currentModelImage || productData?.embroidery) && (
+                at the bottom-right of the canvas. Hidden in CS mode — the print
+                technique is set inside the CS modal instead. */}
+            {!csMode && (currentModelImage || productData?.embroidery) && (
               <div className="absolute bottom-6 right-6 z-20 flex items-center gap-1">
                 {/* Temporarily hidden — "See all pictures" model circle.
                 {currentModelImage && (
