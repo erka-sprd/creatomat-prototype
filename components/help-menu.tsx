@@ -4,10 +4,11 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ChevronDown, Phone } from "lucide-react"
-import { useRef, useState, type ReactNode } from "react"
+import { Fragment, useRef, useState, type ReactNode } from "react"
 
 // "Contact" dropdown (left of the cart), built with the shadcn DropdownMenu.
 // Option icons are the Spreadshirt component-kit icons (v2: Message / Mail /
@@ -42,18 +43,17 @@ type ContactOption = {
 
 const OPTIONS: ContactOption[] = [
     { Icon: ChatIcon, label: "AI Chatbot", sub: "Find easy answers fast", href: "#" },
-    {
-        Icon: MailIcon,
-        label: "Contact form",
-        sub: "Bulk order? We answer in 24 hours except weekends",
-        href: "#",
-    },
+    { Icon: MailIcon, label: "Contact form", href: "#" },
     { Icon: PhoneIcon, label: "0341 996 59989", sub: "Mo-Fr 9-18 Uhr", href: "tel:+4934199659989" },
 ]
+
+// Moved out of the "Contact form" option into the info area pinned at the bottom.
+const BULK_NOTE = "Bulk order? We answer in 24 hours except weekends"
 
 export default function HelpMenu({ variant = "label" }: { variant?: "label" | "icon" }) {
     const [open, setOpen] = useState(false)
     const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
     const openedAt = useRef(0)
 
     // Record when the menu opens so we can ignore the toggle-close click for a
@@ -63,13 +63,17 @@ export default function HelpMenu({ variant = "label" }: { variant?: "label" | "i
         setOpen(next)
     }
 
-    // Open on hover too (Radix is click-only by default). A short close delay
-    // bridges the gap between the trigger and the menu so it doesn't flicker shut.
+    // Open on hover too (Radix is click-only by default). Opening waits 300ms so
+    // a quick pass-over doesn't pop the menu (and doesn't flicker); leaving before
+    // then cancels it. A short close delay bridges the gap to the menu.
     const hoverOpen = () => {
         if (closeTimer.current) clearTimeout(closeTimer.current)
-        changeOpen(true)
+        if (open) return // already open (e.g. moving onto the menu) — nothing to schedule
+        if (openTimer.current) clearTimeout(openTimer.current)
+        openTimer.current = setTimeout(() => changeOpen(true), 300)
     }
     const hoverClose = () => {
+        if (openTimer.current) clearTimeout(openTimer.current) // cancel a pending open
         if (closeTimer.current) clearTimeout(closeTimer.current)
         closeTimer.current = setTimeout(() => setOpen(false), 150)
     }
@@ -118,27 +122,41 @@ export default function HelpMenu({ variant = "label" }: { variant?: "label" | "i
                 onMouseLeave={hoverClose}
                 onCloseAutoFocus={e => e.preventDefault()}
                 onInteractOutside={guardEvent}
-                className="w-56 overflow-hidden rounded-[12px] border-0 bg-white px-0 py-2 text-[14px] text-black shadow-lg"
+                className="flex w-56 flex-col overflow-hidden rounded-[12px] border-0 bg-white p-1.5 text-[14px] text-black shadow-lg"
             >
-                {OPTIONS.map(o => (
-                    <DropdownMenuItem
-                        key={o.label}
-                        asChild
-                        className={`group cursor-pointer gap-3 rounded-none px-4 py-3 text-[14px] hover:bg-neutral-100 focus:bg-neutral-100 ${o.sub ? "items-start" : ""}`}
-                    >
-                        <a href={o.href}>
-                            <o.Icon className="size-[20px] shrink-0 text-neutral-700 transition-colors group-hover:text-black" />
-                            <span className="flex flex-col leading-tight">
-                                <span>{o.label}</span>
-                                {o.sub && (
-                                    <span className="mt-0.5 text-[12px] text-neutral-500">
-                                        {o.sub}
-                                    </span>
-                                )}
-                            </span>
-                        </a>
-                    </DropdownMenuItem>
+                {OPTIONS.map((o, i) => (
+                    <Fragment key={o.label}>
+                        <DropdownMenuItem
+                            asChild
+                            className={`group cursor-pointer gap-3 rounded-lg px-4 py-3 text-[14px] hover:bg-neutral-100 focus:bg-neutral-100 ${o.sub ? "items-start" : ""}`}
+                        >
+                            <a href={o.href}>
+                                <o.Icon className="size-[20px] shrink-0 text-neutral-700 transition-colors group-hover:text-black" />
+                                <span className="flex flex-col leading-tight">
+                                    <span>{o.label}</span>
+                                    {o.sub && (
+                                        <span className="mt-0.5 text-[12px] text-neutral-500">
+                                            {o.sub}
+                                        </span>
+                                    )}
+                                </span>
+                            </a>
+                        </DropdownMenuItem>
+                        {/* Separator below the AI Chatbot option */}
+                        {i === 0 && <DropdownMenuSeparator className="mx-0 my-1 h-px bg-neutral-200" />}
+                    </Fragment>
                 ))}
+                {/* Info area pinned at the bottom — light purple (create-omat price
+                    calculator panel: #bfb9fd @ 30% + border). Not a button. */}
+                <div
+                    className="mt-1 rounded-lg border px-4 py-3 text-[14px] text-black"
+                    style={{
+                        backgroundColor: "color-mix(in oklab, #bfb9fd 30%, transparent)",
+                        borderColor: "#bfb9fd",
+                    }}
+                >
+                    {BULK_NOTE}
+                </div>
             </DropdownMenuContent>
         </DropdownMenu>
     )

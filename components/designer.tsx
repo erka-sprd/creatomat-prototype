@@ -36,6 +36,7 @@ import { useFonts, getFontVariants } from "@/hooks/useFonts"
 import LottieLoader from "@/components/ui/lottie/LottieLoader"
 import CustomerServiceMode from "@/components/cs-mode/CustomerServiceMode"
 import HelpMenu from "@/components/help-menu"
+import ProductsIcon from "@/components/products-icon"
 import ShareButton from "@/components/share-button"
 import DockHoverIcon from "@/components/ui/lottie/DockHoverIcon"
 import aiImageAnim from "@/components/ui/lottie/ai-image.json"
@@ -2332,11 +2333,11 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                 onMouseLeave={() => setHoveredButton(null)}
                 onClick={() => setProductsDrawerOpen(true)}
                 className={
-                  "w-[88px] h-auto flex flex-col items-center gap-[8px] p-[8px] rounded-[10px] transition-all duration-200 cursor-pointer " +
+                  "group w-[88px] h-auto flex flex-col items-center gap-[8px] p-[8px] rounded-[10px] transition-all duration-200 cursor-pointer " +
                   (hoveredButton === "products" ? "bg-[#E9E9E9]" : "bg-transparent")
                 }
               >
-                <img src="/images/blankproduct.png" alt="Products" className="size-14" />
+                <ProductsIcon className="size-14" />
                 <div className="text-[12px] font-[600] text-black text-center">Products</div>
               </button>
             </div>
@@ -3143,7 +3144,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
 
             {/* Contact + Share — bordered button group, top-right of the canvas. */}
             <div
-              className={`absolute top-6 right-6 z-[4] flex items-center rounded-full border border-neutral-200 transition-[filter,opacity] duration-200 ${
+              className={`absolute top-6 right-6 z-[4] flex items-center rounded-full border border-neutral-200 bg-[#F4F4F4] transition-[filter,opacity] duration-200 ${
                 selectedText || selectedGraphicId ? "pointer-events-none opacity-60 blur-xs" : ""
               }`}
             >
