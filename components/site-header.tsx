@@ -1,3 +1,6 @@
+import HelpMenu from "@/components/help-menu"
+import PromoBanner from "@/components/promo-banner"
+
 type SiteHeaderProps = {
   hidden?: boolean
   onCartClick?: () => void
@@ -13,18 +16,12 @@ export default function SiteHeader({
     <header
       className={`${hidden ? "hidden" : "flex"} flex-none w-full flex-col shadow-[0_2px_4px_rgba(0,0,0,0.04)] bg-white`}
     >
-      <div className="flex h-8 w-full items-center justify-center bg-[#FF6038]">
-        <div className="mx-auto flex w-full max-w-[1920px] items-center justify-center gap-2 px-8 text-[12px] text-black">
-          <span className="font-semibold">30% off everything</span>
-          <a href="#" className="font-semibold underline underline-offset-2">
-            Redeem Code Now
-          </a>
-        </div>
-      </div>
-      <div className="mx-auto w-full max-w-[1920px] px-8">
-        <div className="flex h-16 w-full items-center justify-between">
+      <PromoBanner />
+      <div className="w-full px-8">
+        <div className="mx-auto flex h-16 w-full max-w-[1920px] items-center justify-between">
           <img src="/icons/Logo.svg" alt="Spreadshirt" className="h-[28px]" />
           <div className="flex items-center gap-6">
+            <HelpMenu />
             <button
               type="button"
               aria-label="Cart"

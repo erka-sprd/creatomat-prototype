@@ -3775,10 +3775,17 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
               </div>
             )}
             <div id="top-part" className="flex-shrink-0">
-              <div className="flex items-start justify-between mb-[8px]">
+              <div className="flex items-start justify-between gap-2 mb-[8px]">
                 <h1 className="font-display text-[20px] font-[800] text-black leading-tight line-clamp-2">
                   {productData?.name ?? ""}
                 </h1>
+                <button
+                  type="button"
+                  aria-label="Share"
+                  className="h-10 shrink-0 cursor-pointer rounded-md p-2 transition-colors hover:bg-neutral-200"
+                >
+                  <img src="/icons/icon-share.svg" alt="" className="h-6 w-6" />
+                </button>
               </div>
               <button
                 type="button"
