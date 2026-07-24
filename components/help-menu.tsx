@@ -149,10 +149,9 @@ export default function HelpMenu({ variant = "label" }: { variant?: "label" | "i
                 {/* Info area pinned at the bottom — light purple (create-omat price
                     calculator panel: #bfb9fd @ 30% + border). Not a button. */}
                 <div
-                    className="mt-1 rounded-lg border px-4 py-3 text-[14px] text-black"
+                    className="mt-1 rounded-lg px-4 py-3 text-[14px] text-black"
                     style={{
                         backgroundColor: "color-mix(in oklab, #bfb9fd 30%, transparent)",
-                        borderColor: "#bfb9fd",
                     }}
                 >
                     {BULK_NOTE}
