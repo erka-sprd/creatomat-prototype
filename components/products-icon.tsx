@@ -15,7 +15,7 @@ export default function ProductsIcon({ className = "" }: { className?: string })
                     transition:
                         "width 300ms ease-out, translate 300ms ease-out, rotate 300ms ease-out",
                 }}
-                className="absolute bottom-0 right-0 h-auto w-[10px] -translate-x-[22px] -translate-y-[10px] rotate-0 group-hover:w-[24px] group-hover:translate-x-0 group-hover:translate-y-[5px] group-hover:rotate-[24deg]"
+                className="absolute bottom-0 right-0 h-auto w-[10px] -scale-x-100 -translate-x-[22px] -translate-y-[10px] rotate-0 group-hover:w-[24px] group-hover:translate-x-0 group-hover:translate-y-[5px] group-hover:rotate-[24deg]"
             />
             {/* hoodie — larger, anchored bottom-left */}
             <img

@@ -4404,13 +4404,9 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
               <button
                 type="button"
                 onClick={() => openFromOnboarding(() => setProductsDrawerOpen(true))}
-                className="flex flex-col items-center gap-[10px] rounded-[12px] bg-neutral-100 px-[29px] py-[17px] cursor-pointer transition-colors hover:bg-neutral-200"
+                className="group flex flex-col items-center gap-[10px] rounded-[12px] bg-neutral-100 px-[29px] py-[17px] cursor-pointer transition-colors hover:bg-neutral-200"
               >
-                <img
-                  src="/images/blankproduct.png"
-                  alt=""
-                  className="h-14 w-14 object-contain"
-                />
+                <ProductsIcon className="size-14" />
                 <span className="text-[14px] font-semibold text-black">Choose Product</span>
               </button>
 
