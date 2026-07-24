@@ -1451,6 +1451,31 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
     setGraphicElements(snap.graphic)
   }
 
+  // CS-modal editing session: snapshot layer state when the modal opens so edits
+  // (delete / reorder) only persist on Save and fully revert on Cancel/dismiss.
+  // Edits still preview live on the canvas while the modal is open.
+  const csBaselineRef = useRef<LayerSnapshot | null>(null)
+  const beginCsSession = () => {
+    csBaselineRef.current = { text: textElements, graphic: graphicElements }
+    setUndoStack([])
+    setRedoStack([])
+  }
+  const commitCsSession = () => {
+    csBaselineRef.current = null
+    setUndoStack([])
+    setRedoStack([])
+  }
+  const revertCsSession = () => {
+    const base = csBaselineRef.current
+    if (base) {
+      setTextElements(base.text)
+      setGraphicElements(base.graphic)
+    }
+    csBaselineRef.current = null
+    setUndoStack([])
+    setRedoStack([])
+  }
+
   // Reorder layers from the CS modal: reassign the print area's existing z "slots"
   // to the new top->bottom order (top gets the highest z). Only the objects in
   // that print area are permuted, so canvas stacking (zIndex: el.z) follows.
@@ -3139,6 +3164,9 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                 onRedo={redoLayers}
                 canUndo={undoStack.length > 0}
                 canRedo={redoStack.length > 0}
+                onSessionBegin={beginCsSession}
+                onSessionCommit={commitCsSession}
+                onSessionRevert={revertCsSession}
               />
             )}
 

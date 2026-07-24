@@ -41,8 +41,13 @@ type ContactOption = {
 }
 
 const OPTIONS: ContactOption[] = [
-    { Icon: ChatIcon, label: "Live chat", href: "#" },
-    { Icon: MailIcon, label: "Contact form", href: "#" },
+    { Icon: ChatIcon, label: "AI Chatbot", sub: "Find easy answers fast", href: "#" },
+    {
+        Icon: MailIcon,
+        label: "Contact form",
+        sub: "Bulk order? We answer in 24 hours except weekends",
+        href: "#",
+    },
     { Icon: PhoneIcon, label: "0341 996 59989", sub: "Mo-Fr 9-18 Uhr", href: "tel:+4934199659989" },
 ]
 

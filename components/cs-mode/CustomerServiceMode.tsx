@@ -50,6 +50,9 @@ type Props = {
     onRedo: () => void
     canUndo: boolean
     canRedo: boolean
+    onSessionBegin: () => void
+    onSessionCommit: () => void
+    onSessionRevert: () => void
 }
 
 const TECHNIQUES = [1, 2, 3]
@@ -90,6 +93,9 @@ export default function CustomerServiceMode({
     onRedo,
     canUndo,
     canRedo,
+    onSessionBegin,
+    onSessionCommit,
+    onSessionRevert,
 }: Props) {
     const areaRef = useRef<HTMLDivElement>(null)
     const [pos, setPos] = useState<Point | null>(null)
@@ -182,21 +188,26 @@ export default function CustomerServiceMode({
         }
         const moved = drag.current?.moved
         drag.current = null
-        if (!moved) setOpen(true) // a press without a drag opens the modal
+        if (!moved) {
+            onSessionBegin() // snapshot layer state so edits can be reverted on Cancel
+            setOpen(true) // a press without a drag opens the modal
+        }
     }
 
     const handleSave = () => {
-        // Prototype: no backend yet — capture the current selections and close.
+        // Commit the session: layer edits + print settings persist.
         setSavedTechnique(technique)
         setSavedPrintTypeByView(printTypeByView)
+        onSessionCommit()
         console.log("[cs-mode] saved", { printTechnique: technique, printTypeByView, layersView })
         setOpen(false)
     }
 
-    // Cancel: discard this session's print-setting edits (revert to the last
-    // saved values) and close without saving. Layer edits apply live — use the
-    // undo button to revert those.
+    // Cancel / dismiss: revert EVERYTHING changed while the modal was open —
+    // layer edits (delete/reorder, via the session snapshot) and print settings
+    // — then close. Nothing persists unless Save was pressed.
     const handleCancel = () => {
+        onSessionRevert()
         setTechnique(savedTechnique)
         setPrintTypeByView(savedPrintTypeByView)
         setOpen(false)
@@ -245,7 +256,10 @@ export default function CustomerServiceMode({
 
             <ScopedDialog
                 open={open}
-                onOpenChange={setOpen}
+                onOpenChange={o => {
+                    // Any dismiss (X / Esc / overlay) is a cancel — revert unsaved edits.
+                    if (!o) handleCancel()
+                }}
                 container={container}
                 overlayClassName="rounded-[12px]"
                 className="flex h-[560px] max-h-[85%] w-[520px] max-w-[92%] flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
