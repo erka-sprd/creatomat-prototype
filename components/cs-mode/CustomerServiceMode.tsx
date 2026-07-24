@@ -1,8 +1,9 @@
 "use client"
 
 import { ScopedDialog, ScopedDialogClose, ScopedDialogTitle } from "@/components/ui/scoped-dialog"
-import { ChevronDown, GripVertical, Image as ImageIcon, Settings, Type, X } from "lucide-react"
+import { ChevronDown, GripVertical, Image as ImageIcon, Redo2, Settings, Trash2, Undo2, X } from "lucide-react"
 import { PointerEvent as ReactPointerEvent, ReactNode, useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 
 // Customer-service mode: a draggable gear button that floats over the canvas
 // area and opens a settings modal (Print / Layers tabs). Rendered inside
@@ -14,15 +15,41 @@ const BTN = 52
 const MARGIN = 24
 const DRAG_THRESHOLD = 3 // px before a press counts as a drag (not a click)
 
-type CsObject = { id: string; kind: "text" | "graphic"; label: string; z: number }
+type CsObject = {
+    id: string
+    kind: "text" | "graphic"
+    label: string
+    z: number
+    // Preview data so layers render as they actually look.
+    src?: string // graphic image
+    color?: string // text colour
+    fontFamily?: string // text font
+    bold?: boolean
+    italic?: boolean
+    underline?: boolean
+}
 type CsView = { id: string; name: string; objects: CsObject[] }
 type Point = { x: number; y: number }
+
+// Checkerboard so any colour (incl. white/transparent) stays visible in the tile.
+const CHECKER: React.CSSProperties = {
+    backgroundColor: "#fff",
+    backgroundImage:
+        "linear-gradient(45deg,#e6e6e6 25%,transparent 25%),linear-gradient(-45deg,#e6e6e6 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e6e6e6 75%),linear-gradient(-45deg,transparent 75%,#e6e6e6 75%)",
+    backgroundSize: "8px 8px",
+    backgroundPosition: "0 0,0 4px,4px -4px,-4px 0",
+}
 
 type Props = {
     views: CsView[]
     activeViewId: string
     container: HTMLElement | null
     onReorderLayers: (viewId: string, orderedTopFirstIds: string[]) => void
+    onDeleteLayer: (viewId: string, layerId: string) => void
+    onUndo: () => void
+    onRedo: () => void
+    canUndo: boolean
+    canRedo: boolean
 }
 
 const TECHNIQUES = [1, 2, 3]
@@ -58,6 +85,11 @@ export default function CustomerServiceMode({
     activeViewId,
     container,
     onReorderLayers,
+    onDeleteLayer,
+    onUndo,
+    onRedo,
+    canUndo,
+    canRedo,
 }: Props) {
     const areaRef = useRef<HTMLDivElement>(null)
     const [pos, setPos] = useState<Point | null>(null)
@@ -68,6 +100,23 @@ export default function CustomerServiceMode({
     const [tab, setTab] = useState<"print" | "layers">("print")
     const [technique, setTechnique] = useState(1)
     const [printTypeByView, setPrintTypeByView] = useState<Record<string, number>>({})
+    // Last-saved snapshot of the print settings so Cancel can discard edits.
+    const [savedTechnique, setSavedTechnique] = useState(1)
+    const [savedPrintTypeByView, setSavedPrintTypeByView] = useState<Record<string, number>>({})
+    // Hover preview of a graphic layer — shown 10x the 32px tile (320px) in a
+    // portal popover so it isn't clipped by the modal. Positioned beside the
+    // tile, flipping side / clamping to stay on-screen.
+    const [preview, setPreview] = useState<{ o: CsObject; top: number; left: number } | null>(null)
+    const showPreview = (el: HTMLElement, o: CsObject) => {
+        const r = el.getBoundingClientRect()
+        const SIZE = 320
+        const GAP = 12
+        let left = r.right + GAP
+        if (left + SIZE > window.innerWidth - 8) left = r.left - GAP - SIZE
+        left = Math.max(8, left)
+        const top = Math.max(8, Math.min(r.top + r.height / 2 - SIZE / 2, window.innerHeight - SIZE - 8))
+        setPreview({ o, top, left })
+    }
     const [layersView, setLayersView] = useState(activeViewId)
     // Local top->bottom order of layer ids for the selected view (drag reorder).
     const [order, setOrder] = useState<string[]>([])
@@ -138,7 +187,18 @@ export default function CustomerServiceMode({
 
     const handleSave = () => {
         // Prototype: no backend yet — capture the current selections and close.
+        setSavedTechnique(technique)
+        setSavedPrintTypeByView(printTypeByView)
         console.log("[cs-mode] saved", { printTechnique: technique, printTypeByView, layersView })
+        setOpen(false)
+    }
+
+    // Cancel: discard this session's print-setting edits (revert to the last
+    // saved values) and close without saving. Layer edits apply live — use the
+    // undo button to revert those.
+    const handleCancel = () => {
+        setTechnique(savedTechnique)
+        setPrintTypeByView(savedPrintTypeByView)
         setOpen(false)
     }
 
@@ -348,16 +408,67 @@ export default function CustomerServiceMode({
                                                         className="flex cursor-grab items-center gap-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 select-none active:cursor-grabbing"
                                                     >
                                                         <GripVertical size={16} className="shrink-0 text-neutral-400" />
-                                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-700">
-                                                            {o.kind === "text" ? (
-                                                                <Type size={15} />
+                                                        <span
+                                                            className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-neutral-200"
+                                                            style={CHECKER}
+                                                            onMouseEnter={e => showPreview(e.currentTarget, o)}
+                                                            onMouseLeave={() => setPreview(null)}
+                                                        >
+                                                            {o.kind === "graphic" ? (
+                                                                o.src ? (
+                                                                    <img
+                                                                        src={o.src}
+                                                                        alt=""
+                                                                        className="h-full w-full object-contain"
+                                                                    />
+                                                                ) : (
+                                                                    <ImageIcon size={15} className="text-neutral-700" />
+                                                                )
                                                             ) : (
-                                                                <ImageIcon size={15} />
+                                                                <span
+                                                                    className="text-[16px] leading-none"
+                                                                    style={{
+                                                                        fontFamily: o.fontFamily,
+                                                                        color: o.color,
+                                                                        fontWeight: o.bold ? 700 : 400,
+                                                                        fontStyle: o.italic ? "italic" : "normal",
+                                                                    }}
+                                                                >
+                                                                    {(o.label || "T").trim().charAt(0).toUpperCase() || "T"}
+                                                                </span>
                                                             )}
                                                         </span>
-                                                        <span className="truncate text-[14px] text-black">
-                                                            {o.label}
+                                                        <span
+                                                            className="flex-1 truncate text-[14px] text-black"
+                                                            style={
+                                                                o.kind === "text"
+                                                                    ? {
+                                                                          fontFamily: o.fontFamily,
+                                                                          fontWeight: o.bold ? 700 : 400,
+                                                                          fontStyle: o.italic ? "italic" : "normal",
+                                                                          textDecoration: o.underline
+                                                                              ? "underline"
+                                                                              : "none",
+                                                                      }
+                                                                    : undefined
+                                                            }
+                                                        >
+                                                            {o.kind === "graphic" ? "Image" : o.label}
                                                         </span>
+                                                        <button
+                                                            type="button"
+                                                            aria-label={`Delete ${o.label}`}
+                                                            draggable={false}
+                                                            onPointerDown={e => e.stopPropagation()}
+                                                            onDragStart={e => e.preventDefault()}
+                                                            onClick={e => {
+                                                                e.stopPropagation()
+                                                                if (layerView) onDeleteLayer(layerView.id, o.id)
+                                                            }}
+                                                            className="shrink-0 cursor-pointer rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                                                        >
+                                                            <Trash2 size={15} />
+                                                        </button>
                                                     </div>
                                                 ))}
                                             </div>
@@ -368,16 +479,89 @@ export default function CustomerServiceMode({
                         </div>
 
                         {/* footer */}
-                        <div className="flex justify-end border-t border-neutral-200 px-[20px] py-[14px]">
-                            <button
-                                type="button"
-                                onClick={handleSave}
-                                className="cursor-pointer rounded-full bg-black px-6 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-neutral-800"
-                            >
-                                Save
-                            </button>
+                        <div className="flex items-center justify-between border-t border-neutral-200 px-[20px] py-[14px]">
+                            {/* undo / redo */}
+                            <div className="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    aria-label="Undo"
+                                    onClick={onUndo}
+                                    disabled={!canUndo}
+                                    className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-default disabled:text-neutral-300 disabled:hover:bg-transparent"
+                                >
+                                    <Undo2 size={18} />
+                                </button>
+                                <button
+                                    type="button"
+                                    aria-label="Redo"
+                                    onClick={onRedo}
+                                    disabled={!canRedo}
+                                    className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-default disabled:text-neutral-300 disabled:hover:bg-transparent"
+                                >
+                                    <Redo2 size={18} />
+                                </button>
+                            </div>
+                            {/* cancel / save */}
+                            <div className="flex items-center gap-2.5">
+                                <button
+                                    type="button"
+                                    onClick={handleCancel}
+                                    className="cursor-pointer rounded-full border border-neutral-300 px-6 py-2.5 text-[14px] font-semibold text-neutral-700 transition-colors hover:bg-neutral-100"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSave}
+                                    className="cursor-pointer rounded-full bg-black px-6 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-neutral-800"
+                                >
+                                    Save
+                                </button>
+                            </div>
                         </div>
             </ScopedDialog>
+
+            {preview &&
+                createPortal(
+                    <div
+                        className="pointer-events-none fixed z-[1000]"
+                        style={{ top: preview.top, left: preview.left }}
+                    >
+                        <div className="rounded-xl border border-neutral-300 p-2 shadow-2xl" style={CHECKER}>
+                            {preview.o.kind === "graphic" && preview.o.src ? (
+                                <img
+                                    src={preview.o.src}
+                                    alt=""
+                                    style={{ width: 320, height: 320, objectFit: "contain", display: "block" }}
+                                />
+                            ) : (
+                                <div
+                                    style={{
+                                        width: 320,
+                                        height: 320,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        padding: 16,
+                                        textAlign: "center",
+                                        overflow: "hidden",
+                                        wordBreak: "break-word",
+                                        fontSize: 48,
+                                        lineHeight: 1.15,
+                                        fontFamily: preview.o.fontFamily,
+                                        color: preview.o.color,
+                                        fontWeight: preview.o.bold ? 700 : 400,
+                                        fontStyle: preview.o.italic ? "italic" : "normal",
+                                        textDecoration: preview.o.underline ? "underline" : "none",
+                                    }}
+                                >
+                                    {preview.o.label}
+                                </div>
+                            )}
+                        </div>
+                    </div>,
+                    document.body
+                )}
         </>
     )
 }

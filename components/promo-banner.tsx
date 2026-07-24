@@ -1,8 +1,10 @@
 "use client"
 
-import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { ReactNode, useEffect, useState } from "react"
 
-// Top promo bar: rolls horizontally to the next message every 5s, slow and smooth.
+// Top promo bar: rolls horizontally to the next message every 5s, slow and
+// smooth. Percentage-based translate (no width measuring) so it works in every
+// browser — each panel is full width and the track shifts one panel per step.
 const ROLL_MS = 1000
 const HOLD_MS = 5000
 
@@ -27,8 +29,6 @@ const MESSAGES: ReactNode[] = [
 ]
 
 export default function PromoBanner() {
-    const barRef = useRef<HTMLDivElement>(null)
-    const [width, setWidth] = useState(0)
     const [index, setIndex] = useState(0)
     const [withTransition, setWithTransition] = useState(true)
     const [reduce, setReduce] = useState(false)
@@ -36,17 +36,6 @@ export default function PromoBanner() {
 
     useEffect(() => {
         setReduce(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false)
-    }, [])
-
-    // Measure the bar width so each slide steps exactly one panel.
-    useLayoutEffect(() => {
-        const el = barRef.current
-        if (!el) return
-        const update = () => setWidth(el.clientWidth)
-        update()
-        const ro = new ResizeObserver(update)
-        ro.observe(el)
-        return () => ro.disconnect()
     }, [])
 
     useEffect(() => {
@@ -72,11 +61,11 @@ export default function PromoBanner() {
     }, [withTransition])
 
     return (
-        <div ref={barRef} className="h-8 w-full overflow-hidden bg-[#FF6038]">
+        <div className="h-8 w-full overflow-hidden bg-[#FF6038]">
             <div
-                className="flex h-8"
+                className="flex h-8 w-full"
                 style={{
-                    transform: `translateX(-${index * width}px)`,
+                    transform: `translateX(-${index * 100}%)`,
                     transition:
                         withTransition && !reduce
                             ? `transform ${ROLL_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`
@@ -86,8 +75,7 @@ export default function PromoBanner() {
                 {items.map((msg, i) => (
                     <div
                         key={i}
-                        style={{ width }}
-                        className="flex h-8 shrink-0 items-center justify-center gap-2 px-8 text-[12px] text-black"
+                        className="flex h-8 w-full shrink-0 items-center justify-center gap-2 px-8 text-[12px] text-black"
                     >
                         {msg}
                     </div>

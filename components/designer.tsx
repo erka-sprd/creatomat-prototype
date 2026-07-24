@@ -35,6 +35,8 @@ import { FontPanel } from "@/components/ui/font-panel/FontPanel"
 import { useFonts, getFontVariants } from "@/hooks/useFonts"
 import LottieLoader from "@/components/ui/lottie/LottieLoader"
 import CustomerServiceMode from "@/components/cs-mode/CustomerServiceMode"
+import HelpMenu from "@/components/help-menu"
+import ShareButton from "@/components/share-button"
 import DockHoverIcon from "@/components/ui/lottie/DockHoverIcon"
 import aiImageAnim from "@/components/ui/lottie/ai-image.json"
 import graphicsAnim from "@/components/ui/lottie/graphics.json"
@@ -1404,14 +1406,50 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
       const objects = [
         ...textElements
           .filter(t => t.printAreaId === pa)
-          .map(t => ({ id: t.id, kind: "text" as const, label: t.content.trim() || "Text", z: t.z })),
+          .map(t => ({
+            id: t.id,
+            kind: "text" as const,
+            label: t.content.trim() || "Text",
+            z: t.z,
+            color: t.color,
+            fontFamily: t.fontFamily,
+            bold: !!t.bold,
+            italic: !!t.italic,
+            underline: !!t.underline,
+          })),
         ...graphicElements
           .filter(g => g.printAreaId === pa)
-          .map(g => ({ id: g.id, kind: "graphic" as const, label: "Graphic", z: g.z })),
+          .map(g => ({ id: g.id, kind: "graphic" as const, label: "Graphic", z: g.z, src: g.src })),
       ].sort((a, b) => b.z - a.z)
       return { id: v.id, name: v.name, objects }
     })
   }, [productData, textElements, graphicElements])
+
+  // Undo / redo history for CS-modal layer edits (delete + reorder). Snapshots
+  // the two element arrays before each mutating action.
+  type LayerSnapshot = { text: TextElement[]; graphic: GraphicElement[] }
+  const [undoStack, setUndoStack] = useState<LayerSnapshot[]>([])
+  const [redoStack, setRedoStack] = useState<LayerSnapshot[]>([])
+  const pushHistory = () => {
+    setUndoStack(prev => [...prev, { text: textElements, graphic: graphicElements }])
+    setRedoStack([])
+  }
+  const undoLayers = () => {
+    const snap = undoStack[undoStack.length - 1]
+    if (!snap) return
+    setRedoStack(r => [...r, { text: textElements, graphic: graphicElements }])
+    setUndoStack(u => u.slice(0, -1))
+    setTextElements(snap.text)
+    setGraphicElements(snap.graphic)
+  }
+  const redoLayers = () => {
+    const snap = redoStack[redoStack.length - 1]
+    if (!snap) return
+    setUndoStack(u => [...u, { text: textElements, graphic: graphicElements }])
+    setRedoStack(r => r.slice(0, -1))
+    setTextElements(snap.text)
+    setGraphicElements(snap.graphic)
+  }
 
   // Reorder layers from the CS modal: reassign the print area's existing z "slots"
   // to the new top->bottom order (top gets the highest z). Only the objects in
@@ -1420,6 +1458,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
     const view = productData?.views.find(v => v.id === viewId)
     const pa = view?.viewMaps[0]?.printAreaId
     if (!pa) return
+    pushHistory()
     const slots = [
       ...textElements.filter(t => t.printAreaId === pa).map(t => t.z),
       ...graphicElements.filter(g => g.printAreaId === pa).map(g => g.z),
@@ -1432,6 +1471,16 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
     setGraphicElements(prev =>
       prev.map(g => (zById[g.id] !== undefined ? { ...g, z: zById[g.id] } : g))
     )
+  }
+
+  // Delete a layer from the CS modal. Layer ids are unique across text +
+  // graphics, so filter both arrays by id and clear any stale selection.
+  const deleteLayer = (_viewId: string, layerId: string) => {
+    pushHistory()
+    setTextElements(prev => prev.filter(t => t.id !== layerId))
+    setGraphicElements(prev => prev.filter(g => g.id !== layerId))
+    setSelectedTextId(prev => (prev === layerId ? null : prev))
+    setSelectedGraphicId(prev => (prev === layerId ? null : prev))
   }
 
   // Pending upload from the hero "Upload your logo" button: a data URL stashed in
@@ -3067,6 +3116,17 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
               />
             )}
 
+            {/* Contact + Share — bordered button group, top-right of the canvas. */}
+            <div
+              className={`absolute top-6 right-6 z-[4] flex items-center rounded-full border border-neutral-200 transition-[filter,opacity] duration-200 ${
+                selectedText || selectedGraphicId ? "pointer-events-none opacity-60 blur-xs" : ""
+              }`}
+            >
+              <HelpMenu variant="icon" />
+              <div className="w-px self-stretch bg-neutral-200" />
+              <ShareButton container={creatomatContainer} />
+            </div>
+
             {/* Customer-service mode: draggable gear + modal, bounded to the canvas area. */}
             {csMode && (
               <CustomerServiceMode
@@ -3074,6 +3134,11 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                 activeViewId={activeViewId}
                 container={creatomatContainer}
                 onReorderLayers={reorderLayers}
+                onDeleteLayer={deleteLayer}
+                onUndo={undoLayers}
+                onRedo={redoLayers}
+                canUndo={undoStack.length > 0}
+                canRedo={redoStack.length > 0}
               />
             )}
 
@@ -3775,17 +3840,10 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
               </div>
             )}
             <div id="top-part" className="flex-shrink-0">
-              <div className="flex items-start justify-between gap-2 mb-[8px]">
+              <div className="flex items-start justify-between mb-[8px]">
                 <h1 className="font-display text-[20px] font-[800] text-black leading-tight line-clamp-2">
                   {productData?.name ?? ""}
                 </h1>
-                <button
-                  type="button"
-                  aria-label="Share"
-                  className="h-10 shrink-0 cursor-pointer rounded-md p-2 transition-colors hover:bg-neutral-200"
-                >
-                  <img src="/icons/icon-share.svg" alt="" className="h-6 w-6" />
-                </button>
               </div>
               <button
                 type="button"

@@ -153,6 +153,7 @@ export function EditorBar({
         <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
         {/* Bold / Italic / Underline / Alignment */}
+        <div className="flex items-center gap-[2px]">
         <button
           type="button"
           aria-label="Bold"
@@ -191,6 +192,7 @@ export function EditorBar({
         >
           <AlignIcon align={textAlign} />
         </button>
+        </div>
 
         {/* divider */}
         <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />

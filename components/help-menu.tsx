@@ -6,8 +6,8 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ChevronDown } from "lucide-react"
-import type { ReactNode } from "react"
+import { ChevronDown, Phone } from "lucide-react"
+import { useRef, useState, type ReactNode } from "react"
 
 // "Contact" dropdown (left of the cart), built with the shadcn DropdownMenu.
 // Option icons are the Spreadshirt component-kit icons (v2: Message / Mail /
@@ -46,22 +46,54 @@ const OPTIONS: ContactOption[] = [
     { Icon: PhoneIcon, label: "0341 996 59989", sub: "Mo-Fr 9-18 Uhr", href: "tel:+4934199659989" },
 ]
 
-export default function HelpMenu() {
+export default function HelpMenu({ variant = "label" }: { variant?: "label" | "icon" }) {
+    const [open, setOpen] = useState(false)
+    const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    // Open on hover too (Radix is click-only by default). A short close delay
+    // bridges the gap between the trigger and the menu so it doesn't flicker shut.
+    const hoverOpen = () => {
+        if (closeTimer.current) clearTimeout(closeTimer.current)
+        setOpen(true)
+    }
+    const hoverClose = () => {
+        if (closeTimer.current) clearTimeout(closeTimer.current)
+        closeTimer.current = setTimeout(() => setOpen(false), 150)
+    }
+
     return (
-        <DropdownMenu>
+        <DropdownMenu open={open} onOpenChange={setOpen}>
             <DropdownMenuTrigger asChild>
-                <button
-                    type="button"
-                    className="group flex cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-[14px] font-medium text-black outline-none transition-colors hover:bg-neutral-100"
-                >
-                    Contact
-                    <ChevronDown className="h-4 w-4 text-neutral-500 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                </button>
+                {variant === "icon" ? (
+                    <button
+                        type="button"
+                        aria-label="Contact"
+                        onMouseEnter={hoverOpen}
+                        onMouseLeave={hoverClose}
+                        className="group flex cursor-pointer items-center gap-1 rounded-l-full px-3.5 py-3 text-black outline-none transition-colors hover:bg-white data-[state=open]:bg-white"
+                    >
+                        <Phone className="size-[22px]" strokeWidth={1.8} />
+                        <ChevronDown className="h-4 w-4 text-black transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                    </button>
+                ) : (
+                    <button
+                        type="button"
+                        onMouseEnter={hoverOpen}
+                        onMouseLeave={hoverClose}
+                        className="group flex cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-[14px] font-medium text-black outline-none transition-colors hover:bg-neutral-100"
+                    >
+                        Contact
+                        <ChevronDown className="h-4 w-4 text-neutral-500 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                    </button>
+                )}
             </DropdownMenuTrigger>
             <DropdownMenuContent
                 align="end"
                 sideOffset={8}
-                className="shadow-dropdown w-56 overflow-hidden rounded-[12px] border-0 bg-white px-0 py-2 text-[14px] text-black"
+                onMouseEnter={hoverOpen}
+                onMouseLeave={hoverClose}
+                onCloseAutoFocus={e => e.preventDefault()}
+                className="w-56 overflow-hidden rounded-[12px] border-0 bg-white px-0 py-2 text-[14px] text-black shadow-lg"
             >
                 {OPTIONS.map(o => (
                     <DropdownMenuItem

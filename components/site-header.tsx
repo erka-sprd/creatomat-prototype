@@ -1,4 +1,3 @@
-import HelpMenu from "@/components/help-menu"
 import PromoBanner from "@/components/promo-banner"
 
 type SiteHeaderProps = {
@@ -21,7 +20,6 @@ export default function SiteHeader({
         <div className="mx-auto flex h-16 w-full max-w-[1920px] items-center justify-between">
           <img src="/icons/Logo.svg" alt="Spreadshirt" className="h-[28px]" />
           <div className="flex items-center gap-6">
-            <HelpMenu />
             <button
               type="button"
               aria-label="Cart"
