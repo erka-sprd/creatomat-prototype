@@ -225,9 +225,10 @@ export default function MobileMoreMenu({
                         className="flex items-center gap-2.5 p-4 active:bg-[var(--sprd-neutral-200)]"
                     >
                         <PhoneIcon className="size-6 shrink-0 text-black" />
-                        {/* Same column gap (gap-2) and sub-label styling as the
-                            returns row's "See details" link. */}
-                        <span className="flex flex-col gap-2">
+                        {/* Sub-label styling matches the returns row's "See
+                            details" link; the column gap is 2px tighter (6px vs
+                            gap-2's 8px) so the number and its hours sit closer. */}
+                        <span className="flex flex-col gap-1.5">
                             <span className="text-[15px] font-medium text-black">
                                 0341 996 59989
                             </span>
