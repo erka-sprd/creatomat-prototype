@@ -1,6 +1,7 @@
 "use client"
 
-const MASTER_COLOR_PALETTE = [
+// Exported so the mobile edit sheet shares the same palette.
+export const MASTER_COLOR_PALETTE = [
   ["#000000", "#686868", "#9C9C9C", "#E3E3E3", "#FFFFFF"],
   ["#0027BF", "#0044F7", "#3669F8", "#88A6FC", "#B8C9FF"],
   ["#510B94", "#8B3DD2", "#AA6BDE", "#CDA1ED", "#DFC5F2"],

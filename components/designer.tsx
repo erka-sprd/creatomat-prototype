@@ -21,6 +21,15 @@ import {
   shouldTriggerRemoveOnBlur,
 } from "@/lib/quantity-utils"
 import ProductsDrawer, { type SelectedProduct } from "@/components/products-drawer"
+import MobileActionHeader from "@/components/mobile/mobile-action-header"
+import MobileColorDrawer from "@/components/mobile/mobile-color-drawer"
+import MobileDock from "@/components/mobile/mobile-dock"
+import MobileEditSheet from "@/components/mobile/mobile-edit-sheet"
+import MobileMoreMenu from "@/components/mobile/mobile-more-menu"
+import MobilePanelsDrawer from "@/components/mobile/mobile-panels-drawer"
+import MobileSizeSheet from "@/components/mobile/mobile-size-sheet"
+import MobileViewSwitcher from "@/components/mobile/mobile-view-switcher"
+import { useDlgMobile } from "@/hooks/use-dlg-mobile"
 import SiteHeader from "@/components/site-header"
 import { IconsScroller } from "@/components/ui/icons-scroller"
 import { EditorBar } from "@/components/ui/editor-bar"
@@ -209,6 +218,44 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
     offsetY: number
   } | null>(null)
   const pinchEndTimerRef = useRef<number | null>(null)
+  // Bumped when a zoom gesture ends on desktop — re-runs the centering effect
+  // (anchor already cleared) so the group-centre branch pulls the product back
+  // into view instead of leaving it wherever the cursor parked it.
+  const [recenterTick, setRecenterTick] = useState(0)
+  // ---- Mobile pinch-zoom (CSS transform, see the gesture effect below) ------
+  // Visual scale + pan of the product wrapper. Independent of `zoom` (the
+  // desktop layout-based zoom), which stays 1 on mobile.
+  const [mobileZoom, setMobileZoom] = useState(1)
+  const [mobilePan, setMobilePan] = useState({ x: 0, y: 0 })
+  // Live mirrors so the (once-registered) gesture handlers read current values.
+  const mobileZoomRef = useRef(1)
+  const mobilePanRef = useRef({ x: 0, y: 0 })
+  useEffect(() => {
+    mobileZoomRef.current = mobileZoom
+  }, [mobileZoom])
+  useEffect(() => {
+    mobilePanRef.current = mobilePan
+  }, [mobilePan])
+  // The product's current visual scale — element drag/resize math multiplies
+  // layout px (offsetWidth/Height, unaffected by transforms) by this to compare
+  // them against screen-space rects. 1 on desktop, where zoom is real layout.
+  const canvasScaleRef = useRef(1)
+  canvasScaleRef.current = mobileZoom
+  const gestureRef = useRef<{
+    mode: "idle" | "pinch" | "pan"
+    startDist: number
+    startZoom: number
+    startPan: { x: number; y: number }
+    startCenter: { x: number; y: number }
+    startTouch: { x: number; y: number }
+  }>({
+    mode: "idle",
+    startDist: 0,
+    startZoom: 1,
+    startPan: { x: 0, y: 0 },
+    startCenter: { x: 0, y: 0 },
+    startTouch: { x: 0, y: 0 },
+  })
   // Zoom via wheel: a trackpad pinch arrives as a wheel event with ctrlKey set,
   // and the same path covers mouse Ctrl/⌘ + scroll. Plain wheel is left alone so
   // it still pans the canvas. Prevent the browser's page zoom. Needs a
@@ -222,12 +269,17 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
       cancelZoomAnim()
       // Capture the content point under the cursor so the centering effect can
       // keep it fixed across the zoom (stable; no group-centre feedback loop).
+      // The fractions are measured against the product wrapper itself (not
+      // scrollWidth): while the content is narrower than the container it is
+      // auto-margin centred, and container-based fractions would shift the
+      // product sideways the moment it starts overflowing.
       const rect = el.getBoundingClientRect()
+      const content = el.firstElementChild?.getBoundingClientRect()
       const offsetX = e.clientX - rect.left
       const offsetY = e.clientY - rect.top
       pinchAnchorRef.current = {
-        fracX: el.scrollWidth ? (el.scrollLeft + offsetX) / el.scrollWidth : 0.5,
-        fracY: el.scrollHeight ? (el.scrollTop + offsetY) / el.scrollHeight : 0.5,
+        fracX: content && content.width ? (e.clientX - content.left) / content.width : 0.5,
+        fracY: content && content.height ? (e.clientY - content.top) / content.height : 0.5,
         offsetX,
         offsetY,
       }
@@ -244,6 +296,179 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
     el.addEventListener("wheel", onWheel, { passive: false })
     return () => el.removeEventListener("wheel", onWheel)
   }, [])
+  // isDlgMobile mirrors the dlg CSS breakpoint for the few places open-state
+  // logic must differ (declared up here so the effects below can depend on it).
+  const isDlgMobile = useDlgMobile()
+  // Mobile page lock: the designer is app-like below the dlg breakpoint — the
+  // page itself must never scroll, rubber-band or browser-zoom (Safari ignores
+  // the viewport meta's zoom lock for accessibility, so the iOS gesture events
+  // and multi-touch moves are blocked here too; the canvas has its own pinch).
+  useEffect(() => {
+    if (!isDlgMobile) return
+    const body = document.body
+    const prevOverflow = body.style.overflow
+    const prevOverscroll = body.style.overscrollBehavior
+    body.style.overflow = "hidden"
+    body.style.overscrollBehavior = "none"
+    const preventGesture = (e: Event) => e.preventDefault()
+    const preventMultiTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 1) e.preventDefault()
+    }
+    document.addEventListener("gesturestart", preventGesture)
+    document.addEventListener("gesturechange", preventGesture)
+    document.addEventListener("touchmove", preventMultiTouchMove, { passive: false })
+    return () => {
+      body.style.overflow = prevOverflow
+      body.style.overscrollBehavior = prevOverscroll
+      document.removeEventListener("gesturestart", preventGesture)
+      document.removeEventListener("gesturechange", preventGesture)
+      document.removeEventListener("touchmove", preventMultiTouchMove)
+    }
+  }, [isDlgMobile])
+  // Mobile pinch-zoom + pan — implemented as a CSS transform on the product
+  // wrapper (translate3d + scale), the same model as the dock-change proto:
+  //   * zoom is a GPU transform, so no per-frame layout of the product and its
+  //     placed elements (the desktop path resizes the wrapper's height, which
+  //     reflows everything and feels heavy/stepped on a phone),
+  //   * two fingers pinch AND pan at once — pan follows the midpoint delta, so
+  //     the gesture never fights a centering pass,
+  //   * one finger pans once zoomed in,
+  //   * releasing below 1x springs back to fit.
+  // Desktop keeps its own layout-based zoom (`zoom` state) untouched; on mobile
+  // that stays at 1 so all zoom-aware math keeps its zoom-1 baseline.
+  useEffect(() => {
+    const el = canvasScrollRef.current
+    if (!el || !isDlgMobile) return
+    const dist = (t: TouchList) =>
+      Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+    const center = (t: TouchList) => ({
+      x: (t[0].clientX + t[1].clientX) / 2,
+      y: (t[0].clientY + t[1].clientY) / 2,
+    })
+    // How far the scaled product may be panned: half of the size it gains.
+    const panLimits = (z: number) => {
+      const node = el.firstElementChild as HTMLElement | null
+      if (!node || z <= 1) return { x: 0, y: 0 }
+      return {
+        x: Math.max(0, (node.offsetWidth * z - node.offsetWidth) / 2),
+        y: Math.max(0, (node.offsetHeight * z - node.offsetHeight) / 2),
+      }
+    }
+    const clampPan = (pan: { x: number; y: number }, z: number) => {
+      if (z <= 1) return { x: 0, y: 0 }
+      const lim = panLimits(z)
+      return {
+        x: Math.max(-lim.x, Math.min(lim.x, pan.x)),
+        y: Math.max(-lim.y, Math.min(lim.y, pan.y)),
+      }
+    }
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        // A second finger landed — abandon any element manipulation so the
+        // object doesn't fly while zooming.
+        dragStateRef.current = null
+        resizeStateRef.current = null
+        rotateStateRef.current = null
+        const z = mobileZoomRef.current
+        gestureRef.current = {
+          mode: "pinch",
+          startDist: dist(e.touches),
+          startZoom: z,
+          startPan: z <= 1 ? { x: 0, y: 0 } : mobilePanRef.current,
+          startCenter: center(e.touches),
+          startTouch: { x: 0, y: 0 },
+        }
+        return
+      }
+      if (e.touches.length === 1 && mobileZoomRef.current > 1) {
+        gestureRef.current = {
+          mode: "pan",
+          startDist: 0,
+          startZoom: mobileZoomRef.current,
+          startPan: mobilePanRef.current,
+          startCenter: { x: 0, y: 0 },
+          startTouch: { x: e.touches[0].clientX, y: e.touches[0].clientY },
+        }
+      }
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      const g = gestureRef.current
+      if (g.mode === "pinch") {
+        if (e.touches.length !== 2 || !g.startDist) return
+        e.preventDefault()
+        const nextZoom = Math.max(1, Math.min(6, g.startZoom * (dist(e.touches) / g.startDist)))
+        const c = center(e.touches)
+        // Pinch and pan together: the midpoint's travel moves the product.
+        const nextPan = clampPan(
+          {
+            x: g.startPan.x + (c.x - g.startCenter.x),
+            y: g.startPan.y + (c.y - g.startCenter.y),
+          },
+          nextZoom
+        )
+        setMobileZoom(nextZoom)
+        setMobilePan(nextPan)
+        return
+      }
+      if (g.mode === "pan") {
+        // An element drag claimed this touch — leave the canvas alone.
+        if (dragStateRef.current || resizeStateRef.current || rotateStateRef.current) {
+          gestureRef.current.mode = "idle"
+          return
+        }
+        if (e.touches.length !== 1 || g.startZoom <= 1) return
+        e.preventDefault()
+        setMobilePan(
+          clampPan(
+            {
+              x: g.startPan.x + (e.touches[0].clientX - g.startTouch.x),
+              y: g.startPan.y + (e.touches[0].clientY - g.startTouch.y),
+            },
+            g.startZoom
+          )
+        )
+      }
+    }
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        // Fingers still down (e.g. 2 → 1): re-arm as a pan from here so the
+        // motion continues without a jump.
+        if (e.touches.length === 1 && mobileZoomRef.current > 1) {
+          gestureRef.current = {
+            mode: "pan",
+            startDist: 0,
+            startZoom: mobileZoomRef.current,
+            startPan: mobilePanRef.current,
+            startCenter: { x: 0, y: 0 },
+            startTouch: { x: e.touches[0].clientX, y: e.touches[0].clientY },
+          }
+        }
+        return
+      }
+      gestureRef.current.mode = "idle"
+      // Pinched back out — spring to fit.
+      if (mobileZoomRef.current <= 1.02) {
+        setMobileZoom(1)
+        setMobilePan({ x: 0, y: 0 })
+      } else {
+        setMobilePan(p => clampPan(p, mobileZoomRef.current))
+      }
+    }
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true })
+    el.addEventListener("touchmove", onTouchMove, { passive: false })
+    el.addEventListener("touchend", onTouchEnd, { passive: true })
+    el.addEventListener("touchcancel", onTouchEnd, { passive: true })
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart)
+      el.removeEventListener("touchmove", onTouchMove)
+      el.removeEventListener("touchend", onTouchEnd)
+      el.removeEventListener("touchcancel", onTouchEnd)
+    }
+  }, [isDlgMobile])
   // The zoom +/- buttons jump between fixed stops (1× → 3× → 6×). We ease the
   // zoom value ourselves with rAF (each frame is instant, no CSS height
   // transition) so it animates smoothly AND the group-centering effect re-centres
@@ -340,8 +565,11 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
     let targetLeft: number
     let targetTop: number
     if (anchor) {
-      targetLeft = anchor.fracX * scrollW - anchor.offsetX
-      targetTop = anchor.fracY * scrollH - anchor.offsetY
+      // fracX/fracY are fractions of the product wrapper (content), so map
+      // them onto the predicted content size — not scrollW/scrollH, which are
+      // clamped to the container while the content is still smaller than it.
+      targetLeft = anchor.fracX * innerW - anchor.offsetX
+      targetTop = anchor.fracY * innerH - anchor.offsetY
     } else {
       let fx = 0.5
       let fy = 0.5
@@ -379,8 +607,15 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
       behavior: zoomAnimate && !anchor ? "smooth" : "auto",
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoom])
+  }, [zoom, recenterTick])
   const [activeViewId, setActiveViewId] = useState("1")
+  // Reset the mobile zoom when the shown image changes (view / colour /
+  // product) — staying zoomed into a spot that no longer exists is disorienting.
+  useEffect(() => {
+    setMobileZoom(1)
+    setMobilePan({ x: 0, y: 0 })
+  }, [activeViewId, activeColorIndex, productId])
+
   const [productsDrawerOpen, setProductsDrawerOpen] = useState(false)
   const [activePanel, setActivePanel] = useState<DesignerPanel | null>(null)
   const [welcomeOpen, setWelcomeOpen] = useState(true)
@@ -400,6 +635,11 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
     setWelcomeOpen(false)
   }, [])
   const [detailsOpen, setDetailsOpen] = useState(false)
+  // Mobile (<1080px) shell state — color drawer, more menu and the Finish size
+  // sheet. All mobile-only; desktop never opens these.
+  const [mobileColorDrawerOpen, setMobileColorDrawerOpen] = useState(false)
+  const [mobileMoreMenuOpen, setMobileMoreMenuOpen] = useState(false)
+  const [mobileSizeSheetOpen, setMobileSizeSheetOpen] = useState(false)
   const [sizePopoverOpen, setSizePopoverOpen] = useState(false)
   const sizePopoverScrollRef = useRef<HTMLDivElement | null>(null)
   const [sizePopoverOverflowTop, setSizePopoverOverflowTop] = useState(false)
@@ -666,7 +906,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
     startAngle: number
     startRotation: number
   } | null>(null)
-  const startTextRotate = (e: React.MouseEvent, el: TextElement) => {
+  const startTextRotate = (e: React.PointerEvent, el: TextElement) => {
     e.preventDefault()
     e.stopPropagation()
     const node = textElementRefs.current[el.id]
@@ -1048,6 +1288,18 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
       const paRect = pa.getBoundingClientRect()
       const dx = e.clientX - ds.startX
       const dy = e.clientY - ds.startY
+      // Touch slop: finger-down jitters a few px, which would nudge the element
+      // on what the user meant as a tap. Ignore touch movement under 8px, then
+      // re-base the drag start so the element doesn't jump when the drag takes.
+      // Mouse keeps the existing feel (moves from the first pixel).
+      if ((e as PointerEvent).pointerType === "touch" && !ds.moved) {
+        if (Math.hypot(dx, dy) < 8) return
+        ds.startX = e.clientX
+        ds.startY = e.clientY
+        ds.moved = true
+        setIsManipulating(true)
+        return
+      }
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
         ds.moved = true
         setIsManipulating(true)
@@ -1062,8 +1314,12 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
       // rotates it about its centre). The rotated bbox (getBoundingClientRect)
       // drives the clamp, so a rotated element stays inside the print area on its
       // real footprint and can still reach every edge/corner.
-      const unrotWPct = draggedNode ? (draggedNode.offsetWidth / paRect.width) * 100 : 0
-      const unrotHPct = draggedNode ? (draggedNode.offsetHeight / paRect.height) * 100 : 0
+      // offsetWidth/Height are layout px (transforms don't affect them) while
+      // paRect is screen px — scale the former by the canvas' visual scale so
+      // the ratio is correct while the mobile pinch-zoom transform is applied.
+      const vs = canvasScaleRef.current
+      const unrotWPct = draggedNode ? ((draggedNode.offsetWidth * vs) / paRect.width) * 100 : 0
+      const unrotHPct = draggedNode ? ((draggedNode.offsetHeight * vs) / paRect.height) * 100 : 0
       const bbox = draggedNode?.getBoundingClientRect()
       const bboxWPct = bbox ? (bbox.width / paRect.width) * 100 : unrotWPct
       const bboxHPct = bbox ? (bbox.height / paRect.height) * 100 : unrotHPct
@@ -1133,15 +1389,17 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
       setSnapGuides({ h: false, v: false })
       dragStateRef.current = null
     }
-    document.addEventListener("mousemove", onMove)
-    document.addEventListener("mouseup", onUp)
+    document.addEventListener("pointermove", onMove)
+    document.addEventListener("pointerup", onUp)
+    document.addEventListener("pointercancel", onUp)
     return () => {
-      document.removeEventListener("mousemove", onMove)
-      document.removeEventListener("mouseup", onUp)
+      document.removeEventListener("pointermove", onMove)
+      document.removeEventListener("pointerup", onUp)
+      document.removeEventListener("pointercancel", onUp)
     }
   }, [])
 
-  const startTextDrag = (e: React.MouseEvent, el: TextElement) => {
+  const startTextDrag = (e: React.PointerEvent, el: TextElement) => {
     if (editingTextId === el.id) return
     e.preventDefault()
     dragStateRef.current = {
@@ -1156,7 +1414,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
   }
   // Move a text while it's being edited — grabbing its border. No editing guard,
   // and preventDefault keeps the textarea focused so editing continues.
-  const startTextMove = (e: React.MouseEvent, el: TextElement) => {
+  const startTextMove = (e: React.PointerEvent, el: TextElement) => {
     e.preventDefault()
     e.stopPropagation()
     dragStateRef.current = {
@@ -1169,7 +1427,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
       moved: false,
     }
   }
-  const startGraphicDrag = (e: React.MouseEvent, el: GraphicElement) => {
+  const startGraphicDrag = (e: React.PointerEvent, el: GraphicElement) => {
     e.preventDefault()
     dragStateRef.current = {
       kind: "graphic",
@@ -1182,7 +1440,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
     }
   }
   const startResize = (
-    e: React.MouseEvent,
+    e: React.PointerEvent,
     el: { id: string; x: number; y: number; fontSize?: number },
     corner: "nw" | "ne" | "sw" | "se",
     kind: "text" | "graphic" = "text"
@@ -1197,8 +1455,9 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
     // Unrotated on-screen box size. offsetWidth/offsetHeight ignore the CSS
     // rotate transform, so they give the true (axis-aligned) element size;
     // getBoundingClientRect() would return the inflated rotated bbox.
-    const w0 = node.offsetWidth
-    const h0 = node.offsetHeight
+    // Scaled to screen px — see the drag handler's note on canvasScaleRef.
+    const w0 = node.offsetWidth * canvasScaleRef.current
+    const h0 = node.offsetHeight * canvasScaleRef.current
     // getBoundingClientRect's centre equals the true centre for a rotate about
     // the box centre, so use it to recover the rotated anchor corner.
     const cx = rect.left + rect.width / 2
@@ -1244,8 +1503,13 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
   }, [])
   const creatomatRef = useRef<HTMLDivElement>(null)
   const [creatomatContainer, setCreatomatContainer] = useState<HTMLElement | null>(null)
+  // The gray canvas area — mobile sheets portal into it so their overlay and
+  // panel stay within those bounds (it is `relative` + `overflow-hidden`).
+  const canvasSectionRef = useRef<HTMLDivElement>(null)
+  const [canvasSectionEl, setCanvasSectionEl] = useState<HTMLElement | null>(null)
   useLayoutEffect(() => {
     setCreatomatContainer(creatomatRef.current)
+    setCanvasSectionEl(canvasSectionRef.current)
   }, [])
 
   // Collapse the desktop dock (left column) labels into tooltips when the
@@ -1352,6 +1616,18 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
 
   // Active view determines the canvas image and the print-area overlay.
   const currentAppearance = appearances[activeColorIndex]
+  // Model/mood images for the SELECTED colour only — shown in the CS-mode
+  // Preview tab as a slider. Empty when this colour has no model images (no
+  // fallback to other colours).
+  const previewModelImages = useMemo(() => {
+    const apId = currentAppearance?.id
+    const raw = products.find(p => String(p.id) === String(productId))
+    const ap = raw?.appearances.find(a => a.id === apId) as
+      | { modelImages?: { image: string }[] }
+      | undefined
+    if (!raw || !apId || !ap?.modelImages?.length) return []
+    return modelImagesFor(raw, apId)
+  }, [products, productId, currentAppearance?.id])
   const currentViewImage =
     currentAppearance?.views.find(v => v.id === activeViewId)?.image ??
     currentAppearance?.image ??
@@ -2166,6 +2442,50 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
   const formattedOriginalPrice = originalPrice.toFixed(2).replace(".", ",")
   const formattedDiscountedPrice = discountedPrice.toFixed(2).replace(".", ",")
 
+  // Add-to-basket handler shared by the desktop CTA and the mobile size sheet
+  // (extracted verbatim from the desktop button's onClick).
+  const handleAddToBasket = () => {
+    if (addingToBasket || flashSize) return
+    if (totalSelected === 0) {
+      setFlashSize(true)
+      setTimeout(() => setFlashSize(false), 2000)
+      return
+    }
+    if (!productData) return
+    const currentApp = appearances[activeColorIndex]
+    if (!currentApp) return
+    const designSnapshot =
+      printAreaOverlay && printAreaPxSize.width > 0 && printAreaPxSize.height > 0
+        ? {
+            textElements: visibleTextElements.map(t => ({ ...t })),
+            graphicElements: visibleGraphicElements.map(g => ({ ...g })),
+            printAreaOverlay,
+            displayWidth: (printAreaPxSize.width * 100) / printAreaOverlay.width,
+            displayHeight: (printAreaPxSize.height * 100) / printAreaOverlay.height,
+          }
+        : undefined
+    setAddingToBasket(true)
+    setTimeout(() => {
+      const newItems: BasketItem[] = Object.entries(sizeQuantities)
+        .filter(([, qty]) => qty > 0)
+        .map(([size, qty]) => ({
+          id: `cart-${Date.now()}-${size}`,
+          productName: productData.name,
+          appearanceName: currentApp.name,
+          image: currentViewImage || currentApp.image,
+          size,
+          qty,
+          price: unitPrice,
+          design: designSnapshot,
+        }))
+      setBasketItems(prev => [...prev, ...newItems])
+      setSizeQuantities({})
+      setAddingToBasket(false)
+      setMobileSizeSheetOpen(false)
+      setBasketOpen(true)
+    }, ADD_TO_BASKET_DELAY)
+  }
+
   const colorRowRef = useRef<HTMLDivElement | null>(null)
   const [canScrollColorLeft, setCanScrollColorLeft] = useState(false)
   const [canScrollColorRight, setCanScrollColorRight] = useState(false)
@@ -2277,18 +2597,22 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
         .canvas-scroll::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,0.35);background-clip:content-box;border:3px solid transparent;}
       `}</style>
 
-      <div className="h-screen w-full flex flex-col">
+      {/* Mobile uses dvh: on iOS Safari 100vh is the large viewport (URL bar
+          collapsed), pushing the canvas bottom — and the dots anchored to it —
+          below the visible screen and behind the fixed dock. dvh tracks the
+          actually-visible viewport. */}
+      <div className="h-screen w-full flex flex-col max-dlg:h-dvh">
         <SiteHeader
           hidden={productsDrawerOpen}
           onCartClick={() => setBasketOpen(true)}
           cartCount={basketItems.reduce((sum, it) => sum + it.qty, 0)}
         />
-        <div className="flex flex-1 flex-col px-8 py-[16px] min-h-0">
+        <div className="flex flex-1 flex-col px-8 py-[16px] min-h-0 max-dlg:p-0">
         <div className="flex flex-1 items-center justify-center min-h-0">
         <div ref={creatomatRef} id="creatomat-container" className="relative flex items-stretch gap-2 w-full max-w-[1920px] h-full justify-center">
           <div
             id="left-section"
-            className={`relative shrink-0 w-[100px] p-[6px] px-1.5 h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
+            className={`max-dlg:hidden relative shrink-0 w-[100px] p-[6px] px-1.5 h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
               viewDropdownOpen ? "pointer-events-none" : ""
             }`}
             style={{
@@ -2617,8 +2941,12 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
               box and is the @container its max-width queries against. */}
           <div className="@container relative flex-1 min-w-0 h-full">
           <div
+            ref={canvasSectionRef}
             id="canvas-section"
-            className={`relative overflow-hidden w-full h-full bg-[#F4F4F4] rounded-[12px] ${
+            // Mobile canvas is one step darker (--neutral-200), exactly like
+            // create-omat's --ubq-canvas below 1080px — the floating pills use
+            // --neutral-100, so on a #F4F4F4 canvas they'd have no contrast.
+            className={`relative overflow-hidden w-full h-full bg-[#F4F4F4] max-dlg:bg-[var(--sprd-neutral-200)] rounded-[12px] max-dlg:rounded-none ${
               viewDropdownOpen ? "pointer-events-none" : ""
             }`}
             style={{
@@ -2630,13 +2958,14 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                 then fades out to reveal the canvas. */}
             {loadPhase !== "done" && (
               <div
-                className={`absolute inset-0 z-30 flex items-center justify-center rounded-[12px] bg-[#F4F4F4] transition-opacity duration-300 ${
+                className={`absolute inset-0 z-30 flex items-center justify-center rounded-[12px] bg-[#F4F4F4] max-dlg:bg-[var(--sprd-neutral-200)] transition-opacity duration-300 ${
                   loadPhase === "ready" ? "pointer-events-none opacity-0" : "opacity-100"
                 }`}
               >
                 {/* Frosted-glass frame: mostly white/translucent like the
                     dock-change "+ Add design/text" pill, with very faint washes
-                    of the createomat gradient (red / blue / green). */}
+                    of the createomat gradient (red / blue / green). Same
+                    preloader on mobile and desktop. */}
                 <div
                   className="flex items-center justify-center"
                   style={{
@@ -2666,8 +2995,26 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
               // z-0 makes this scroll area its own stacking context, so canvas
               // objects (each with their own z) stay under the floating controls
               // (zoom pill, editor bar) instead of competing with them.
-              className={`canvas-scroll absolute inset-0 z-0 flex overflow-auto transition-[bottom] duration-300 ease-out ${
-                zoom === 1 ? "[@media(max-height:900px)]:bottom-[50px]" : ""
+              // Mobile (<1080px): at zoom 1 the scroll area is inset from the
+              // top (60px action header) and bottom (dot switcher + dock) so
+              // the product sits clear of all chrome. Zooming in removes the
+              // insets (animated via the top/bottom transition) — the product
+              // then extends underneath the floating controls (it stays below
+              // them, z-0 vs their z-13/14/40) and is clipped only at the
+              // canvas-section edges, i.e. the screen.
+              // touch-none: NO native touch gestures here — on iOS a pinch's
+              // first finger commits a native pan before the second lands,
+              // and that pan then fights the pinch centering (sideways drift).
+              // Panning is re-implemented on pointer events below; wheel and
+              // scrollbar behavior on desktop is unaffected.
+              //
+              // Mobile chrome clearance is PADDING, not insets: padding is
+              // constant across zoom levels (no container-size jump at zoom 1,
+              // which read as a "snap"), keeps the product clear of header /
+              // dots / dock at rest, and still lets the zoomed product scroll
+              // out across it to the screen edges.
+              className={`canvas-scroll absolute inset-0 z-0 flex touch-none overflow-auto overscroll-contain max-dlg:overflow-hidden max-dlg:pt-[60px] max-dlg:pb-[150px] dlg:transition-[bottom] dlg:duration-300 dlg:ease-out ${
+                zoom === 1 ? "dlg:[@media(max-height:900px)]:bottom-[50px]" : ""
               }`}
               onDoubleClick={handleCanvasDoubleClick}
               onClick={e => {
@@ -2683,8 +3030,27 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
               className="relative m-auto shrink-0"
               style={{
                 aspectRatio: canvasAspect,
-                height: `calc(${60 * zoom}% + ${100 * zoom}px)`,
-                transition: zoomAnimate ? "height 250ms ease-out" : "none",
+                // Mobile: fill the padded box between the action header and the
+                // dots/dock — full width, height from the aspect ratio, capped
+                // so a tall view still fits. No leftover space around it; the
+                // pinch transform below scales up from this fitted size.
+                // Desktop keeps 60% + 100px of the canvas, grown by its zoom.
+                ...(isDlgMobile
+                  ? { width: "100%", height: "auto", maxHeight: "100%" }
+                  : { height: `calc(${60 * zoom}% + ${100 * zoom}px)` }),
+                // Mobile zoom is a GPU transform on top of the (zoom-1) layout;
+                // pan is applied before the scale so it tracks fingers 1:1.
+                transform:
+                    mobileZoom === 1
+                        ? undefined
+                        : `translate3d(${mobilePan.x}px, ${mobilePan.y}px, 0) scale(${mobileZoom})`,
+                // Snap back to fit is animated; live gestures are not.
+                transition:
+                    gestureRef.current.mode !== "idle"
+                        ? "none"
+                        : zoomAnimate
+                          ? "height 250ms ease-out"
+                          : "transform 200ms ease-out",
               }}
               onClick={() => activePanel && setActivePanel(null)}
             >
@@ -2773,7 +3139,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                                 if (e.key === "Escape")
                                   (e.target as HTMLTextAreaElement).blur()
                               }}
-                              onMouseDown={e => e.stopPropagation()}
+                              onPointerDown={e => e.stopPropagation()}
                               style={{
                                 position: "absolute",
                                 inset: 0,
@@ -2834,10 +3200,10 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                               return (
                                 <span
                                   key={side}
-                                  onMouseDown={e => startTextMove(e, el)}
+                                  onPointerDown={e => startTextMove(e, el)}
                                   onMouseEnter={() => setTextBorderHover(true)}
                                   onMouseLeave={() => setTextBorderHover(false)}
-                                  className={`absolute ${hit} z-20 cursor-move`}
+                                  className={`absolute ${hit} z-20 cursor-move touch-none`}
                                 >
                                   <span
                                     className={`absolute ${edge} ${size} transition-all duration-200 ease-out ${
@@ -2866,15 +3232,15 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                               return (
                                 <span
                                   key={corner}
-                                  style={{ cursor }} onMouseDown={e => startResize(e, el, corner)}
-                                  className={`absolute ${pos} z-30 block size-[15px] rounded-full border-2 border-[#6366F1] bg-white transition-colors hover:border-white hover:bg-[#6366F1]`}
+                                  style={{ cursor }} onPointerDown={e => startResize(e, el, corner)}
+                                  className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 border-[#6366F1] bg-white transition-colors hover:border-white hover:bg-[#6366F1]`}
                                 />
                               )
                             })}
                             <span
-                              onMouseDown={e => startTextRotate(e, el)}
+                              onPointerDown={e => startTextRotate(e, el)}
                               style={{ cursor: ROTATE_CURSOR }}
-                              className="absolute -bottom-[34px] left-1/2 z-30 flex size-[22px] -translate-x-1/2 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-sm"
+                              className="absolute -bottom-[34px] left-1/2 z-30 flex size-[22px] -translate-x-1/2 touch-none items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-sm"
                             >
                               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                                 <path fillRule="evenodd" clipRule="evenodd" d="M5.97279 2.70765e-05C8.99188 0.00908166 11.534 2.26003 11.9085 5.25582C12.283 8.25161 10.3731 11.0591 7.44915 11.811C5.1471 12.4029 2.78103 11.5756 1.33347 9.82817L1.33341 11.3069C1.33341 11.6488 1.07605 11.9305 0.744489 11.9691L0.666742 11.9735C0.324851 11.9735 0.0430704 11.7162 0.00456036 11.3846L7.52098e-05 11.3069V7.97354C7.52098e-05 7.63165 0.257435 7.34986 0.588994 7.31135L0.666742 7.30687H4.00008C4.36827 7.30687 4.66674 7.60535 4.66674 7.97354C4.66674 8.31543 4.40938 8.59721 4.07782 8.63572L4.00008 8.6402L2.10646 8.64083C3.19414 10.2276 5.18461 11.0166 7.11708 10.5196C9.39128 9.93483 10.8767 7.75126 10.5855 5.4212C10.2942 3.09114 8.31698 1.3404 5.9688 1.33335C3.62061 1.32635 1.63294 3.06524 1.32775 5.39351C1.2799 5.75858 0.945165 6.01573 0.580098 5.96788C0.215031 5.92003 -0.0421227 5.58529 0.00572962 5.22023C0.398111 2.22673 2.95368 -0.00897306 5.97279 2.70765e-05Z" fill="currentColor"/>
@@ -2891,10 +3257,11 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                           if (node) textElementRefs.current[el.id] = node
                           else delete textElementRefs.current[el.id]
                         }}
-                        onMouseDown={e => startTextDrag(e, el)}
+                        onPointerDown={e => startTextDrag(e, el)}
                         onDoubleClick={() => setEditingTextId(el.id)}
                         style={{
                           position: "absolute",
+                          touchAction: "none",
                           zIndex: el.z,
                           left: `${el.x}%`,
                           top: `${el.y}%`,
@@ -2939,16 +3306,16 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                             return (
                               <span
                                 key={corner}
-                                style={{ cursor }} onMouseDown={e => startResize(e, el, corner)}
-                                className={`absolute ${pos} z-30 block size-[15px] rounded-full border-2 border-[#6366F1] bg-white transition-colors hover:border-white hover:bg-[#6366F1]`}
+                                style={{ cursor }} onPointerDown={e => startResize(e, el, corner)}
+                                className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 border-[#6366F1] bg-white transition-colors hover:border-white hover:bg-[#6366F1]`}
                               />
                             )
                           })}
                         {selectedTextId === el.id && (
                           <span
-                            onMouseDown={e => startTextRotate(e, el)}
+                            onPointerDown={e => startTextRotate(e, el)}
                             style={{ cursor: ROTATE_CURSOR }}
-                            className="absolute -bottom-[34px] left-1/2 z-30 flex size-[22px] -translate-x-1/2 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-sm"
+                            className="absolute -bottom-[34px] left-1/2 z-30 flex size-[22px] -translate-x-1/2 touch-none items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-sm"
                           >
                             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                               <path fillRule="evenodd" clipRule="evenodd" d="M5.97279 2.70765e-05C8.99188 0.00908166 11.534 2.26003 11.9085 5.25582C12.283 8.25161 10.3731 11.0591 7.44915 11.811C5.1471 12.4029 2.78103 11.5756 1.33347 9.82817L1.33341 11.3069C1.33341 11.6488 1.07605 11.9305 0.744489 11.9691L0.666742 11.9735C0.324851 11.9735 0.0430704 11.7162 0.00456036 11.3846L7.52098e-05 11.3069V7.97354C7.52098e-05 7.63165 0.257435 7.34986 0.588994 7.31135L0.666742 7.30687H4.00008C4.36827 7.30687 4.66674 7.60535 4.66674 7.97354C4.66674 8.31543 4.40938 8.59721 4.07782 8.63572L4.00008 8.6402L2.10646 8.64083C3.19414 10.2276 5.18461 11.0166 7.11708 10.5196C9.39128 9.93483 10.8767 7.75126 10.5855 5.4212C10.2942 3.09114 8.31698 1.3404 5.9688 1.33335C3.62061 1.32635 1.63294 3.06524 1.32775 5.39351C1.2799 5.75858 0.945165 6.01573 0.580098 5.96788C0.215031 5.92003 -0.0421227 5.58529 0.00572962 5.22023C0.398111 2.22673 2.95368 -0.00897306 5.97279 2.70765e-05Z" fill="currentColor"/>
@@ -2966,9 +3333,10 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                         if (node) graphicElementRefs.current[el.id] = node
                         else delete graphicElementRefs.current[el.id]
                       }}
-                      onMouseDown={e => startGraphicDrag(e, el)}
+                      onPointerDown={e => startGraphicDrag(e, el)}
                       style={{
                         position: "absolute",
+                        touchAction: "none",
                         zIndex: el.z,
                         left: `${el.x}%`,
                         top: `${el.y}%`,
@@ -3004,8 +3372,8 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                           return (
                             <span
                               key={corner}
-                              style={{ cursor }} onMouseDown={e => startResize(e, el, corner, "graphic")}
-                              className={`absolute ${pos} ${cursor} block size-[15px] rounded-full border-2 border-[#6366F1] bg-white transition-colors hover:border-white hover:bg-[#6366F1]`}
+                              style={{ cursor }} onPointerDown={e => startResize(e, el, corner, "graphic")}
+                              className={`absolute ${pos} ${cursor} block size-[15px] touch-none rounded-full border-2 border-[#6366F1] bg-white transition-colors hover:border-white hover:bg-[#6366F1]`}
                             />
                           )
                         })}
@@ -3026,7 +3394,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                       // deselecting when clicking the design. This makes keyboard
                       // delete reliable for embroidery objects.
                       data-graphic-element="true"
-                      onMouseDown={e => {
+                      onPointerDown={e => {
                         const x = e.clientX
                         const y = e.clientY
                         const within = (node?: HTMLElement | null) => {
@@ -3084,7 +3452,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                           if (t) startTextDrag(e, t)
                         }
                       }}
-                      className="absolute cursor-move select-none"
+                      className="absolute cursor-move touch-none select-none"
                       style={{
                         left: `${designBbox.x * 100}%`,
                         top: `${designBbox.y * 100}%`,
@@ -3144,7 +3512,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
 
             {/* Contact + Share — bordered button group, top-right of the canvas. */}
             <div
-              className={`absolute top-6 right-6 z-[4] flex items-center rounded-full border border-neutral-200 bg-[#F4F4F4] transition-[filter,opacity] duration-200 ${
+              className={`max-dlg:hidden absolute top-6 right-6 z-[4] flex items-center rounded-full border border-neutral-200 bg-[#F4F4F4] transition-[filter,opacity] duration-200 ${
                 selectedText || selectedGraphicId ? "pointer-events-none opacity-60 blur-xs" : ""
               }`}
             >
@@ -3152,6 +3520,29 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
               <div className="w-px self-stretch bg-neutral-200" />
               <ShareButton container={creatomatContainer} />
             </div>
+
+            {/* Mobile (<1080px) canvas overlays — top action header (hidden while
+                an element is selected, like create-omat) and the dot view
+                switcher floating above the dock. Both are dlg:hidden inside. */}
+            {!selectedText && !selectedGraphicId && (
+              <MobileActionHeader
+                canUndo={undoStack.length > 0}
+                canRedo={redoStack.length > 0}
+                onUndo={undoLayers}
+                onRedo={redoLayers}
+                colorName={appearances[activeColorIndex]?.name ?? ""}
+                colorHex={appearances[activeColorIndex]?.color ?? "#ffffff"}
+                onColorClick={() => setMobileColorDrawerOpen(true)}
+                onMoreClick={() => setMobileMoreMenuOpen(true)}
+              />
+            )}
+            {productData && (
+              <MobileViewSwitcher
+                views={productData.views.map(v => ({ id: v.id, name: v.name }))}
+                activeIndex={activeViewIndex}
+                onSelect={goToViewIndex}
+              />
+            )}
 
             {/* Customer-service mode: draggable gear + modal, bounded to the canvas area. */}
             {csMode && (
@@ -3168,12 +3559,13 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                 onSessionBegin={beginCsSession}
                 onSessionCommit={commitCsSession}
                 onSessionRevert={revertCsSession}
+                modelImages={previewModelImages}
               />
             )}
 
             {/* Zoom control — vertical, bottom-left of the canvas area. Plus on
                 top, minus at the bottom; the WedgeSlider is rotated upright. */}
-            <div className="absolute bottom-6 left-6 z-[5] flex w-[48px] flex-col items-center gap-1 rounded-full bg-white py-2.5 shadow-xs transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-105">
+            <div className="max-dlg:hidden absolute bottom-6 left-6 z-[5] flex w-[48px] flex-col items-center gap-1 rounded-full bg-white py-2.5 shadow-xs transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:scale-105">
               <div className="group/tooltip relative flex">
                 <button
                   type="button"
@@ -3236,7 +3628,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                 at the bottom-right of the canvas. Hidden in CS mode — the print
                 technique is set inside the CS modal instead. */}
             {!csMode && (currentModelImage || productData?.embroidery) && (
-              <div className="absolute bottom-6 right-6 z-20 flex items-center gap-1">
+              <div className="max-dlg:hidden absolute bottom-6 right-6 z-20 flex items-center gap-1">
                 {/* Temporarily hidden — "See all pictures" model circle.
                 {currentModelImage && (
                   <div className="group/tooltip relative flex h-[48px] w-[48px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-white p-1 shadow-xs">
@@ -3472,7 +3864,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
             {(["graphics", "uploads", "ai"] as const).map(panel => (
               <div
                 key={panel}
-                className={`absolute z-30 inset-y-[4px] left-[4px] w-[375px] rounded-[12px] bg-white shadow-[32px_0px_50px_0px_rgba(0,0,0,0.05)] flex flex-col transition-transform duration-300 ease-out ${
+                className={`max-dlg:hidden absolute z-30 inset-y-[4px] left-[4px] w-[375px] rounded-[12px] bg-white shadow-[32px_0px_50px_0px_rgba(0,0,0,0.05)] flex flex-col transition-transform duration-300 ease-out ${
                   activePanel === panel ? "translate-x-0" : "-translate-x-[calc(100%+100px)]"
                 }`}
               >
@@ -3521,6 +3913,10 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
               </div>
             ))}
 
+            {/* Desktop selection UI — below dlg the mobile edit sheet replaces
+                all four (wrapper is display:contents on desktop, so layout is
+                untouched there). */}
+            <div className="contents max-dlg:hidden">
             <EditorBar
               show={!!selectedText}
               fontSize={selectedText?.fontSize ?? 32}
@@ -3576,12 +3972,13 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
               currentFontFamily={selectedText?.fontFamily ?? DEFAULT_FONT_FAMILY}
               onChange={family => updateSelectedText({ fontFamily: family })}
             />
+            </div>
           </div>
           {/* View selector — single rounded button + dropdown of all views. */}
           {productData && productData.views.length > 1 && (
             <div
               data-view-dropdown
-              className={`absolute bottom-6 left-1/2 -translate-x-1/2 ${
+              className={`max-dlg:hidden absolute bottom-6 left-1/2 -translate-x-1/2 ${
                 viewDropdownOpen ? "z-50" : "z-20"
               }`}
             >
@@ -3838,7 +4235,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
           <div
             ref={rightSectionRef}
             id="right-section"
-            className={`relative shrink-0 w-[470px] p-[24px] pb-3 overflow-y-auto h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
+            className={`max-dlg:hidden relative shrink-0 w-[470px] p-[24px] pb-3 overflow-y-auto h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
               viewDropdownOpen ? "pointer-events-none" : ""
             }`}
             style={{
@@ -4273,48 +4670,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
                 <button
                   type="button"
                   disabled={addingToBasket || flashSize}
-                  onClick={() => {
-                    if (addingToBasket || flashSize) return
-                    if (totalSelected === 0) {
-                      setFlashSize(true)
-                      setTimeout(() => setFlashSize(false), 2000)
-                      return
-                    }
-                    if (!productData) return
-                    const currentApp = appearances[activeColorIndex]
-                    if (!currentApp) return
-                    const designSnapshot =
-                      printAreaOverlay && printAreaPxSize.width > 0 && printAreaPxSize.height > 0
-                        ? {
-                            textElements: visibleTextElements.map(t => ({ ...t })),
-                            graphicElements: visibleGraphicElements.map(g => ({ ...g })),
-                            printAreaOverlay,
-                            displayWidth:
-                              (printAreaPxSize.width * 100) / printAreaOverlay.width,
-                            displayHeight:
-                              (printAreaPxSize.height * 100) / printAreaOverlay.height,
-                          }
-                        : undefined
-                    setAddingToBasket(true)
-                    setTimeout(() => {
-                      const newItems: BasketItem[] = Object.entries(sizeQuantities)
-                        .filter(([, qty]) => qty > 0)
-                        .map(([size, qty]) => ({
-                          id: `cart-${Date.now()}-${size}`,
-                          productName: productData.name,
-                          appearanceName: currentApp.name,
-                          image: currentViewImage || currentApp.image,
-                          size,
-                          qty,
-                          price: unitPrice,
-                          design: designSnapshot,
-                        }))
-                      setBasketItems(prev => [...prev, ...newItems])
-                      setSizeQuantities({})
-                      setAddingToBasket(false)
-                      setBasketOpen(true)
-                    }, ADD_TO_BASKET_DELAY)
-                  }}
+                  onClick={handleAddToBasket}
                   className={`flex-1 text-white font-sans text-[14px] font-semibold px-[24px] flex items-center justify-center transition-colors h-12 overflow-hidden ${
                     flashSize
                       ? "bg-[#999] cursor-not-allowed"
@@ -4382,8 +4738,8 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
               setWelcomeOpen(open)
             }}
             container={creatomatContainer}
-            overlayClassName="rounded-[12px]"
-            className="w-[440px] max-w-[90%] rounded-2xl bg-white p-[24px] shadow-xl"
+            overlayClassName="rounded-[12px] max-dlg:hidden"
+            className="w-[440px] max-w-[90%] rounded-2xl bg-white p-[24px] shadow-xl max-dlg:hidden"
           >
             <div className="flex items-center justify-between">
               <ScopedDialogTitle
@@ -4552,6 +4908,103 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
         onOpenChange={setProductsDrawerOpen}
         onSelect={setSelectedProduct}
         tiles={allTilesWithModel}
+      />
+
+      {/* ===== Mobile (<1080px) shell ==========================================
+          Bottom dock + bottom sheets, mirroring create-omat's mobile designer.
+          The dock is dlg:hidden; the sheets only ever open from mobile-only
+          buttons, so they need no gating. Desktop is untouched. */}
+      <MobileDock
+        inspectorMode={!!selectedText || !!selectedGraphicId}
+        actionDisabled={!canDesignOnCurrentView}
+        onProductsClick={() => setProductsDrawerOpen(true)}
+        onGraphicsClick={() => startAdd("graphics")}
+        onTextClick={() => startAdd("text")}
+        onUploadsClick={() => startAdd("uploads")}
+        onAIClick={() => togglePanel("ai")}
+        onFinish={() => setMobileSizeSheetOpen(true)}
+        onUnselect={() => {
+          setSelectedTextId(null)
+          setSelectedGraphicId(null)
+        }}
+      />
+      <MobileColorDrawer
+        open={mobileColorDrawerOpen}
+        onOpenChange={setMobileColorDrawerOpen}
+        options={appearances.map(a => ({ id: a.id, name: a.name, color: a.color }))}
+        activeIndex={activeColorIndex}
+        onSelect={setActiveColorIndex}
+      />
+      <MobileMoreMenu
+        open={mobileMoreMenuOpen}
+        onOpenChange={setMobileMoreMenuOpen}
+        onProductDetails={() => setDetailsOpen(true)}
+        container={canvasSectionEl}
+      />
+      <MobileSizeSheet
+        open={mobileSizeSheetOpen}
+        onOpenChange={setMobileSizeSheetOpen}
+        sizes={sizes}
+        quantities={sizeQuantities}
+        outOfStock={outOfStockMap[appearances[activeColorIndex]?.id] ?? []}
+        onQuantityChange={setSizeQuantity}
+        totalSelected={totalSelected}
+        discountHint={discountTierHint}
+        discountPercent={discountPercent}
+        formattedOriginalPrice={formattedOriginalPrice}
+        formattedDiscountedPrice={formattedDiscountedPrice}
+        addingToBasket={addingToBasket}
+        onAddToBasket={handleAddToBasket}
+      />
+      {/* Graphics / Uploads / AI re-housed as a bottom drawer below dlg —
+          driven by the same activePanel state as the desktop slide-ins
+          (which are max-dlg:hidden). */}
+      <MobilePanelsDrawer
+        panel={isDlgMobile ? activePanel : null}
+        onClose={() => setActivePanel(null)}
+        onPlaceImage={addGraphicElement}
+        pendingUpload={pendingPanelUpload}
+        onPendingUploadConsumed={() => setPendingPanelUpload(null)}
+      />
+      {/* Selection editing below dlg — replaces EditorBar/FontPanel/
+          TextColorPanel/GraphicEditorBar (create-omat MobileEditDrawer
+          pattern: no overlay, canvas stays interactive). */}
+      <MobileEditSheet
+        open={isDlgMobile && (!!selectedText || !!selectedGraphicId) && !editingTextId}
+        onClose={() => {
+          setSelectedTextId(null)
+          setSelectedGraphicId(null)
+        }}
+        blockType={selectedText ? "text" : selectedGraphicId ? "graphic" : null}
+        text={
+          selectedText
+            ? {
+                fontFamily: selectedText.fontFamily,
+                fontSize: selectedText.fontSize,
+                color: selectedText.color,
+                colorSet: !!selectedText.colorSet,
+                textAlign: selectedText.textAlign ?? "left",
+                bold: !!selectedText.bold,
+                italic: !!selectedText.italic,
+                underline: !!selectedText.underline,
+              }
+            : null
+        }
+        maxFontSize={maxFontSize}
+        canBold={fontCaps.canBold}
+        canItalic={fontCaps.canItalic}
+        onFontFamilyChange={family => updateSelectedText({ fontFamily: family })}
+        onFontSizeChange={size => updateSelectedText({ fontSize: size })}
+        onColorChange={color => updateSelectedText({ color, colorSet: true })}
+        onTextAlignChange={align => updateSelectedText({ textAlign: align })}
+        onToggleBold={() => updateSelectedText({ bold: !selectedText?.bold })}
+        onToggleItalic={() => updateSelectedText({ italic: !selectedText?.italic })}
+        onToggleUnderline={() => updateSelectedText({ underline: !selectedText?.underline })}
+        onDuplicate={selectedText ? duplicateSelectedText : duplicateSelectedGraphic}
+        onDelete={selectedText ? deleteSelectedText : deleteSelectedGraphic}
+        onWrite={() => {
+          if (selectedTextId) setEditingTextId(selectedTextId)
+        }}
       />
 
     </>

@@ -4,6 +4,13 @@ import { ScopedDialog, ScopedDialogClose, ScopedDialogTitle } from "@/components
 import { ChevronDown, GripVertical, Image as ImageIcon, Redo2, Settings, Trash2, Undo2, X } from "lucide-react"
 import { PointerEvent as ReactPointerEvent, ReactNode, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
+import {
+    Carousel,
+    CarouselContent,
+    CarouselItem,
+    CarouselNext,
+    CarouselPrevious,
+} from "@/components/ui/carousel"
 
 // Customer-service mode: a draggable gear button that floats over the canvas
 // area and opens a settings modal (Print / Layers tabs). Rendered inside
@@ -53,6 +60,7 @@ type Props = {
     onSessionBegin: () => void
     onSessionCommit: () => void
     onSessionRevert: () => void
+    modelImages: string[]
 }
 
 const TECHNIQUES = [1, 2, 3]
@@ -96,6 +104,7 @@ export default function CustomerServiceMode({
     onSessionBegin,
     onSessionCommit,
     onSessionRevert,
+    modelImages,
 }: Props) {
     const areaRef = useRef<HTMLDivElement>(null)
     const [pos, setPos] = useState<Point | null>(null)
@@ -103,7 +112,7 @@ export default function CustomerServiceMode({
     const drag = useRef<{ offsetX: number; offsetY: number; moved: boolean } | null>(null)
 
     // modal state
-    const [tab, setTab] = useState<"print" | "layers">("print")
+    const [tab, setTab] = useState<"print" | "layers" | "preview">("print")
     const [technique, setTechnique] = useState(1)
     const [printTypeByView, setPrintTypeByView] = useState<Record<string, number>>({})
     // Last-saved snapshot of the print settings so Cancel can discard edits.
@@ -134,13 +143,16 @@ export default function CustomerServiceMode({
     }
 
     // Start in the top-right corner of the canvas area once we can measure it.
+    // Below the dlg breakpoint the mobile dock occupies the bottom edge, so the
+    // gear starts one dock-height higher (it stays freely draggable).
     useEffect(() => {
         const area = areaRef.current
         if (!area) return
         const r = area.getBoundingClientRect()
+        const dockOffset = window.matchMedia("(max-width: 1079px)").matches ? 96 : 0
         setPos({
             x: Math.max(MARGIN, r.width - BTN - MARGIN),
-            y: Math.max(MARGIN, r.height - BTN - MARGIN),
+            y: Math.max(MARGIN, r.height - BTN - MARGIN - dockOffset),
         })
     }, [])
 
@@ -279,7 +291,7 @@ export default function CustomerServiceMode({
 
                         {/* tabs */}
                         <div className="flex gap-5 border-b border-neutral-200 px-[20px]">
-                            {(["print", "layers"] as const).map(t => (
+                            {(["print", "layers", "preview"] as const).map(t => (
                                 <button
                                     key={t}
                                     type="button"
@@ -369,7 +381,7 @@ export default function CustomerServiceMode({
                                         </div>
                                     </div>
                                 </div>
-                            ) : (
+                            ) : tab === "layers" ? (
                                 <div className="flex flex-col gap-4">
                                     <div className="flex flex-col gap-2">
                                         <h3 className={sectionTitle}>View</h3>
@@ -488,6 +500,36 @@ export default function CustomerServiceMode({
                                             </div>
                                         )}
                                     </div>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-3">
+                                    <h3 className={sectionTitle}>Preview</h3>
+                                    {modelImages.length === 0 ? (
+                                        <span className="text-[13px] text-neutral-400">
+                                            No model images for this product.
+                                        </span>
+                                    ) : (
+                                        <Carousel opts={{ align: "start", loop: true }} className="w-full">
+                                            <CarouselContent>
+                                                {modelImages.map((src, i) => (
+                                                    <CarouselItem key={src}>
+                                                        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50">
+                                                            <img
+                                                                src={src}
+                                                                alt={`Model image ${i + 1}`}
+                                                                className="aspect-square w-full object-contain"
+                                                            />
+                                                        </div>
+                                                    </CarouselItem>
+                                                ))}
+                                            </CarouselContent>
+                                            <CarouselPrevious className="left-2" />
+                                            <CarouselNext className="right-2" />
+                                        </Carousel>
+                                    )}
+                                    <p className="text-center text-[12px] text-neutral-500">
+                                        {modelImages.length} model image{modelImages.length === 1 ? "" : "s"}
+                                    </p>
                                 </div>
                             )}
                         </div>

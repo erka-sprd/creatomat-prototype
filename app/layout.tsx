@@ -1,10 +1,20 @@
 import type React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
+
+// Lock browser-level pinch zoom on mobile — the designer canvas implements its
+// own pinch-to-zoom; native page scaling on top of it shifts/zooms the whole
+// layout and leaves residual pan ("page scrolls after zooming back").
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+}
 
 export const metadata: Metadata = {
   title: "Spreadshirt",

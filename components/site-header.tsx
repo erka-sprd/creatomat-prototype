@@ -16,8 +16,8 @@ export default function SiteHeader({
       className={`${hidden ? "hidden" : "flex"} flex-none w-full flex-col shadow-[0_2px_4px_rgba(0,0,0,0.04)] bg-white`}
     >
       <PromoBanner />
-      <div className="w-full px-8">
-        <div className="mx-auto flex h-16 w-full max-w-[1920px] items-center justify-between">
+      <div className="w-full px-8 max-dlg:px-4">
+        <div className="mx-auto flex h-16 w-full max-w-[1920px] items-center justify-between max-dlg:h-14">
           <img src="/icons/Logo.svg" alt="Spreadshirt" className="h-[28px]" />
           <div className="flex items-center gap-6">
             <button

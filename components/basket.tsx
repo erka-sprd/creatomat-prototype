@@ -78,18 +78,25 @@ export function Basket({ open, onClose, items, onQuantityChange, onRemove }: Bas
   return (
     <>
       <div
-        className={`fixed inset-0 z-[9998] bg-black/40 transition-opacity duration-200 ${
+        className={`fixed inset-0 z-[9998] bg-black/40 transition-opacity duration-200 max-dlg:bg-black/80 ${
           mounted ? "opacity-100" : "opacity-0"
         }`}
         onClick={onClose}
       />
+      {/* Desktop: right side drawer. Below dlg: bottom sheet (top/left/width
+          overrides + slide-up transform), matching the other mobile sheets. */}
       <div
-        className={`fixed top-0 right-0 bottom-0 z-[9999] w-[500px] max-w-[90vw] bg-white shadow-xl flex flex-col transition-transform duration-300 ease-out ${
-          mounted ? "translate-x-0" : "translate-x-full"
+        className={`fixed top-0 right-0 bottom-0 z-[9999] w-[500px] max-w-[90vw] bg-white shadow-xl flex flex-col transition-transform duration-300 ease-out max-dlg:top-auto max-dlg:left-0 max-dlg:h-[85dvh] max-dlg:w-full max-dlg:max-w-none max-dlg:rounded-t-2xl ${
+          mounted
+            ? "translate-x-0 max-dlg:translate-y-0"
+            : "translate-x-full max-dlg:translate-x-0 max-dlg:translate-y-full"
         }`}
       >
         <div className="flex items-center justify-between px-6 pt-6 pb-4 flex-shrink-0">
-          <h2 className="font-display text-[20px] font-bold text-black">Your basket</h2>
+          {/* Below dlg the sheet header matches the kit drawer type (16px medium). */}
+          <h2 className="font-display text-[20px] font-bold text-black max-dlg:text-base max-dlg:font-medium">
+            Your basket
+          </h2>
           <button
             type="button"
             aria-label="Close"

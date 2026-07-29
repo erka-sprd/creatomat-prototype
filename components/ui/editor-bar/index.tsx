@@ -32,7 +32,7 @@ const MIN_FONT_SIZE = 1
 const ABS_MAX_FONT_SIZE = 320
 const ALIGN_ORDER: TextAlign[] = ["left", "center", "right"]
 
-function BoldIcon() {
+export function BoldIcon() {
   return (
     <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M6 4h7a4 4 0 0 1 0 8H6z" />
@@ -41,7 +41,7 @@ function BoldIcon() {
   )
 }
 
-function ItalicIcon() {
+export function ItalicIcon() {
   return (
     <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <line x1="19" y1="4" x2="10" y2="4" />
@@ -51,7 +51,7 @@ function ItalicIcon() {
   )
 }
 
-function UnderlineIcon() {
+export function UnderlineIcon() {
   return (
     <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M6 3v7a6 6 0 0 0 12 0V3" />
@@ -61,7 +61,7 @@ function UnderlineIcon() {
 }
 
 // Alignment icon — three lines shifted to match the alignment.
-function AlignIcon({ align }: { align: TextAlign }) {
+export function AlignIcon({ align }: { align: TextAlign }) {
   const lines =
     align === "center"
       ? [

@@ -94,6 +94,9 @@
 
 @theme {
   --font-display: "MADEOuterSans", sans-serif;
+  /* Designer mobile/desktop switch — same 1080px "dlg" breakpoint as
+     production create-omat (BREAKPOINTS.dlg). Enables dlg:/max-dlg: variants. */
+  --breakpoint-dlg: 1080px;
 }
 
 /* Add-to-basket loading IconsScroller (ported from create-omat) */

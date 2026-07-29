@@ -3,6 +3,9 @@ import SiteHeader from "@/components/site-header"
 // Full-page fallback shown while the Designer chunk loads. The real header +
 // banner render immediately; only the three columns are skeletons, mirroring
 // the designer's own staged intro reveal so the transition is seamless.
+// Below the dlg breakpoint it mirrors the mobile designer instead: no side
+// columns, full-bleed canvas in the mobile canvas colour — so the handoff to
+// the designer's Lottie intro overlay is seamless there too.
 
 const Block = ({ className }: { className?: string }) => (
   <div className={`animate-pulse rounded bg-neutral-200/70 ${className ?? ""}`} />
@@ -10,17 +13,17 @@ const Block = ({ className }: { className?: string }) => (
 
 export default function DesignerSkeleton() {
   return (
-    <div className="flex h-screen w-full flex-col">
+    <div className="flex h-screen w-full flex-col max-dlg:h-dvh">
       <SiteHeader />
 
-      <div className="flex min-h-0 flex-1 flex-col px-8 py-[16px]">
+      <div className="flex min-h-0 flex-1 flex-col px-8 py-[16px] max-dlg:p-0">
         {/* Centering wrapper + max-w-[1920px] row — mirrors the real designer
             layout so on large screens the columns stay centered (not left-
             aligned) and never overflow the layout width. */}
         <div className="flex min-h-0 flex-1 items-center justify-center">
         <div className="relative flex h-full w-full max-w-[1920px] items-stretch justify-center gap-2">
           {/* left tools — top (Products), middle (4 tools), bottom (undo/redo) */}
-          <div className="flex w-[100px] flex-shrink-0 flex-col items-center rounded-[12px] bg-[#F4F4F4] p-[6px] px-1.5">
+          <div className="max-dlg:hidden flex w-[100px] flex-shrink-0 flex-col items-center rounded-[12px] bg-[#F4F4F4] p-[6px] px-1.5">
             <div className="flex-shrink-0">
               <Block className="h-[68px] w-[88px] rounded-[10px]" />
             </div>
@@ -37,9 +40,9 @@ export default function DesignerSkeleton() {
           </div>
           {/* middle canvas — the loader animation is rendered by the designer
               itself (single instance) so it doesn't restart at the handoff. */}
-          <div className="flex-1 rounded-[12px] bg-[#F4F4F4]" />
+          <div className="flex-1 rounded-[12px] bg-[#F4F4F4] max-dlg:rounded-none max-dlg:bg-[var(--sprd-neutral-200)]" />
           {/* right product panel */}
-          <div className="flex w-[470px] flex-shrink-0 flex-col gap-4 rounded-[12px] bg-[#F4F4F4] p-[24px]">
+          <div className="max-dlg:hidden flex w-[470px] flex-shrink-0 flex-col gap-4 rounded-[12px] bg-[#F4F4F4] p-[24px]">
             <Block className="h-6 w-3/4" />
             <Block className="h-4 w-1/3" />
             <div className="mt-2 flex gap-2">

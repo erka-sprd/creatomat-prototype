@@ -17,7 +17,7 @@ export default function ProductsDrawer({ open, onOpenChange, onSelect, tiles }: 
   return (
     <Drawer.Root open={open} onOpenChange={onOpenChange}>
       <Drawer.Portal>
-        <Drawer.Overlay className="fixed inset-0 z-[9998] bg-black/40" />
+        <Drawer.Overlay className="fixed inset-0 z-[9998] bg-black/40 max-dlg:bg-black/80" />
         <Drawer.Content className="fixed right-0 bottom-0 left-0 z-[9999] flex h-[calc(100dvh-32px)] flex-col rounded-t-2xl bg-white outline-none">
           <Drawer.Title className="sr-only">All products</Drawer.Title>
           <div className="flex items-center justify-between px-6 pt-5 pb-4">
@@ -32,7 +32,8 @@ export default function ProductsDrawer({ open, onOpenChange, onSelect, tiles }: 
             </button>
           </div>
           <div className="flex-1 overflow-y-auto px-6 pb-6">
-            <div className="grid grid-cols-5 gap-x-4 gap-y-6">
+            {/* 5 columns on desktop; 2 below the dlg breakpoint. */}
+            <div className="grid grid-cols-5 gap-x-4 gap-y-6 max-dlg:grid-cols-2 max-dlg:gap-x-3">
               {tiles.map(t => {
                 const select = () => {
                   onSelect({ id: t.id, src: t.image, name: t.name, appearanceId: t.appearanceId })
