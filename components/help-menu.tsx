@@ -79,7 +79,11 @@ export default function HelpMenu({ variant = "label" }: { variant?: "label" | "i
                         className="group flex cursor-pointer items-center gap-1 rounded-full border border-neutral-200 bg-[#F4F4F4] px-3.5 py-3 text-neutral-700 outline-none transition-colors hover:bg-white hover:text-black data-[state=open]:bg-white in-data-[canvas-actions-plain]:border-transparent in-data-[canvas-actions-plain]:bg-transparent"
                     >
                         <Phone className="size-[20px]" strokeWidth={1.8} />
-                        <ChevronDown className="h-4 w-4 text-neutral-700 transition-[transform,color] duration-200 group-hover:text-black group-data-[state=open]:rotate-180" />
+                        {/* Transition `rotate`, not `transform`: Tailwind v4
+                            compiles rotate-180 to the standalone `rotate`
+                            property, so transition-transform never applies and
+                            the flip snaps. Eased curve matches the drawers. */}
+                        <ChevronDown className="h-4 w-4 text-neutral-700 transition-[rotate,color] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:text-black group-data-[state=open]:rotate-180" />
                     </button>
                 ) : (
                     <button
@@ -90,7 +94,7 @@ export default function HelpMenu({ variant = "label" }: { variant?: "label" | "i
                         className="group flex cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-[14px] font-medium text-black outline-none transition-colors hover:bg-neutral-100"
                     >
                         Contact
-                        <ChevronDown className="h-4 w-4 text-neutral-500 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                        <ChevronDown className="h-4 w-4 text-neutral-500 transition-[rotate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[state=open]:rotate-180" />
                     </button>
                 )}
             </DropdownMenuTrigger>

@@ -72,7 +72,10 @@ export default function BulkOrderNote({ className = "" }: { className?: string }
                 backgroundColor: `color-mix(in oklab, ${BULK_PURPLE} 30%, transparent)`,
             }}
         >
-            <span className="font-display text-[16px] leading-tight font-bold">
+            {/* MADE Outer Sans ships only Medium (500) and Black (900), so
+                font-bold resolved up to Black — Medium is the one lighter face
+                that exists. */}
+            <span className="font-display text-[16px] leading-tight font-medium">
                 {BULK_HEADLINE}
             </span>
             <div className="flex flex-col gap-2">
