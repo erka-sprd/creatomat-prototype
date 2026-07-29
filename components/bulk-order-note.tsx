@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react"
 const BULK_PURPLE = "#bfb9fd"
 const BULK_PURPLE_DARK = `color-mix(in oklab, ${BULK_PURPLE} 40%, black)`
 const BULK_HEADLINE = "50+ products? Email us"
-const BULK_EMAIL = "bulk@spreadshirt.de"
+const BULK_EMAIL = "pro@spreadshirt.net"
 const BULK_NOTE = "We answer in 24 hours, except the weekends."
 
 export default function BulkOrderNote({ className = "" }: { className?: string }) {
