@@ -1,8 +1,9 @@
 "use client"
 
 import BulkOrderNote from "@/components/bulk-order-note"
-import { CONTACT_FORM_URL, MailIcon, PhoneIcon } from "@/components/help-menu"
+import { PhoneIcon } from "@/components/contact-icons"
 import MobileDrawer from "@/components/mobile/mobile-drawer"
+import { CheckmarkIcon } from "@/components/kit-icons"
 import { SHIPPING_OPTIONS, deliveryDateRange } from "@/lib/shipping"
 import { useState } from "react"
 
@@ -134,30 +135,32 @@ export default function MobileMoreMenu({
                 (icon + pills + sub-links, typography) is create-omat's. */}
             <div className="flex flex-col gap-3 px-4 pt-1 pb-[calc(16px+env(safe-area-inset-bottom))]">
                 {/* Product details + Share — two separate cards side by side,
-                    each with its icon centred above the label. */}
+                    each with its icon centred above the label, h-20 (80px). */}
                 <div className="grid grid-cols-2 gap-3">
                     <button
                         type="button"
-                        className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl bg-[var(--sprd-neutral-100)] p-4 text-center active:bg-[var(--sprd-neutral-200)]"
+                        className="flex h-20 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl bg-[var(--sprd-neutral-100)] px-3 text-center active:bg-[var(--sprd-neutral-200)]"
                         onClick={() => {
                             onOpenChange(false)
                             onProductDetails()
                         }}
                     >
                         <InfoIcon />
-                        <span className="text-base font-medium">Product details</span>
+                        <span className="text-[14px] font-medium">Product details</span>
                     </button>
                     {/* create-omat opens its ShareDialog here; the proto copies
                         the same dummy link the canvas Share button uses. */}
                     <button
                         type="button"
-                        className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl bg-[var(--sprd-neutral-100)] p-4 text-center active:bg-[var(--sprd-neutral-200)]"
+                        aria-label={copied ? "Link copied" : "Share"}
+                        className="flex h-20 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl bg-[var(--sprd-neutral-100)] px-3 text-center active:bg-[var(--sprd-neutral-200)]"
                         onClick={copyShareLink}
                     >
-                        <ShareIcon />
-                        <span className="text-base font-medium">
-                            {copied ? "Link copied" : "Share"}
-                        </span>
+                        {/* Confirms with the kit checkmark instead of a word, like
+                            the bulk-order panel — nothing to translate, no
+                            reflow. */}
+                        {copied ? <CheckmarkIcon className="size-6" /> : <ShareIcon />}
+                        <span className="text-[14px] font-medium">Share</span>
                     </button>
                 </div>
 
@@ -207,23 +210,11 @@ export default function MobileMoreMenu({
                 {/* Bulk orders — the purple panel from the desktop Contact
                     dropdown, as its own category at the very bottom. */}
                 <BulkOrderNote />
-                {/* Contact — the proto's own addition, restyled only to sit in a
-                    card; its content is untouched. */}
+                {/* Contact — the proto's own addition. */}
                 <div className="overflow-hidden rounded-xl bg-[var(--sprd-neutral-100)]">
-                    <a
-                        href={CONTACT_FORM_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2.5 p-4 active:bg-[var(--sprd-neutral-200)]"
-                    >
-                        <MailIcon viewBox="-3.8 -3.8 27.6 27.6" className="size-6 shrink-0 text-black" />
-                        <span className="text-[15px] font-medium text-black">Contact form</span>
-                    </a>
-                    <RowDivider />
-                    <a
-                        href="tel:+4934199659989"
-                        className="flex items-center gap-2.5 p-4 active:bg-[var(--sprd-neutral-200)]"
-                    >
+                    {/* Informational only — no tel: link, so tapping never
+                        starts a call. */}
+                    <div className="flex items-center gap-2.5 p-4">
                         <PhoneIcon viewBox="-3.8 -3.8 27.6 27.6" className="size-6 shrink-0 text-black" />
                         {/* Sub-label styling matches the returns row's "See
                             details" link; the column gap is 2px tighter (6px vs
@@ -236,7 +227,7 @@ export default function MobileMoreMenu({
                                 Mo-Fr 9-18 Uhr
                             </span>
                         </span>
-                    </a>
+                    </div>
                 </div>
 
             </div>

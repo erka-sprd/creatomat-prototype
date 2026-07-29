@@ -3510,14 +3510,18 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
               />
             )}
 
-            {/* Contact + Share — bordered button group, top-right of the canvas. */}
+            {/* Contact and Share — two separate pills, top-right of the canvas
+                (each carries its own border/fill; see HelpMenu / ShareButton).
+                While an element is selected the editor bar owns the top of the
+                canvas, so they recede: blurred and dimmed, with their frames
+                dropped so only the glyphs remain. */}
             <div
-              className={`max-dlg:hidden absolute top-6 right-6 z-[4] flex items-center rounded-full border border-neutral-200 bg-[#F4F4F4] transition-[filter,opacity] duration-200 ${
+              className={`max-dlg:hidden absolute top-6 right-6 z-[4] flex items-center gap-2 transition-[filter,opacity] duration-200 ${
                 selectedText || selectedGraphicId ? "pointer-events-none opacity-60 blur-xs" : ""
               }`}
+              data-canvas-actions-plain={selectedText || selectedGraphicId ? "true" : undefined}
             >
               <HelpMenu variant="icon" />
-              <div className="w-px self-stretch bg-neutral-200" />
               <ShareButton container={creatomatContainer} />
             </div>
 
