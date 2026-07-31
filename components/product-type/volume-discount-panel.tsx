@@ -21,9 +21,11 @@ type QuantityFieldProps = {
   id?: string
   quantity: number
   onQuantityChange: (value: number) => void
+  /** kit sizes: m = h-10/w-12 buttons (desktop panel), l = h-12/w-18 (mobile drawer) */
+  size?: "m" | "l"
 }
 
-function QuantityField({ id, quantity, onQuantityChange }: QuantityFieldProps) {
+export function QuantityField({ id, quantity, onQuantityChange, size = "m" }: QuantityFieldProps) {
   const handleInputChange = (raw: string) => {
     const digits = raw.replace(/\D/g, "")
     // Empty/0 snaps to the minimum; a pasted huge number clamps to the maximum.
@@ -42,7 +44,8 @@ function QuantityField({ id, quantity, onQuantityChange }: QuantityFieldProps) {
       disabled={dir === -1 ? quantity <= MIN_QUANTITY : quantity >= VOLUME_DISCOUNT_MAX_QUANTITY}
       aria-label={dir === -1 ? "Decrease quantity" : "Increase quantity"}
       className={cn(
-        "flex h-full w-12 cursor-pointer items-center justify-center hover:bg-neutral-100 disabled:pointer-events-none disabled:opacity-40",
+        "flex h-full cursor-pointer items-center justify-center hover:bg-neutral-100 disabled:pointer-events-none disabled:opacity-40",
+        size === "m" ? "w-12" : "w-18",
         dir === -1 ? "border-r border-neutral-200" : "border-l border-neutral-200"
       )}
     >
@@ -51,7 +54,12 @@ function QuantityField({ id, quantity, onQuantityChange }: QuantityFieldProps) {
   )
 
   return (
-    <div className="flex h-10 w-full items-stretch border border-neutral-200 bg-white">
+    <div
+      className={cn(
+        "flex w-full items-stretch border border-neutral-200 bg-white",
+        size === "m" ? "h-10" : "h-12"
+      )}
+    >
       {stepButton(-1)}
       <div className="flex flex-1 items-stretch border-2 border-transparent focus-within:border-black">
         <input

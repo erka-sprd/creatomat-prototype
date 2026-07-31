@@ -144,6 +144,18 @@ export function useProductFilters(products: StaticProduct[]) {
   const applySelection = (sectionId: string, optionIds: string[]) =>
     setSelections(prev => ({ ...prev, [sectionId]: optionIds }))
 
+  /** mobile: toggle a single option immediately (no pending state) */
+  const toggleOption = (sectionId: string, optionId: string) =>
+    setSelections(prev => {
+      const current = prev[sectionId] ?? []
+      return {
+        ...prev,
+        [sectionId]: current.includes(optionId)
+          ? current.filter(id => id !== optionId)
+          : [...current, optionId],
+      }
+    })
+
   const setToggle = (sectionId: string, on: boolean) =>
     setToggles(prev => ({ ...prev, [sectionId]: on }))
 
@@ -183,6 +195,7 @@ export function useProductFilters(products: StaticProduct[]) {
     setSelectedCategoryId,
     selections,
     applySelection,
+    toggleOption,
     toggles,
     setToggle,
     priceValue,

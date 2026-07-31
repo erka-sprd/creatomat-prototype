@@ -127,9 +127,25 @@ function PriceDropdown({
 }
 
 // create-omat SearchInput replica (kit Input with Search prefix + clear).
-function SearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+// Exported for the mobile panel, which renders it full-width above the chips.
+export function SearchField({
+  value,
+  onChange,
+  className,
+}: {
+  value: string
+  onChange: (v: string) => void
+  className?: string
+}) {
   return (
-    <label className="group flex h-10 w-full max-w-[320px] items-center gap-3 border border-neutral-700 bg-white p-3 focus-within:border-black">
+    // Natural kit-Input height (p-3) — the desktop filter bar squeezes it to
+    // h-10 via className, mobile keeps it tall, like production.
+    <label
+      className={cn(
+        "group flex w-full items-center gap-3 border border-neutral-700 bg-white p-3 focus-within:border-black",
+        className
+      )}
+    >
       <SearchIcon className="size-5 shrink-0 text-neutral-700 group-focus-within:text-black" />
       <input
         value={value}
@@ -162,7 +178,11 @@ export default function FilterBar({ filters }: { filters: ProductFiltersState })
     <div className={cn("relative pb-6")}>
       <div className="flex flex-wrap items-center gap-2">
         {/* Client-side name search, ported from create-omat (2+ chars, 400ms debounce). */}
-        <SearchField value={filters.searchQuery} onChange={filters.setSearchQuery} />
+        <SearchField
+          value={filters.searchQuery}
+          onChange={filters.setSearchQuery}
+          className="h-10 max-w-[320px]"
+        />
 
         {/* Sort */}
         <FilterDropdown

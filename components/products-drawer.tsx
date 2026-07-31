@@ -6,13 +6,19 @@ import { Drawer } from "vaul"
 import type { StaticProduct } from "product-catalog-client"
 
 import { KitButton } from "@/components/kit-button"
-import { CloseIcon } from "@/components/kit-icons"
+import { ArrowIcon, CloseIcon, FilterIcon, SortIcon } from "@/components/kit-icons"
 import ProductTile, { type ProductTileData } from "@/components/product-tile"
+import CategoryChipBar from "@/components/product-type/category-chip-bar"
 import CategoryTree from "@/components/product-type/category-tree"
-import FilterBar from "@/components/product-type/filter-bar"
+import FilterBar, { SearchField } from "@/components/product-type/filter-bar"
+import MobileFilterDrawer from "@/components/product-type/mobile-filter-drawer"
+import MobileProductPanel from "@/components/product-type/mobile-product-panel"
+import MobileSortDrawer from "@/components/product-type/mobile-sort-drawer"
+import MobileVolumeDiscountDrawer from "@/components/product-type/mobile-volume-discount-drawer"
 import VolumeDiscountPanel from "@/components/product-type/volume-discount-panel"
 import { useDlgMobile } from "@/hooks/use-dlg-mobile"
 import { useProductFilters } from "@/hooks/use-product-filters"
+import { findCategory, type CategoryNode } from "@/lib/assortment"
 import {
   VOLUME_DISCOUNT_MAX_PERCENTAGE,
   discountedPrice,
@@ -25,6 +31,16 @@ const eur = (n: number) => n.toFixed(2).replace(".", ",") + " €"
 // button spinner for at least 300ms so the (client-side) update is noticeable.
 const AUTO_APPLY_DEBOUNCE_MS = 1000
 const PRICE_UPDATE_SPINNER_MS = 300
+
+/** ids from the root down to `id` (inclusive), or [] when not found */
+function pathTo(nodes: CategoryNode[], id: string): string[] {
+  for (const node of nodes) {
+    if (node.id === id) return [node.id]
+    const childPath = node.children ? pathTo(node.children, id) : []
+    if (childPath.length) return [node.id, ...childPath]
+  }
+  return []
+}
 
 export type SelectedProduct = { id: string; src: string; name: string; appearanceId: string }
 
@@ -46,6 +62,25 @@ export default function ProductsDrawer({
 }: ProductsDrawerProps) {
   const isMobile = useDlgMobile()
   const filters = useProductFilters(products)
+
+  // Mobile second-level drawers (filter accordion, sort, price calculator).
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [sortOpen, setSortOpen] = useState(false)
+  const [volumeDiscountOpen, setVolumeDiscountOpen] = useState(false)
+
+  // Mobile chip bar shows top-level categories, or the selected category's
+  // children; the header back arrow walks one level up (like production).
+  const chipCategories = (
+    filters.selectedCategoryId
+      ? (findCategory(filters.categoryTree, filters.selectedCategoryId)?.children ?? [])
+      : filters.categoryTree
+  ).map(c => ({ id: c.id, label: c.label, disabled: filters.isCategoryDisabled(c) }))
+
+  const handleCategoryBack = () => {
+    if (!filters.selectedCategoryId) return
+    const path = pathTo(filters.categoryTree, filters.selectedCategoryId)
+    filters.setSelectedCategoryId(path.length > 1 ? path[path.length - 2] : undefined)
+  }
 
   // Price calculator (production's orderQuantity/appliedQuantity split): the
   // stepper value is live and auto-applies 1s after it stops changing on
@@ -160,6 +195,7 @@ export default function ProductsDrawer({
   )
 
   return (
+    <>
     <Drawer.Root open={open} onOpenChange={onOpenChange}>
       <Drawer.Portal>
         {/* Overlay + height per create-omat: kit Drawer overlay is bg-black/80;
@@ -170,25 +206,94 @@ export default function ProductsDrawer({
         <Drawer.Content className="fixed right-0 bottom-0 left-0 z-[9999] flex h-full max-h-[calc(100%-96px)] flex-col rounded-t-2xl border border-gray-200 bg-white outline-none">
           <Drawer.Title className="sr-only">All products</Drawer.Title>
           {isMobile ? (
-            // Mobile (<1080px): unchanged header + simple grid — filters are
-            // desktop-only for now.
+            // Mobile (<1080px), per create-omat's MobileProductTypeDrawer:
+            // back-arrow header, search, category chips, filter/sort buttons
+            // (opening second-level drawers) and the filtered 2-col grid.
             <>
-              <div className="flex items-center justify-between px-6 pt-5 pb-4">
-                <span className="font-display text-[16px] font-medium text-black">
-                  All products
-                </span>
+              <div className="flex items-center justify-between py-1 pr-1.5 pl-4">
+                <div className="flex min-h-11 items-center gap-2">
+                  {filters.selectedCategoryId && (
+                    <button
+                      type="button"
+                      aria-label="Back"
+                      onClick={handleCategoryBack}
+                      className="flex cursor-pointer items-center"
+                    >
+                      <ArrowIcon className="size-5 rotate-180" />
+                    </button>
+                  )}
+                  {/* Kit Drawer titles render in the display font (font-made). */}
+                  <span className="font-display text-base font-bold text-black">{title}</span>
+                  <span className="font-sans text-sm text-neutral-700">
+                    ({visibleTiles.length})
+                  </span>
+                </div>
                 <button
                   type="button"
                   aria-label="Close"
                   onClick={() => onOpenChange(false)}
-                  className="cursor-pointer"
+                  className="cursor-pointer p-2.5"
                 >
                   <img src="/icons/icon-close-x.svg" alt="" className="h-6 w-6" />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto px-6 pb-6">
-                <div className="grid grid-cols-2 gap-x-3 gap-y-6">{tiles.map(tileButton)}</div>
-              </div>
+              <MobileProductPanel
+                search={
+                  <SearchField value={filters.searchQuery} onChange={filters.setSearchQuery} />
+                }
+                categories={
+                  chipCategories.length > 0 ? (
+                    <CategoryChipBar
+                      categories={chipCategories}
+                      selectedId={filters.selectedCategoryId}
+                      onSelect={filters.setSelectedCategoryId}
+                    />
+                  ) : null
+                }
+                volumeDiscountBtn={
+                  <KitButton
+                    variant="plain"
+                    onClick={() => setVolumeDiscountOpen(true)}
+                    className="w-full rounded-full bg-[#bfb9fd]/30 text-sm"
+                  >
+                    Calculate volume discount
+                  </KitButton>
+                }
+                filterBtn={
+                  <KitButton
+                    variant="plain"
+                    startIcon={<FilterIcon className="size-6" />}
+                    onClick={() => setFilterOpen(true)}
+                    className="flex items-center gap-1.5 px-0 text-sm"
+                  >
+                    Filters
+                    {filters.activeFilterCount > 0 && (
+                      <span className="flex items-center justify-center bg-black px-2 py-1 text-xs font-bold text-white">
+                        {filters.activeFilterCount}
+                      </span>
+                    )}
+                  </KitButton>
+                }
+                sortBtn={
+                  <KitButton
+                    variant="plain"
+                    startIcon={<SortIcon className="size-5" />}
+                    onClick={() => setSortOpen(true)}
+                    className="flex items-center gap-1.5 px-0 text-sm"
+                  >
+                    Sort by
+                  </KitButton>
+                }
+                productList={
+                  visibleTiles.length === 0 ? (
+                    emptyState
+                  ) : (
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-6">
+                      {visibleTiles.map(tileButton)}
+                    </div>
+                  )
+                }
+              />
             </>
           ) : (
             // Desktop, per create-omat: no header row at all — a floating close
@@ -254,5 +359,32 @@ export default function ProductsDrawer({
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>
+
+    {/* Mobile second-level drawers — siblings of the main drawer, like
+        production renders MobileFilterDrawer/MobileSortDrawer. */}
+    {isMobile && (
+      <>
+        <MobileFilterDrawer open={filterOpen} onOpenChange={setFilterOpen} filters={filters} />
+        <MobileSortDrawer
+          open={sortOpen}
+          onOpenChange={setSortOpen}
+          selectedSortId={filters.sortId}
+          onSortChange={filters.setSortId}
+        />
+        <MobileVolumeDiscountDrawer
+          open={volumeDiscountOpen}
+          onOpenChange={next => {
+            setVolumeDiscountOpen(next)
+            // Like production: the picked quantity applies when the drawer
+            // closes (both via "Update prices" and swipe/X dismiss).
+            if (!next) setAppliedQuantity(orderQuantity)
+          }}
+          quantity={orderQuantity}
+          onQuantityChange={setOrderQuantity}
+          maxDiscountPercentage={VOLUME_DISCOUNT_MAX_PERCENTAGE}
+        />
+      </>
+    )}
+    </>
   )
 }

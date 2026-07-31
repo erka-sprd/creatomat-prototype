@@ -74,7 +74,11 @@ export default function MobileDrawer({
         <Drawer.Root open={open} onOpenChange={onOpenChange} modal={modal} dismissible={dismissible}>
             <Drawer.Portal container={container ?? undefined}>
                 {overlay && (
-                    <Drawer.Overlay className={`${position} inset-0 z-[9998] bg-black/80`} />
+                    // Same z as drawer contents (kit: everything z-50) so a
+                    // second-level drawer's overlay stacks above an already-open
+                    // drawer by DOM order — e.g. the volume-discount overlay
+                    // dims the product type drawer beneath it.
+                    <Drawer.Overlay className={`${position} inset-0 z-[9999] bg-black/80`} />
                 )}
                 <Drawer.Content
                     className={
