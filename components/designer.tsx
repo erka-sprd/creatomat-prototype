@@ -4912,6 +4912,7 @@ export default function Designer({ csMode = false }: { csMode?: boolean }) {
         onOpenChange={setProductsDrawerOpen}
         onSelect={setSelectedProduct}
         tiles={allTilesWithModel}
+        products={products}
       />
 
       {/* ===== Mobile (<1080px) shell ==========================================

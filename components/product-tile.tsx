@@ -3,6 +3,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
+import { SpreadLogoIcon } from "@/components/kit-icons"
 import {
   Carousel,
   CarouselContent,
@@ -24,6 +25,10 @@ export type ProductTileData = {
   brand: string
   name: string
   colors: string[]
+  /** Swatches with per-colour preview images — hovering one swaps the tile
+      image to that colour, like create-omat's onAppearanceHover. Falls back
+      to plain `colors` when absent. */
+  swatches?: { color: string; image: string }[]
 }
 
 type ProductTileProps = {
@@ -32,9 +37,23 @@ type ProductTileProps = {
   quantity?: number
   topLeft?: ReactNode
   bottomCenter?: ReactNode
+  /** Volume-discount display (create-omat sale styling): red price, struck
+      original, muted caption. `price`/`original` are preformatted strings. */
+  sale?: { price?: string; original?: string; caption?: string }
+  /** Skeleton the price row (and caption) while bulk prices update. */
+  priceLoading?: boolean
 }
 
 const eur = (n: number) => n.toFixed(2).replace(".", ",") + " €"
+
+// Kit Appearance borders only bright swatches (border-neutral-400); rough
+// luminance check standing in for the kit's isBrightColor.
+const isBrightColor = (hex: string) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return true
+  const int = parseInt(m[1], 16)
+  return (((int >> 16) & 255) * 299 + ((int >> 8) & 255) * 587 + (int & 255) * 114) / 1000 > 200
+}
 
 // The kit chevron SVGs are fill="black"; mask them so the shape paints in the
 // button's currentColor (white on the black arrow buttons) instead.
@@ -59,11 +78,18 @@ export default function ProductTile({
   quantity,
   topLeft,
   bottomCenter,
+  sale,
+  priceLoading = false,
 }: ProductTileProps) {
-  const shown = t.colors.slice(0, 5)
-  const extra = t.colors.length - shown.length
+  // Kit Appearances: up to 7 swatches, then "+N".
+  const swatchItems: { color: string; image?: string }[] = t.swatches ?? t.colors.map(color => ({ color }))
+  const shown = swatchItems.slice(0, 7)
+  const extra = swatchItems.length - shown.length
   const models = t.modelImages ?? []
   const [hovered, setHovered] = useState(false)
+  // Hovering a swatch previews that colour in the image area (production's
+  // onAppearanceHover / activeAppearanceImage behaviour).
+  const [hoverImage, setHoverImage] = useState<string | null>(null)
   return (
     <div className="w-full">
       <div
@@ -74,7 +100,7 @@ export default function ProductTile({
           selected && "border-2 border-black"
         )}
       >
-        <img src={t.image} alt={t.name} className="h-full w-full object-contain" />
+        <img src={hoverImage ?? t.image} alt={t.name} className="h-full w-full object-contain" />
         {models.length > 0 && (
           <div
             className={cn(
@@ -125,28 +151,76 @@ export default function ProductTile({
         {topLeft && <div className="absolute top-2 left-2 z-10">{topLeft}</div>}
         {bottomCenter && <div className="absolute inset-x-0 bottom-0 z-10">{bottomCenter}</div>}
       </div>
-      <p className="mt-3 text-base font-medium text-black">
-        {t.price}
-        {quantity && quantity > 1 ? (
-          <span className="text-neutral-400">
-            {" "}
-            x {quantity} = {eur(t.priceValue * quantity)}
-          </span>
-        ) : null}
-      </p>
-      <p className="mt-1.5 text-base font-bold text-black">{t.brand}</p>
-      <p className="truncate text-base text-neutral-700">{t.name}</p>
-      <ul className="mt-2 flex items-center gap-1">
-        {shown.map((c, i) => (
-          <li key={i}>
-            <span
-              className="block h-4 w-4 rounded-full border border-black/15"
-              style={{ backgroundColor: c }}
-            />
-          </li>
-        ))}
-        {extra > 0 && <li className="ml-1 text-sm text-neutral-700">+{extra}</li>}
-      </ul>
+      {/* Info rows per create-omat's ProductTile: color swatches → brand +
+          name → price block ("from" + bold price, sale red + struck original,
+          caption) in a gap-2 column. */}
+      <div className="mt-2 flex flex-col gap-2 text-left">
+        <ul className="flex h-4 items-center gap-0.5">
+          {shown.map((s, i) => (
+            <li
+              key={i}
+              onMouseEnter={s.image ? () => setHoverImage(s.image!) : undefined}
+              onMouseLeave={s.image ? () => setHoverImage(null) : undefined}
+              className={cn(s.image && "cursor-pointer")}
+            >
+              <span
+                className={cn(
+                  "block size-2.5 rounded-full",
+                  isBrightColor(s.color) && "border border-neutral-400"
+                )}
+                style={{ backgroundColor: s.color }}
+              />
+            </li>
+          ))}
+          {extra > 0 && <li className="text-xs">+{extra}</li>}
+        </ul>
+        <div>
+          <div className="mb-0.5 flex h-4 items-center">
+            {t.brand.trim().toLowerCase() === "spread" ? (
+              <SpreadLogoIcon />
+            ) : (
+              <p className="text-sm font-bold text-black">{t.brand}</p>
+            )}
+          </div>
+          <p className="truncate text-sm text-black">{t.name}</p>
+        </div>
+        <div className="mt-0.5 text-sm">
+          {priceLoading ? (
+            // Production's price skeleton (h-5 row, h-3 w-24 pulse bar).
+            <>
+              <div className="flex h-5 items-center">
+                <div className="h-3 w-24 animate-pulse rounded bg-neutral-200" />
+              </div>
+              {sale?.caption && (
+                <div className="flex h-4 items-center">
+                  <div className="h-2.5 w-36 animate-pulse rounded bg-neutral-200" />
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <p>
+                <span className={cn("font-medium", sale?.price && "text-red-600")}>from </span>
+                <span className={cn("font-bold", sale?.price && "text-red-600")}>
+                  {sale?.price ?? t.price}
+                </span>
+                {sale?.price && (
+                  <span className="ml-2 font-medium text-neutral-700 line-through">
+                    {sale.original ?? t.price}
+                  </span>
+                )}
+                {quantity && quantity > 1 ? (
+                  <span className="text-neutral-400">
+                    {" "}
+                    x {quantity} = {eur(t.priceValue * quantity)}
+                  </span>
+                ) : null}
+              </p>
+              {sale?.caption && <p className="text-xs text-neutral-600">{sale.caption}</p>}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

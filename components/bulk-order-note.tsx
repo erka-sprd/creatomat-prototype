@@ -67,7 +67,7 @@ export default function BulkOrderNote({ className = "" }: { className?: string }
 
     return (
         <div
-            className={`flex flex-col gap-3 rounded-2xl px-5 py-5 text-black ${className}`}
+            className={`flex flex-col gap-3 rounded-lg px-5 py-5 text-black ${className}`}
             style={{
                 backgroundColor: `color-mix(in oklab, ${BULK_PURPLE} 30%, transparent)`,
             }}
