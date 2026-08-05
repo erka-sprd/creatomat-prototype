@@ -11,13 +11,29 @@ type WedgeSliderProps = {
   // Glide the thumb to the new value (used for +/- steps). Always off while the
   // user is actively dragging so the thumb tracks the pointer 1:1.
   animate?: boolean
+  // Opt-in: pressing bare track jumps the value to that point, then dragging
+  // continues from there. Presses that land on the thumb never jump, so you can
+  // grab the handle by its tips without it shifting. Off = pure drag-relative.
+  jumpOnTrackClick?: boolean
 }
+
+// Thumb hit size along the drag axis: the 20px circle plus its 2px border on
+// each side (box-content) = 24px across, so ±12px from the thumb's centre.
+const THUMB_RADIUS = 12
 
 // Drag-relative slider: pressing the thumb does NOT change the value — only
 // actual pointer movement does. A native <input type="range"> jumps the value to
 // wherever you click (so grabbing the thumb near its edge nudges it), which felt
 // wrong for the zoom handle. Here we track movement from the press point instead.
-export function WedgeSlider({ min, max, value, onChange, width = 140, animate = false }: WedgeSliderProps) {
+export function WedgeSlider({
+  min,
+  max,
+  value,
+  onChange,
+  width = 140,
+  animate = false,
+  jumpOnTrackClick = false,
+}: WedgeSliderProps) {
   const [isDragging, setIsDragging] = useState(false)
   const trackRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{
@@ -38,12 +54,26 @@ export function WedgeSlider({ min, max, value, onChange, width = 140, animate = 
     // The parent may rotate the slider; the rendered rect tells us the on-screen
     // orientation so vertical (rotated) sliders map upward drag to higher values.
     const vertical = rect.height >= rect.width
-    dragRef.current = {
-      start: vertical ? e.clientY : e.clientX,
-      vertical,
-      length: vertical ? rect.height : rect.width,
-      startValue: value,
+    const length = vertical ? rect.height : rect.width
+    const pos = vertical ? e.clientY : e.clientX
+
+    // Where the press landed, measured from the track's `min` end. A rotated
+    // (vertical) slider runs bottom → top, so measure down from its bottom edge.
+    const fromMin = vertical ? rect.bottom - pos : pos - rect.left
+    // The thumb's centre travels inset by its own radius at both ends (it is laid
+    // out with left:%  + translateX(-%)), so map through that same inset.
+    const travel = length - THUMB_RADIUS * 2
+    const thumbCentre = THUMB_RADIUS + (travel * (value - min)) / (max - min)
+
+    let startValue = value
+    // Jump only for presses on bare track — never within the thumb, so grabbing
+    // the handle (including by its upper/lower tip) leaves the value untouched.
+    if (jumpOnTrackClick && travel > 0 && Math.abs(fromMin - thumbCentre) > THUMB_RADIUS) {
+      startValue = clamp(min + ((fromMin - THUMB_RADIUS) / travel) * (max - min))
+      if (startValue !== value) onChange(startValue)
     }
+
+    dragRef.current = { start: pos, vertical, length, startValue }
     setIsDragging(true)
   }
 

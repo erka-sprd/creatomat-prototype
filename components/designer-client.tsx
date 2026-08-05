@@ -14,6 +14,12 @@ const Designer = dynamic(() => import("@/components/designer"), {
     loading: () => <DesignerSkeleton />,
 })
 
-export default function DesignerClient({ csMode = false }: { csMode?: boolean }) {
-    return <Designer csMode={csMode} />
+export default function DesignerClient({
+    csMode = false,
+    basketHypotheses = false,
+}: {
+    csMode?: boolean
+    basketHypotheses?: boolean
+}) {
+    return <Designer csMode={csMode} basketHypotheses={basketHypotheses} />
 }

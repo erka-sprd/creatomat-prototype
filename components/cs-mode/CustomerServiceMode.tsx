@@ -1,7 +1,7 @@
 "use client"
 
 import { ScopedDialog, ScopedDialogClose, ScopedDialogTitle } from "@/components/ui/scoped-dialog"
-import { ChevronDown, GripVertical, Image as ImageIcon, Redo2, Settings, Trash2, Undo2, X } from "lucide-react"
+import { ChevronDown, GripVertical, Image as ImageIcon, Settings, Trash2, X } from "lucide-react"
 import { PointerEvent as ReactPointerEvent, ReactNode, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import {
@@ -53,10 +53,6 @@ type Props = {
     container: HTMLElement | null
     onReorderLayers: (viewId: string, orderedTopFirstIds: string[]) => void
     onDeleteLayer: (viewId: string, layerId: string) => void
-    onUndo: () => void
-    onRedo: () => void
-    canUndo: boolean
-    canRedo: boolean
     onSessionBegin: () => void
     onSessionCommit: () => void
     onSessionRevert: () => void
@@ -97,10 +93,6 @@ export default function CustomerServiceMode({
     container,
     onReorderLayers,
     onDeleteLayer,
-    onUndo,
-    onRedo,
-    canUndo,
-    canRedo,
     onSessionBegin,
     onSessionCommit,
     onSessionRevert,
@@ -535,28 +527,7 @@ export default function CustomerServiceMode({
                         </div>
 
                         {/* footer */}
-                        <div className="flex items-center justify-between border-t border-neutral-200 px-[20px] py-[14px]">
-                            {/* undo / redo */}
-                            <div className="flex items-center gap-1">
-                                <button
-                                    type="button"
-                                    aria-label="Undo"
-                                    onClick={onUndo}
-                                    disabled={!canUndo}
-                                    className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-default disabled:text-neutral-300 disabled:hover:bg-transparent"
-                                >
-                                    <Undo2 size={18} />
-                                </button>
-                                <button
-                                    type="button"
-                                    aria-label="Redo"
-                                    onClick={onRedo}
-                                    disabled={!canRedo}
-                                    className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-default disabled:text-neutral-300 disabled:hover:bg-transparent"
-                                >
-                                    <Redo2 size={18} />
-                                </button>
-                            </div>
+                        <div className="flex items-center justify-end border-t border-neutral-200 px-[20px] py-[14px]">
                             {/* cancel / save */}
                             <div className="flex items-center gap-2.5">
                                 <button
