@@ -6,14 +6,11 @@ import {
   ScopedDialogTitle,
 } from "@/components/ui/scoped-dialog"
 
-// Mirrors the volume-discount tiers used across the project.
-const TIERS = [
-  { min: 5, pct: 10 },
-  { min: 20, pct: 20 },
-  { min: 40, pct: 30 },
-  { min: 60, pct: 40 },
-  { min: 100, pct: 50 },
-]
+import { majorVolumeDiscountTiers } from "@/lib/volume-discount"
+
+// The real scale is 11 tiers deep, so — like create-omat's
+// VolumeDiscountContent — show the five major thresholds rather than all of them.
+const TIERS = majorVolumeDiscountTiers()
 
 export default function VolumeDiscountDialog({
   open,
@@ -45,11 +42,11 @@ export default function VolumeDiscountDialog({
         <div className="border border-neutral-200">
           {TIERS.map(t => (
             <div
-              key={t.min}
+              key={t.from}
               className="border-b border-neutral-200 py-4 text-center text-base last:border-b-0"
             >
-              <span className="font-bold text-black">{t.min}+ products</span>
-              <span className="font-bold text-[#DC2626]"> −{t.pct}% off</span>
+              <span className="font-bold text-black">{t.from}+ products</span>
+              <span className="font-bold text-[#DC2626]"> −{t.percentage}% off</span>
             </div>
           ))}
         </div>

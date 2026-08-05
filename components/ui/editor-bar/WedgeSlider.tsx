@@ -15,6 +15,10 @@ type WedgeSliderProps = {
   // continues from there. Presses that land on the thumb never jump, so you can
   // grab the handle by its tips without it shifting. Off = pure drag-relative.
   jumpOnTrackClick?: boolean
+  // Where a track-click should send the value. Give the owner an eased setter
+  // (e.g. the zoom dock's rAF tween) so the jump glides instead of snapping;
+  // falls back to onChange for an instant jump.
+  onJump?: (value: number) => void
 }
 
 // Thumb hit size along the drag axis: the 20px circle plus its 2px border on
@@ -33,6 +37,7 @@ export function WedgeSlider({
   width = 140,
   animate = false,
   jumpOnTrackClick = false,
+  onJump,
 }: WedgeSliderProps) {
   const [isDragging, setIsDragging] = useState(false)
   const trackRef = useRef<HTMLDivElement>(null)
@@ -70,7 +75,9 @@ export function WedgeSlider({
     // the handle (including by its upper/lower tip) leaves the value untouched.
     if (jumpOnTrackClick && travel > 0 && Math.abs(fromMin - thumbCentre) > THUMB_RADIUS) {
       startValue = clamp(min + ((fromMin - THUMB_RADIUS) / travel) * (max - min))
-      if (startValue !== value) onChange(startValue)
+      // Eased when the owner supplies onJump; the drag below still starts from
+      // the target, so a drag mid-glide simply takes over.
+      if (startValue !== value) (onJump ?? onChange)(startValue)
     }
 
     dragRef.current = { start: pos, vertical, length, startValue }

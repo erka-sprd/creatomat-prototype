@@ -2,13 +2,16 @@
 // only React components — otherwise these non-component exports make the module
 // ineligible for React Fast Refresh and every edit triggers a full page reload.
 
+import { nextVolumeDiscountTier, volumeDiscountPercentage } from "@/lib/volume-discount"
+
+// Derived from the real discount scale (lib/volume-discount.ts) rather than a
+// second, differing table: names the next threshold to aim for, or the discount
+// already applied once on the top tier.
 export function getVolumeDiscountText(totalSelected: number) {
   const n = Math.max(0, Math.floor(totalSelected || 0))
-
-  if (n <= 5) return "From 5 items -10% reduction"
-  if (n <= 19) return "From 20 items -15% reduction"
-  if (n <= 49) return "From 50 items -25% reduction"
-  return `For ${n} items -50% reduction`
+  const next = nextVolumeDiscountTier(n)
+  if (next) return `From ${next.from} items -${next.percentage}% reduction`
+  return `For ${n} items -${volumeDiscountPercentage(n)}% reduction`
 }
 
 export function onlyDigits(input: string) {

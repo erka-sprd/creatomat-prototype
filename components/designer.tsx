@@ -1,6 +1,14 @@
 "use client"
 
-import { type CSSProperties, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { createPortal } from "react-dom"
 import * as Popover from "@radix-ui/react-popover"
 import { Basket, type BasketItem } from "@/components/basket"
@@ -14,6 +22,13 @@ import {
   type StaticProduct,
 } from "product-catalog-client"
 import { IMAGE_SERVER_BASE, loadCatalog, modelImagesFor } from "@/lib/catalog"
+import { printAreaCosts, printAreaTotal } from "@/lib/print-area-pricing"
+import {
+  VOLUME_DISCOUNT_MAX_PERCENTAGE,
+  majorVolumeDiscountTiers,
+  nextVolumeDiscountTier,
+  volumeDiscountPercentage,
+} from "@/lib/volume-discount"
 import {
   SIZE_MEASURE_LABELS,
   fetchSizeGuide,
@@ -675,9 +690,53 @@ export default function Designer({
     setSizeGuideOpen(false)
     setPriceBreakdownOpen(true)
   }
+  // With the size sheet open, push the design away the same way the view
+  // dropdown does — but leave the right column sharp, since the sheet, its
+  // companion panels and the price rail all live there and stay in use.
+  const dimForSizeSheet = basketHypotheses && sizePopoverOpen
   const sizePopoverScrollRef = useRef<HTMLDivElement | null>(null)
-  const [sizePopoverOverflowTop, setSizePopoverOverflowTop] = useState(false)
-  const [sizePopoverOverflowBottom, setSizePopoverOverflowBottom] = useState(false)
+  // Whether the size list is scrolled to its end (or is too short to scroll) —
+  // exactly when the CSS bottom shadow is hidden, so the sticky footer shows its
+  // top border instead. An IntersectionObserver on a sentinel after the last row
+  // answers this without measuring heights (scrollHeight/clientHeight only mean
+  // anything once Floating UI has sized the sheet, and racing that was flaky).
+  //
+  // Wired through CALLBACK refs, not an effect: Radix mounts the portal content
+  // in a later commit than the one where `open` flips, so an effect keyed to
+  // `open` runs while both refs are still null — it would bail and never retry.
+  const sizeListEndNode = useRef<HTMLDivElement | null>(null)
+  const sizeListObserver = useRef<IntersectionObserver | null>(null)
+  const [sizeListAtEnd, setSizeListAtEnd] = useState(false)
+  const wireSizeListObserver = useCallback(() => {
+    sizeListObserver.current?.disconnect()
+    sizeListObserver.current = null
+    const root = sizePopoverScrollRef.current
+    const target = sizeListEndNode.current
+    if (!root || !target) {
+      setSizeListAtEnd(false)
+      return
+    }
+    const io = new IntersectionObserver(
+      entries => setSizeListAtEnd(entries[0].isIntersecting),
+      { root }
+    )
+    io.observe(target)
+    sizeListObserver.current = io
+  }, [])
+  const setSizeListRoot = useCallback(
+    (node: HTMLDivElement | null) => {
+      sizePopoverScrollRef.current = node
+      wireSizeListObserver()
+    },
+    [wireSizeListObserver]
+  )
+  const setSizeListEnd = useCallback(
+    (node: HTMLDivElement | null) => {
+      sizeListEndNode.current = node
+      wireSizeListObserver()
+    },
+    [wireSizeListObserver]
+  )
   const [basketItems, setBasketItems] = useState<BasketItem[]>([])
   const [basketOpen, setBasketOpen] = useState(false)
   const [addingToBasket, setAddingToBasket] = useState(false)
@@ -2345,53 +2404,15 @@ export default function Designer({
     if (flashSize && totalSelected > 0) setFlashSize(false)
   }, [flashSize, totalSelected])
 
-  // Track scroll overflow inside the size popover so we can fade top/bottom edges.
-  useEffect(() => {
-    if (!sizePopoverOpen) return
-    const el = sizePopoverScrollRef.current
-    if (!el) return
-    const update = () => {
-      const max = el.scrollHeight - el.clientHeight
-      setSizePopoverOverflowTop(el.scrollTop > 1)
-      setSizePopoverOverflowBottom(el.scrollTop < max - 1)
-    }
-    update()
-    // The popover's max-height only lands once Floating UI has positioned it,
-    // so the first measurement can still see an unclipped list. Re-measure on
-    // the next frame and once more shortly after.
-    const raf = requestAnimationFrame(update)
-    const timer = setTimeout(update, 150)
-    el.addEventListener("scroll", update)
-    window.addEventListener("resize", update)
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    return () => {
-      cancelAnimationFrame(raf)
-      clearTimeout(timer)
-      el.removeEventListener("scroll", update)
-      window.removeEventListener("resize", update)
-      ro.disconnect()
-    }
-    // Re-measure when the list length or the panels that steal height change.
-  }, [sizePopoverOpen, sizes, sizeGuideOpen, priceBreakdownOpen])
-
   const setSizeQuantity = (size: string, qty: number) => {
     setSizeQuantities(prev => ({ ...prev, [size]: Math.max(0, Math.floor(qty) || 0) }))
   }
 
-  // Tier hint string driven by current totalSelected and the discount tiers.
+  // Tier hint string driven by current totalSelected and the real discount scale.
   const discountTierHint = (() => {
-    const tiers: { min: number; pct: number }[] = [
-      { min: 5, pct: 10 },
-      { min: 20, pct: 20 },
-      { min: 40, pct: 30 },
-      { min: 60, pct: 40 },
-      { min: 100, pct: 50 },
-    ]
-    const nextTier = tiers.find(t => totalSelected < t.min)
-    if (nextTier) return `From ${nextTier.min} items -${nextTier.pct}% reduction`
-    const last = tiers[tiers.length - 1]
-    return `${last.pct}% reduction applied`
+    const nextTier = nextVolumeDiscountTier(totalSelected)
+    if (nextTier) return `From ${nextTier.from} items -${nextTier.percentage}% reduction`
+    return `${VOLUME_DISCOUNT_MAX_PERCENTAGE}% reduction applied`
   })()
 
   const selectedSizes = sizes
@@ -2450,43 +2471,42 @@ export default function Designer({
       </span>
     )
 
-  // Calculate discount percentage based on volume
-  const getDiscountPercentage = (qty: number): number => {
-    if (qty >= 100) return 0.5 // 50% discount
-    if (qty >= 60) return 0.4 // 40% discount
-    if (qty >= 40) return 0.3 // 30% discount
-    if (qty >= 20) return 0.2 // 20% discount
-    if (qty >= 5) return 0.1 // 10% discount
-    return 0 // No discount
-  }
+  // Volume discount as a fraction, from the real scale (lib/volume-discount.ts).
+  const getDiscountPercentage = (qty: number): number => volumeDiscountPercentage(qty) / 100
 
-  // Per-decorated-print-area surcharge (mirrors dock-change's per-side pricing):
-  // each used print area adds a surcharge; embroidery costs +5/area over standard.
-  const SURCHARGE_STANDARD_PER_AREA = 2
-  const SURCHARGE_EMBROIDERY_PER_AREA = 7
-  const decoratedPrintAreaIds = new Set([
-    ...textElements.map(t => t.printAreaId),
-    ...graphicElements.map(g => g.printAreaId),
-  ])
-  const decoratedPrintAreaCount = decoratedPrintAreaIds.size
-  // Named print areas for the price-details breakdown — the catalogue's print
-  // areas carry no label of their own, so borrow the name of the view each one
-  // belongs to (Front, Back, …), which is what the shop shows.
+  // Print-area pricing follows create-omat's CYO strategy: the first decorated
+  // area is billed at the "first" amount and every additional one at the
+  // "other" amount, per print technique. Amounts and logic in
+  // lib/print-area-pricing.ts. Designs, uploads and texts are free under this
+  // strategy — the print area is the cost driver.
+  // Deduped by area (two designs on one area bill once) and kept in decoration
+  // order, so the cheaper additional-area rate lands on later areas, as in
+  // production.
+  const decoratedPrintAreaIdList = useMemo(() => {
+    const seen: string[] = []
+    for (const el of [...textElements, ...graphicElements]) {
+      if (!seen.includes(el.printAreaId)) seen.push(el.printAreaId)
+    }
+    return seen
+  }, [textElements, graphicElements])
+  const decoratedPrintAreaCount = decoratedPrintAreaIdList.length
+  // Named + priced print areas for the price-details breakdown. The catalogue's
+  // print areas carry no label of their own, so borrow the name of the view each
+  // one belongs to (Front, Back, …), which is what the shop shows.
   const decoratedPrintAreas = useMemo(
     () =>
-      [...decoratedPrintAreaIds].map(id => {
-        const area = productData?.printAreas?.find(a => a.id === id)
+      printAreaCosts(decoratedPrintAreaIdList, effectivePrintTechnique).map(cost => {
+        const area = productData?.printAreas?.find(a => a.id === cost.id)
         const view = productData?.views?.find(v => v.id === area?.defaultViewId)
-        return { id, name: view?.name ?? "Print area" }
+        return { ...cost, name: view?.name ?? "Print area" }
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [productData, [...decoratedPrintAreaIds].join(",")]
+    [productData, decoratedPrintAreaIdList, effectivePrintTechnique]
   )
-  const perAreaSurcharge =
-    effectivePrintTechnique === "embroidery"
-      ? SURCHARGE_EMBROIDERY_PER_AREA
-      : SURCHARGE_STANDARD_PER_AREA
-  const unitPrice = BASE_PRICE + decoratedPrintAreaCount * perAreaSurcharge
+  const decoratedPrintAreaTotal = printAreaTotal(
+    decoratedPrintAreaIdList,
+    effectivePrintTechnique
+  )
+  const unitPrice = BASE_PRICE + decoratedPrintAreaTotal
   const originalPrice = totalSelected > 0 ? unitPrice * totalSelected : unitPrice
   const discountPercent = getDiscountPercentage(totalSelected)
   const discountedPrice = originalPrice * (1 - discountPercent)
@@ -2496,18 +2516,12 @@ export default function Designer({
 
   // basketHypotheses (H2/H4): per-item price shown in the rail + breakdown.
   const hypoDiscountedUnit = unitPrice * (1 - discountPercent)
-  // H3 — the dropdown's tier line names how far the next threshold is. Tiers
-  // mirror getDiscountPercentage, so the promise always matches the price shown.
+  // H3 — the dropdown's tier line names how far the next threshold is, from the
+  // same scale that prices the order, so the promise always matches the figure.
   const hypoTierBannerText = (() => {
-    const next = [
-      { min: 5, pct: 10 },
-      { min: 20, pct: 20 },
-      { min: 40, pct: 30 },
-      { min: 60, pct: 40 },
-      { min: 100, pct: 50 },
-    ].find(t => totalSelected < t.min)
+    const next = nextVolumeDiscountTier(totalSelected)
     if (!next) return `%${Math.round(discountPercent * 100)} off applied`
-    return `Add ${next.min - totalSelected} more for %${next.pct} off`
+    return `Add ${next.from - totalSelected} more for %${next.percentage} off`
   })()
   const formatEUR = (n: number) => n.toFixed(2).replace(".", ",")
 
@@ -2661,18 +2675,175 @@ export default function Designer({
 
   const selectedColor = productImages[activeColorIndex]?.alt ?? ""
 
+  // Price-details content, rendered in two places: the companion panel while
+  // the size sheet is open, and a modal when it is closed (there is no sheet to
+  // sit beside then). Defined once so the two can never drift apart.
+  const priceDetailsContent = (
+    <>
+    <div className="flex-1 overflow-y-auto">
+      {/* Your Product */}
+      <div className="border-b border-neutral-200">
+        <div className="px-6 pb-4">
+          <p className="mb-2 text-sm font-semibold">Your Product</p>
+          <div className="flex gap-3">
+            <div className="flex h-20 w-20 shrink-0 items-start rounded-md bg-[#F2F2F2] p-1 shadow-[0_1px_1px_0_rgba(37,33,31,0.05)]">
+              {currentAppearance?.image ? (
+                <img
+                  src={currentAppearance.image}
+                  alt={productData?.name ?? ""}
+                  width={80}
+                  className="flex-1 self-stretch object-contain"
+                />
+              ) : (
+                <span className="text-xs text-gray-500">IMG</span>
+              )}
+            </div>
+            <div className="flex flex-1 items-center gap-4 self-stretch">
+              <p className="flex-1 text-sm">{productData?.name}</p>
+              <span className="text-sm">{formatEUR(BASE_PRICE)} €</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* Printing Costs — one row per decorated print area,
+          named after the view it sits on. */}
+      {decoratedPrintAreas.length > 0 && (
+        <div className="border-b border-neutral-200 px-6 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold">
+              {effectivePrintTechnique === "embroidery"
+                ? "Embroidery Costs"
+                : "Printing Costs"}
+            </p>
+            <span className="text-sm text-gray-500">
+              Calculated per print area
+            </span>
+          </div>
+          <div className="mb-2">
+            <a
+              href="https://help.spreadshirt.com/hc/en-gb/articles/207153579"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="cursor-pointer text-sm leading-5 underline"
+            >
+              Learn More
+            </a>
+          </div>
+          <div className="space-y-1">
+            {decoratedPrintAreas.map(area => (
+              <div
+                key={area.id}
+                className="flex items-center justify-between gap-3"
+              >
+                <span className="text-sm">{area.name}</span>
+                {/* Production prints "Free" for a zero-cost
+                    area (PriceDetailRow). */}
+                <span className="text-sm">
+                  {area.price === 0 ? "Free" : `${formatEUR(area.price)} €`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Design Prices — the designs themselves carry no
+          surcharge here; the cost is per print area. */}
+      {visibleTextElements.length + visibleGraphicElements.length > 0 && (
+        <div className="px-6 py-4">
+          <p className="mb-2 text-sm font-semibold">Design Prices</p>
+          <div className="space-y-2">
+            {visibleGraphicElements.map(g => (
+              <div
+                key={g.id}
+                className="flex items-center justify-between gap-3"
+              >
+                <div className="flex min-w-0 items-center gap-1">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded bg-blue-100">
+                    {g.src ? (
+                      <img
+                        src={g.src}
+                        alt=""
+                        className="h-6 w-6 rounded object-contain"
+                      />
+                    ) : (
+                      <span className="text-xs">🎨</span>
+                    )}
+                  </div>
+                  <span className="truncate text-sm">Uploaded Image</span>
+                </div>
+                <span className="text-sm">Free</span>
+              </div>
+            ))}
+            {visibleTextElements.map(t => (
+              <div
+                key={t.id}
+                className="flex items-center justify-between gap-3"
+              >
+                <div className="flex min-w-0 items-center gap-1">
+                  <span className="truncate text-sm">Text: {t.content}</span>
+                </div>
+                <span className="text-sm">Free</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+    {/* Total — production's footer: single-item line only
+        while a discount applies, then the total with the
+        struck original and the red percentage badge. */}
+    <div className="flex flex-shrink-0 flex-col gap-2.5 px-6 py-6 shadow-[0_-4px_8px_0_rgba(37,33,31,0.05)]">
+      {discountPercent > 0 && (
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <p>Single item</p>
+          <div className="flex items-center gap-2">
+            <span className="text-neutral-700 line-through">
+              {formatEUR(unitPrice)} €
+            </span>
+            <span className="pr-1">{formatEUR(hypoDiscountedUnit)} €</span>
+          </div>
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-black">
+          {totalSelected > 1
+            ? `Total price (${totalSelected} items)`
+            : "Single item total"}
+        </p>
+        <span className="flex items-center gap-2">
+          {discountPercent > 0 && totalSelected > 0 ? (
+            <>
+              <span className="text-lg leading-none text-neutral-700 line-through">
+                {formatEUR(originalPrice)} €
+              </span>
+              <span className="flex rounded-xs bg-red-600 px-1 py-0.5 text-sm text-white">
+                %{Math.round(discountPercent * 100)}
+              </span>
+              <span className="pr-1 text-lg font-semibold text-red-600">
+                {formatEUR(discountedPrice)} €
+              </span>
+            </>
+          ) : (
+            <span className="text-lg font-bold">
+              {formatEUR(totalSelected > 0 ? discountedPrice : unitPrice)} €
+            </span>
+          )}
+        </span>
+      </div>
+    </div>
+    </>
+  )
+
   return (
     <>
       <style>{`
         #color-buttons-row::-webkit-scrollbar{display:none;}
         #color-buttons-row{scrollbar-width:none;}
-        /* Canvas scrollbars (visible only when zoomed): transparent track, subtle thumb */
-        .canvas-scroll{scrollbar-color:rgba(0,0,0,0.25) transparent;}
-        .canvas-scroll::-webkit-scrollbar{width:10px;height:10px;background:transparent;}
-        .canvas-scroll::-webkit-scrollbar-track{background:transparent;}
-        .canvas-scroll::-webkit-scrollbar-corner{background:transparent;}
-        .canvas-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.22);background-clip:content-box;border:3px solid transparent;border-radius:999px;}
-        .canvas-scroll::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,0.35);background-clip:content-box;border:3px solid transparent;}
+        /* No canvas scrollbars. The container still scrolls — that is how zoom
+           re-frames on the design (see the scrollTo in the zoom effect) — but
+           bars across the artwork don't belong in a design canvas. */
+        .canvas-scroll{scrollbar-width:none;-ms-overflow-style:none;}
+        .canvas-scroll::-webkit-scrollbar{width:0;height:0;display:none;}
       `}</style>
 
       {/* Mobile uses dvh: on iOS Safari 100vh is the large viewport (URL bar
@@ -2691,11 +2862,12 @@ export default function Designer({
           <div
             id="left-section"
             className={`max-dlg:hidden relative shrink-0 w-[100px] p-[6px] px-1.5 h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
-              viewDropdownOpen ? "pointer-events-none" : ""
+              viewDropdownOpen || dimForSizeSheet ? "pointer-events-none" : ""
             }`}
             style={{
               transition: "filter 0.3s ease",
-              filter: viewDropdownOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+              filter:
+                viewDropdownOpen || dimForSizeSheet ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
             }}
           >
             {/* Intro skeleton overlay — mirrors the real button layout
@@ -3025,11 +3197,12 @@ export default function Designer({
             // create-omat's --ubq-canvas below 1080px — the floating pills use
             // --neutral-100, so on a #F4F4F4 canvas they'd have no contrast.
             className={`relative overflow-hidden w-full h-full bg-[#F4F4F4] max-dlg:bg-[var(--sprd-neutral-200)] rounded-[12px] max-dlg:rounded-none ${
-              viewDropdownOpen ? "pointer-events-none" : ""
+              viewDropdownOpen || dimForSizeSheet ? "pointer-events-none" : ""
             }`}
             style={{
               transition: "filter 0.3s ease",
-              filter: viewDropdownOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+              filter:
+                viewDropdownOpen || dimForSizeSheet ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
             }}
           >
             {/* Intro overlay: the loader animation runs from the start (1.85s),
@@ -3681,6 +3854,9 @@ export default function Designer({
                     }}
                     width={88}
                     jumpOnTrackClick
+                    // Track-clicks ease to the pressed point with the same rAF
+                    // tween as the +/- stops, so the canvas and thumb move together.
+                    onJump={animateZoomTo}
                   />
                 </div>
               </div>
@@ -4059,9 +4235,16 @@ export default function Designer({
           {productData && productData.views.length > 1 && (
             <div
               data-view-dropdown
+              // Sits outside #canvas-section (so it stays sharp when it is
+              // itself the control in use), which means it needs the size-sheet
+              // blur applied separately.
               className={`max-dlg:hidden absolute bottom-6 left-1/2 -translate-x-1/2 ${
                 viewDropdownOpen ? "z-50" : "z-20"
-              }`}
+              } ${dimForSizeSheet ? "pointer-events-none" : ""}`}
+              style={{
+                transition: "filter 0.3s ease",
+                filter: dimForSizeSheet ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+              }}
             >
               {/* ===== LEGACY VERSION (disabled) =====================================
                   The view-thumbnail dropdown + (hidden) trigger button + the first-run
@@ -4313,10 +4496,26 @@ export default function Designer({
           )}
           </div>
 
+          {/* The rail's frame/background is its own layer so it can blur with
+              the design while the controls on top of it stay sharp — a filter on
+              the column itself would take its children with it. Outside the
+              scroll container, so it doesn't scroll away. */}
+          <div className="max-dlg:hidden relative shrink-0 w-[470px] h-full">
+            <div
+              aria-hidden
+              className="absolute inset-0 rounded-[12px] bg-[#F4F4F4]"
+              style={{
+                transition: "filter 0.3s ease",
+                filter:
+                  viewDropdownOpen || dimForSizeSheet
+                    ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)`
+                    : "none",
+              }}
+            />
           <div
             ref={rightSectionRef}
             id="right-section"
-            className={`max-dlg:hidden relative shrink-0 w-[470px] p-[24px] pb-3 overflow-y-auto h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
+            className={`relative h-full p-[24px] pb-3 overflow-y-auto rounded-[12px] flex flex-col ${
               viewDropdownOpen ? "pointer-events-none" : ""
             }`}
             style={{
@@ -4346,7 +4545,17 @@ export default function Designer({
                 <div className="mt-auto h-12 w-full animate-pulse rounded bg-neutral-200/70" />
               </div>
             )}
-            <div id="top-part" className="flex-shrink-0">
+            {/* Title, details link and colour swatches are out of play while
+                the size sheet is open — dim them with the design, leaving only
+                the purchase controls below sharp. */}
+            <div
+              id="top-part"
+              className={`flex-shrink-0 ${dimForSizeSheet ? "pointer-events-none" : ""}`}
+              style={{
+                transition: "filter 0.3s ease",
+                filter: dimForSizeSheet ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+              }}
+            >
               <div className="flex items-start justify-between mb-[8px]">
                 <h1 className="font-display text-[20px] font-[800] text-black leading-tight line-clamp-2">
                   {productData?.name ?? ""}
@@ -4581,82 +4790,38 @@ export default function Designer({
               {basketHypotheses && (
                 <>
                   {/* Price first — a bulk buyer's opening question is "what does
-                      one cost?", and Price details sits right beside it. */}
-                  <div
-                    data-keeps-sizes-open="true"
-                    className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1"
-                  >
-                    {totalSelected >= 5 && discountPercent > 0 && (
-                      <span className="text-[14px] leading-none font-medium text-[#6A6A6A] line-through">
-                        {formattedOriginalPrice} €
-                      </span>
-                    )}
-                    <span
-                      className={`text-[24px] leading-7 font-medium ${
-                        totalSelected >= 5 && discountPercent > 0
-                          ? "text-[#DC2626]"
-                          : "text-black"
-                      }`}
-                    >
-                      {formattedDiscountedPrice} €
-                    </span>
-                    <button
-                      type="button"
-                      onClick={togglePriceBreakdown}
-                      className="cursor-pointer text-[14px] leading-5 font-normal text-black underline outline-none"
-                    >
-                      {priceBreakdownOpen ? "Hide price details" : "Price details"}
-                    </button>
+                      one cost?", so the rail answers exactly that: the per-item
+                      price, nothing else. The order total lives in the sheet's
+                      footer, where the quantities that produce it are visible.
+                      The "Per item" label only appears once sizes are chosen —
+                      before that there is no quantity for it to qualify. */}
+                  <div data-keeps-sizes-open="true" className="mb-3 flex flex-col gap-0.5">
                     {totalSelected > 0 && (
-                      <span className="basis-full text-[14px] leading-5 text-[var(--sprd-neutral-700)]">
-                        {formatEUR(hypoDiscountedUnit)} € per item
+                      <span className="text-[12px] leading-none text-[var(--sprd-neutral-700)]">
+                        Per item
                       </span>
                     )}
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <span
+                        className={`text-[24px] leading-7 font-medium ${
+                          discountPercent > 0 ? "text-[#DC2626]" : "text-black"
+                        }`}
+                      >
+                        {formatEUR(hypoDiscountedUnit)} €
+                      </span>
+                      <button
+                        type="button"
+                        onClick={togglePriceBreakdown}
+                        className="cursor-pointer text-[14px] leading-5 font-normal text-black underline outline-none"
+                      >
+                        {priceBreakdownOpen ? "Hide price details" : "Price details"}
+                      </button>
+                    </div>
                   </div>
 
-                  {/* H4 — with the sheet closed the breakdown expands here,
-                      under the price it explains. While the sheet is open the
-                      companion panel shows it instead; rendering both would
-                      grow the rail behind the sheet and make the column scroll.
-                      */}
-                  {priceBreakdownOpen && !sizePopoverOpen && (
-                    <div
-                      data-keeps-sizes-open="true"
-                      className="mb-3 flex flex-col gap-1.5 bg-[var(--sprd-neutral-100)] px-4 py-3 text-[14px] text-[var(--sprd-neutral-700)]"
-                    >
-                      <div className="flex justify-between">
-                        <span>Product</span>
-                        <span>{formatEUR(BASE_PRICE)} €</span>
-                      </div>
-                      {decoratedPrintAreaCount > 0 && (
-                        <div className="flex justify-between">
-                          <span>
-                            {effectivePrintTechnique === "embroidery" ? "Embroidery" : "Print"} (
-                            {decoratedPrintAreaCount}{" "}
-                            {decoratedPrintAreaCount === 1 ? "area" : "areas"})
-                          </span>
-                          <span>{formatEUR(decoratedPrintAreaCount * perAreaSurcharge)} €</span>
-                        </div>
-                      )}
-                      {discountPercent > 0 && (
-                        <div className="flex justify-between">
-                          <span>Volume discount</span>
-                          <span>−{Math.round(discountPercent * 100)}%</span>
-                        </div>
-                      )}
-                      <div className="h-px bg-[var(--sprd-neutral-300)]" />
-                      <div className="flex justify-between text-black">
-                        <span>Per item</span>
-                        <span className="font-bold">{formatEUR(hypoDiscountedUnit)} €</span>
-                      </div>
-                      {totalSelected > 0 && (
-                        <div className="flex justify-between text-black">
-                          <span>{totalSelected} items</span>
-                          <span className="font-bold">{formattedDiscountedPrice} €</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {/* H4 — with the sheet closed there is nothing to sit beside,
+                      so the same content opens as a modal instead (rendered near
+                      the other dialogs, below). */}
 
                   {/* H3 — the discount is stated before anything is selected,
                       directly under the price it applies to. */}
@@ -4668,7 +4833,7 @@ export default function Designer({
                   >
                     <span className="font-medium">
                       {discountPercent > 0
-                        ? `−${Math.round(discountPercent * 100)}% volume discount applied`
+                        ? `−${Math.round(discountPercent * 100)}% applied`
                         : "Ordering 5+ pieces?"}
                     </span>
                     <span className="underline">See volume discounts</span>
@@ -4799,11 +4964,16 @@ export default function Designer({
                       // grows.
                       width: "var(--radix-popover-trigger-width)",
                       maxHeight: "var(--radix-popover-content-available-height)",
-                      // Always open at the tallest it can be, so the list's
-                      // height doesn't jump between products with 1 and 9 sizes
-                      // and the scroll affordance is meaningful from the start.
+                      // Always open at the tallest it can be — capped at 620px —
+                      // so the list's height doesn't jump between products with
+                      // 1 and 9 sizes and the scroll affordance is meaningful
+                      // from the start. min() keeps Radix's available height as
+                      // the ceiling on short viewports.
                       ...(basketHypotheses
-                        ? { height: "var(--radix-popover-content-available-height)" }
+                        ? {
+                            height: "min(620px, var(--radix-popover-content-available-height))",
+                            maxHeight: "min(620px, var(--radix-popover-content-available-height))",
+                          }
                         : {}),
                     }}
                   >
@@ -4819,7 +4989,7 @@ export default function Designer({
                          sticky total with the red discount badge. Padding is
                          px-6 rather than production's px-10 because this is a
                          side panel, not a 688px dialog. */
-                      <div className="absolute top-0 right-full mr-2 flex max-h-full w-[380px] flex-col overflow-hidden rounded-[12px] bg-white shadow-lg animate-in fade-in-0 zoom-in-95 duration-150">
+                      <div className="absolute top-0 right-full mr-2 flex max-h-full w-[500px] flex-col overflow-hidden rounded-[12px] bg-white shadow-lg animate-in fade-in-0 zoom-in-95 duration-150">
                         <div className="flex flex-shrink-0 items-start justify-between gap-4 px-6 pt-5 pb-4">
                           <span className="font-display text-[18px] leading-tight font-[800] text-black">
                             Price details
@@ -4833,155 +5003,7 @@ export default function Designer({
                             <img src="/icons/icon-close-x.svg" alt="" className="h-6 w-6" />
                           </button>
                         </div>
-                        <div className="flex-1 overflow-y-auto">
-                          {/* Your Product */}
-                          <div className="border-b border-neutral-200">
-                            <div className="px-6 pb-4">
-                              <p className="mb-2 text-sm font-semibold">Your Product</p>
-                              <div className="flex gap-3">
-                                <div className="flex h-20 w-20 shrink-0 items-start rounded-md bg-[#F2F2F2] p-1 shadow-[0_1px_1px_0_rgba(37,33,31,0.05)]">
-                                  {currentAppearance?.image ? (
-                                    <img
-                                      src={currentAppearance.image}
-                                      alt={productData?.name ?? ""}
-                                      width={80}
-                                      className="flex-1 self-stretch object-contain"
-                                    />
-                                  ) : (
-                                    <span className="text-xs text-gray-500">IMG</span>
-                                  )}
-                                </div>
-                                <div className="flex flex-1 items-center gap-4 self-stretch">
-                                  <p className="flex-1 text-sm">{productData?.name}</p>
-                                  <span className="text-sm">{formatEUR(BASE_PRICE)} €</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          {/* Printing Costs — one row per decorated print area,
-                              named after the view it sits on. */}
-                          {decoratedPrintAreas.length > 0 && (
-                            <div className="border-b border-neutral-200 px-6 py-4">
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="text-sm font-semibold">
-                                  {effectivePrintTechnique === "embroidery"
-                                    ? "Embroidery Costs"
-                                    : "Printing Costs"}
-                                </p>
-                                <span className="text-sm text-gray-500">
-                                  Calculated per print area
-                                </span>
-                              </div>
-                              <div className="mb-2">
-                                <a
-                                  href="https://help.spreadshirt.com/hc/en-gb/articles/207153579"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="cursor-pointer text-sm leading-5 underline"
-                                >
-                                  Learn More
-                                </a>
-                              </div>
-                              <div className="space-y-1">
-                                {decoratedPrintAreas.map(area => (
-                                  <div
-                                    key={area.id}
-                                    className="flex items-center justify-between gap-3"
-                                  >
-                                    <span className="text-sm">{area.name}</span>
-                                    <span className="text-sm">
-                                      {formatEUR(perAreaSurcharge)} €
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {/* Design Prices — the designs themselves carry no
-                              surcharge here; the cost is per print area. */}
-                          {visibleTextElements.length + visibleGraphicElements.length > 0 && (
-                            <div className="px-6 py-4">
-                              <p className="mb-2 text-sm font-semibold">Design Prices</p>
-                              <div className="space-y-2">
-                                {visibleGraphicElements.map(g => (
-                                  <div
-                                    key={g.id}
-                                    className="flex items-center justify-between gap-3"
-                                  >
-                                    <div className="flex min-w-0 items-center gap-1">
-                                      <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded bg-blue-100">
-                                        {g.src ? (
-                                          <img
-                                            src={g.src}
-                                            alt=""
-                                            className="h-6 w-6 rounded object-contain"
-                                          />
-                                        ) : (
-                                          <span className="text-xs">🎨</span>
-                                        )}
-                                      </div>
-                                      <span className="truncate text-sm">Uploaded Image</span>
-                                    </div>
-                                    <span className="text-sm">Free</span>
-                                  </div>
-                                ))}
-                                {visibleTextElements.map(t => (
-                                  <div
-                                    key={t.id}
-                                    className="flex items-center justify-between gap-3"
-                                  >
-                                    <div className="flex min-w-0 items-center gap-1">
-                                      <span className="truncate text-sm">Text: {t.content}</span>
-                                    </div>
-                                    <span className="text-sm">Free</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        {/* Total — production's footer: single-item line only
-                            while a discount applies, then the total with the
-                            struck original and the red percentage badge. */}
-                        <div className="flex flex-shrink-0 flex-col gap-2.5 px-6 pt-6 pb-2 shadow-[0_-4px_8px_0_rgba(37,33,31,0.05)]">
-                          {discountPercent > 0 && (
-                            <div className="flex items-center justify-between gap-3 text-sm">
-                              <p>Single item</p>
-                              <div className="flex items-center gap-2">
-                                <span className="text-neutral-700 line-through">
-                                  {formatEUR(unitPrice)} €
-                                </span>
-                                <span className="pr-1">{formatEUR(hypoDiscountedUnit)} €</span>
-                              </div>
-                            </div>
-                          )}
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold text-black">
-                              {totalSelected > 1
-                                ? `Total price (${totalSelected} items)`
-                                : "Single item total"}
-                            </p>
-                            <span className="flex items-center gap-2">
-                              {discountPercent > 0 && totalSelected > 0 ? (
-                                <>
-                                  <span className="text-lg leading-none text-neutral-700 line-through">
-                                    {formatEUR(originalPrice)} €
-                                  </span>
-                                  <span className="flex rounded-xs bg-red-600 px-1 py-0.5 text-sm text-white">
-                                    %{Math.round(discountPercent * 100)}
-                                  </span>
-                                  <span className="pr-1 text-lg font-semibold text-red-600">
-                                    {formatEUR(discountedPrice)} €
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="text-lg font-bold">
-                                  {formatEUR(totalSelected > 0 ? discountedPrice : unitPrice)} €
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        </div>
+                        {priceDetailsContent}
                       </div>
                     )}
                     {/* H1 — companion size-guide panel beside the open dropdown.
@@ -5132,7 +5154,7 @@ export default function Designer({
                         away with the content. No measurement, so it can never
                         fall out of sync with the popover's layout timing. */}
                     <div
-                      ref={sizePopoverScrollRef}
+                      ref={setSizeListRoot}
                       className={`min-h-0 flex-1 overflow-y-auto ${
                         basketHypotheses ? "sizes-scroll" : ""
                       }`}
@@ -5145,8 +5167,14 @@ export default function Designer({
                         return (
                           <div
                             key={label}
-                            className={`flex items-center justify-between gap-2 border-b border-neutral-200 px-6 ${
-                              basketHypotheses ? "py-2.5 last:border-b-0" : "py-3"
+                            // Dividers sit on the TOP of each row (minus the
+                            // first), not the bottom of each: the list ends with
+                            // the end-of-list sentinel, so a :last-child rule
+                            // would leave a stray line under the final size.
+                            className={`flex items-center justify-between gap-2 px-6 ${
+                              basketHypotheses
+                                ? "border-t border-neutral-200 py-2.5 first:border-t-0"
+                                : "border-b border-neutral-200 py-3"
                             }`}
                           >
                             <span
@@ -5246,6 +5274,11 @@ export default function Designer({
                           </div>
                         )
                       })}
+                      {/* End-of-list sentinel — see the IntersectionObserver
+                          above. Inside the scroll container, after the rows. */}
+                      {basketHypotheses && (
+                        <div ref={setSizeListEnd} aria-hidden className="h-px w-full" />
+                      )}
                     </div>
                     {/* H2/H3/H4 — the open sheet covers the rail, so it carries
                         the same three facts in the same screen position: the
@@ -5259,13 +5292,12 @@ export default function Designer({
                          layout by a pixel. */
                       <div
                         className={`flex flex-shrink-0 flex-col gap-3 border-t bg-white p-6 pt-[18px] ${
-                          sizePopoverOverflowBottom ? "border-transparent" : "border-neutral-200"
+                          sizeListAtEnd ? "border-neutral-200" : "border-transparent"
                         }`}
                       >
-                        {/* Opens the sticky area — plain right-aligned red
-                            text with an info affordance: hovering it previews
-                            the full tier table, clicking opens the existing
-                            volume-discount dialog. */}
+                        {/* Opens the sticky area — plain right-aligned red text
+                            with a chevron affordance: hovering it previews the
+                            full tier table and flips the chevron up. */}
                         <div className="flex items-center justify-end gap-1.5 text-[14px] font-medium text-red-600">
                           <span>{hypoTierBannerText}</span>
                           <span className="group/tiers relative flex">
@@ -5279,34 +5311,40 @@ export default function Designer({
                               // banner, as a 2px-padded circle.
                               className="flex items-center justify-center rounded-full bg-[#FFEEEB] p-1 outline-none"
                             >
+                              {/* Kit v2 Chevron. Flips to point up on hover —
+                                  transition on `rotate`, since Tailwind v4
+                                  compiles rotate-180 to that standalone property
+                                  and transition-transform would never fire. */}
                               <svg
                                 width="16"
                                 height="16"
                                 viewBox="0 0 24 24"
-                                fill="currentColor"
+                                fill="none"
                                 aria-hidden="true"
+                                className="transition-[rotate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover/tiers:rotate-180"
                               >
-                                <path d="M12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2ZM12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4ZM12 11C12.5128 11 12.9354 11.3865 12.9932 11.8838L13 12V15L13.1162 15.0068C13.5753 15.0602 13.9398 15.4247 13.9932 15.8838L14 16C14 16.5128 13.6135 16.9354 13.1162 16.9932L13 17H12C11.4872 17 11.0646 16.6135 11.0068 16.1162L11 16V13C10.4477 13 10 12.5523 10 12C10 11.4872 10.3865 11.0646 10.8838 11.0068L11 11H12ZM12.0098 7C12.5621 7 13.0098 7.44772 13.0098 8C13.0098 8.51272 12.6241 8.93525 12.127 8.99316L12 9C11.4477 9 11 8.55228 11 8C11 7.48716 11.3865 7.0646 11.8838 7.00684L12.0098 7Z" />
+                                <path
+                                  fillRule="evenodd"
+                                  clipRule="evenodd"
+                                  d="M5.29289 8.29289C5.65338 7.93241 6.22061 7.90468 6.6129 8.2097L6.70711 8.29289L12 13.585L17.2929 8.29289C17.6534 7.93241 18.2206 7.90468 18.6129 8.2097L18.7071 8.29289C19.0676 8.65338 19.0953 9.22061 18.7903 9.6129L18.7071 9.70711L12.7071 15.7071C12.3466 16.0676 11.7794 16.0953 11.3871 15.7903L11.2929 15.7071L5.29289 9.70711C4.90237 9.31658 4.90237 8.68342 5.29289 8.29289Z"
+                                  fill="currentColor"
+                                />
                               </svg>
                             </span>
                             {/* Hover popover — the same tier table the
                                 volume-discount dialog shows. */}
                             <div className="pointer-events-none absolute right-0 bottom-full z-50 mb-2 w-52 rounded-[12px] bg-white p-2 opacity-0 shadow-lg transition-opacity duration-150 group-hover/tiers:opacity-100">
-                              {[
-                                { min: 5, pct: 10 },
-                                { min: 20, pct: 20 },
-                                { min: 40, pct: 30 },
-                                { min: 60, pct: 40 },
-                                { min: 100, pct: 50 },
-                              ].map(t => (
+                              {majorVolumeDiscountTiers().map(t => (
                                 <div
-                                  key={t.min}
+                                  key={t.from}
                                   className="flex items-center justify-between gap-3 border-b border-neutral-200 px-3 py-2 text-[13px] last:border-b-0"
                                 >
                                   <span className="font-normal text-black">
-                                    {t.min}+ products
+                                    {t.from}+ products
                                   </span>
-                                  <span className="font-bold text-[#DC2626]">−{t.pct}% off</span>
+                                  <span className="font-bold text-[#DC2626]">
+                                    −{t.percentage}% off
+                                  </span>
                                 </div>
                               ))}
                             </div>
@@ -5314,7 +5352,7 @@ export default function Designer({
                         </div>
                         <div className="flex flex-col gap-2">
                           <div className="flex items-center justify-between gap-3 text-[14px] text-black">
-                            <span>Single product</span>
+                            <span>Per product</span>
                             {/* Undiscounted value struck through beside the
                                 current one, so the saving is legible per item
                                 and on the total. */}
@@ -5532,9 +5570,10 @@ export default function Designer({
                 </span>
               </div>
 
-              
+
 
             </div>
+          </div>
           </div>
 
           <ScopedDialog
@@ -5703,6 +5742,30 @@ export default function Designer({
           footer ("All tiers"). basketHypotheses page only. */}
       {basketHypotheses && (
         <VolumeDiscountDialog open={tiersDialogOpen} onOpenChange={setTiersDialogOpen} />
+      )}
+      {/* H4 — the same price-details content as the companion panel, shown as a
+          modal when the size sheet is closed (nothing to sit beside then). */}
+      {basketHypotheses && (
+        <ScopedDialog
+          open={priceBreakdownOpen && !sizePopoverOpen}
+          onOpenChange={open => setPriceBreakdownOpen(open)}
+          container={creatomatContainer}
+          overlayClassName="rounded-[12px]"
+          className="flex max-h-[80%] w-[500px] max-w-[92%] flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        >
+          <div className="flex flex-shrink-0 items-start justify-between gap-4 px-6 pt-5 pb-4">
+            <ScopedDialogTitle className="font-display text-[18px] leading-tight font-[800] text-black">
+              Price details
+            </ScopedDialogTitle>
+            <ScopedDialogClose
+              aria-label="Close"
+              className="shrink-0 cursor-pointer outline-none focus:outline-none focus-visible:outline-none"
+            >
+              <img src="/icons/icon-close-x.svg" alt="" className="h-6 w-6" />
+            </ScopedDialogClose>
+          </div>
+          {priceDetailsContent}
+        </ScopedDialog>
       )}
       <Basket
         open={basketOpen}
