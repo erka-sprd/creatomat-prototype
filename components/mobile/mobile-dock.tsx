@@ -61,7 +61,8 @@ const AddIcon = () => (
 // Mobile bottom dock — replica of create-omat's dock-v2 (Dock/MainDock/SubDock):
 // a floating white card with Products + Add, a gradient-bordered Finish button,
 // and an expandable sub-dock row (Graphics / Text / Uploads / AI) above. When an
-// element is selected on the canvas, the whole dock swaps to an "Unselect" pill.
+// element is selected on the canvas, the whole dock swaps to the "Done ✓" pill
+// (create-omat's DockUnselectButton — its general.unselect string reads "Done").
 
 type MobileDockProps = {
     inspectorMode: boolean
@@ -170,7 +171,7 @@ export default function MobileDock({
                         className="inline-flex h-fit min-h-10 w-fit cursor-pointer items-center justify-center gap-2 rounded-3xl bg-black px-4 py-3 text-xs font-semibold text-white active:bg-black"
                         style={cardShadow}
                     >
-                        Unselect
+                        Done
                         <CheckIcon />
                     </button>
                 </div>

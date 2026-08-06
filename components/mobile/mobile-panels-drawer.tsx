@@ -2,18 +2,12 @@
 
 import MobileDrawer from "@/components/mobile/mobile-drawer"
 import { UploadPanel } from "@/components/ui/upload-panel/UploadPanel"
+import { AI_IMAGE_SRCS, GRAPHIC_SRCS } from "@/lib/graphics-library"
 
 // Mobile presentation of the designer's add panels — the same Graphics /
 // Uploads / AI content the desktop left slide-in panels show, re-housed as a
 // vaul bottom drawer (create-omat presents these via ResponsiveDrawer below
 // the breakpoint). Driven by the shared `activePanel` state.
-
-// Mirrors the graphics grid src list in designer.tsx's desktop panel.
-const GRAPHIC_SRCS = [
-    "/img/graphics/croco.png",
-    ...Array.from({ length: 16 }, (_, i) => `/img/graphics/graphics${i + 1}.png`),
-    ...Array.from({ length: 32 }, (_, i) => `/img/graphics/graphics${i + 17}.webp`),
-]
 
 export type MobilePanel = "graphics" | "uploads" | "ai"
 
@@ -83,9 +77,26 @@ export default function MobilePanelsDrawer({
             )}
 
             {panel === "ai" && (
-                // Desktop parity: the AI panel is an empty surface for now.
-                <div className="flex flex-1 items-center justify-center text-sm text-neutral-400">
-                    Coming soon
+                <div className="flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+                    <div className="grid grid-cols-3 gap-0">
+                        {AI_IMAGE_SRCS.map(src => (
+                            <button
+                                key={src}
+                                type="button"
+                                onClick={() => {
+                                    onPlaceImage(src)
+                                    onClose()
+                                }}
+                                className="flex aspect-square cursor-pointer items-center justify-center overflow-hidden border-r border-b border-neutral-100 p-3 transition-colors active:bg-neutral-50"
+                            >
+                                <img
+                                    src={src}
+                                    alt=""
+                                    className="max-h-full max-w-full object-contain select-none"
+                                />
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
         </MobileDrawer>

@@ -22,6 +22,12 @@ import {
   type StaticProduct,
 } from "product-catalog-client"
 import { IMAGE_SERVER_BASE, loadCatalog, modelImagesFor } from "@/lib/catalog"
+import {
+  AI_IMAGE_SRCS,
+  AI_MAX_PRINT_AREA_FRACTION,
+  GRAPHIC_SRCS,
+  isAiImage,
+} from "@/lib/graphics-library"
 import { printAreaCosts, printAreaTotal } from "@/lib/print-area-pricing"
 import {
   VOLUME_DISCOUNT_MAX_PERCENTAGE,
@@ -94,6 +100,17 @@ type DesignerPanel = "graphics" | "uploads" | "ai"
 
 const DEFAULT_PRODUCT_ID = "812" // Men's Premium Organic T-Shirt
 
+// Desktop view switcher variant. "thumbs" replicates create-omat's ProductAreas
+// row (one thumbnail per view, label under the selected one). "dropdown" is the
+// previous pill + thumbnail dropdown, kept fully intact — flip this back to
+// return to it.
+const DESKTOP_VIEW_SWITCHER: "thumbs" | "dropdown" = "thumbs"
+
+// The Standard print / Embroidery pill at the bottom-right of the desktop
+// canvas. Gated off for now — set to true to bring it back. (CS mode keeps its
+// own technique section inside the CS modal regardless.)
+const SHOW_PRINT_TECHNIQUE_SELECTOR: boolean = false
+
 // Monotonic unique id — Date.now() alone collides when two elements are created
 // in the same millisecond (e.g. uploading/placing several at once).
 let uidCounter = 0
@@ -102,6 +119,11 @@ const uid = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(uidCoun
 // Degrees of tolerance around 0/90/180/270 where rotation snaps to the cardinal
 // angle. Wide enough that vertical/horizontal lock in sharply.
 const ROTATE_SNAP_DEG = 8
+
+// Floating delete button above the selected object — port of create-omat's
+// TrashCanPlugin (28px circle, 20px gap from the object's screen bounding box).
+const TRASH_BUTTON_SIZE = 28
+const TRASH_OFFSET = 20
 
 // Custom cursor for the rotate handle: a circular arrow with a white halo so it
 // reads on any background. Hotspot centred at 12,12.
@@ -118,6 +140,46 @@ const RESIZE_NWSE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
 const RESIZE_NESW_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"><g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 L6 18 M18 6 L14 6 M18 6 L18 10 M6 18 L10 18 M6 18 L6 14" stroke="#ffffff" stroke-width="3.5"/><path d="M18 6 L6 18 M18 6 L14 6 M18 6 L18 10 M6 18 L10 18 M6 18 L6 14" stroke="#111827" stroke-width="1.7"/></g></svg>`
 )}") 16 16,nesw-resize`
+
+// Bottom selection handles under a selected element — rotate + move, traced
+// from the imgly gizmo create-omat shows: white circles with a #3355FF ring
+// and glyph (2px smaller than the 28px trash button, which reads larger),
+// 20px below the frame, 12px apart. Hover fills the disc.
+const BOTTOM_HANDLE_CLASS =
+  "flex size-[26px] touch-none items-center justify-center rounded-full border-2 border-[#3355FF] bg-white text-[#3355FF] transition-colors hover:bg-[#3355FF] hover:text-white"
+
+function SelectionBottomHandles({
+  onRotateStart,
+  onMoveStart,
+}: {
+  onRotateStart: (e: React.PointerEvent) => void
+  onMoveStart: (e: React.PointerEvent) => void
+}) {
+  return (
+    <span className="absolute top-full left-1/2 z-30 mt-5 flex -translate-x-1/2 gap-3">
+      <span
+        onPointerDown={onRotateStart}
+        style={{ cursor: ROTATE_CURSOR }}
+        className={BOTTOM_HANDLE_CLASS}
+        aria-label="Rotate"
+      >
+        {/* Two-arrow circular glyph, as the engine draws it. */}
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+          <path d="M21 3v5h-5" />
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+          <path d="M3 21v-5h5" />
+        </svg>
+      </span>
+      <span onPointerDown={onMoveStart} className={`${BOTTOM_HANDLE_CLASS} cursor-move`} aria-label="Move">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M12 2v20M2 12h20" />
+          <path d="m9 5 3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3" />
+        </svg>
+      </span>
+    </span>
+  )
+}
 
 // Mask an icon so a `bg-current` element paints it in the current text colour —
 // used for the thicker filled chevron assets (same approach as product-tile).
@@ -840,11 +902,19 @@ export default function Designer({
     y: number
     width: number
     height: number
+    // Rotation in degrees around the box centre (default 0), as on text.
+    rotation?: number
     // Stacking order shared across texts AND graphics — higher renders on top.
     z: number
+    // Came from the AI panel: capped at AI_MAX_PRINT_AREA_FRACTION of the print
+    // area on resize release, since the generated resolution can't carry more.
+    isAi?: boolean
   }
   const [graphicElements, setGraphicElements] = useState<GraphicElement[]>([])
   const [selectedGraphicId, setSelectedGraphicId] = useState<string | null>(null)
+  // Id of the AI graphic that was just snapped back to its maximum size — drives
+  // the notice above the object.
+  const [aiSizeCappedId, setAiSizeCappedId] = useState<string | null>(null)
   const graphicElementRefs = useRef<Record<string, HTMLElement>>({})
   // Monotonic stacking counter shared across texts and graphics. Every new or
   // freshly-selected element gets the next value so it renders on top.
@@ -990,25 +1060,30 @@ export default function Designer({
     paWidth: number
     paHeight: number
   } | null>(null)
-  // Drag-to-rotate a text via the handle below its box. Angles are measured from
-  // the box centre; rotation is stored in degrees on the element.
+  // Drag-to-rotate an element via the handle below its box. Angles are measured
+  // from the box centre; rotation is stored in degrees on the element.
   const rotateStateRef = useRef<{
+    kind: "text" | "graphic"
     id: string
     cx: number
     cy: number
     startAngle: number
     startRotation: number
   } | null>(null)
-  const startTextRotate = (e: React.PointerEvent, el: TextElement) => {
+  const startRotate = (
+    e: React.PointerEvent,
+    el: { id: string; rotation?: number },
+    kind: "text" | "graphic" = "text"
+  ) => {
     e.preventDefault()
     e.stopPropagation()
-    const node = textElementRefs.current[el.id]
+    const node = (kind === "graphic" ? graphicElementRefs : textElementRefs).current[el.id]
     if (!node) return
     const rect = node.getBoundingClientRect()
     const cx = rect.left + rect.width / 2
     const cy = rect.top + rect.height / 2
     const startAngle = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI
-    rotateStateRef.current = { id: el.id, cx, cy, startAngle, startRotation: el.rotation ?? 0 }
+    rotateStateRef.current = { kind, id: el.id, cx, cy, startAngle, startRotation: el.rotation ?? 0 }
   }
 
   const addTextElement = () => {
@@ -1139,6 +1214,49 @@ export default function Designer({
     setFontPanelOpen(false)
   }
 
+  // Trash button above the selected object — same behaviour as create-omat's
+  // TrashCanPlugin: centred on the object's screen bounding box, hidden while a
+  // drag/resize/rotate is in progress (it reappears, repositioned, on release),
+  // and flipped below the object when it is rotated upside down so it never
+  // sits under the rotate handle's arc.
+  const [trashPos, setTrashPos] = useState<{ left: number; top: number } | null>(null)
+  useLayoutEffect(() => {
+    const id = selectedTextId ?? selectedGraphicId
+    const node = id
+      ? (selectedTextId ? textElementRefs : graphicElementRefs).current[id]
+      : null
+    if (!node || isManipulating) {
+      setTrashPos(null)
+      return
+    }
+    // getBoundingClientRect is the rotated on-screen box — the same thing the
+    // plugin reads via getScreenSpaceBoundingBoxXYWH.
+    const rect = node.getBoundingClientRect()
+    const rotation =
+      (selectedTextId
+        ? textElements.find(t => t.id === selectedTextId)?.rotation
+        : graphicElements.find(g => g.id === selectedGraphicId)?.rotation) ?? 0
+    // Rotation is stored -180..180, so this matches the plugin's
+    // |deg| in (90, 270) upside-down window.
+    const upsideDown = Math.abs(rotation) > 90 && Math.abs(rotation) < 270
+    setTrashPos({
+      left: rect.left + rect.width / 2 - TRASH_BUTTON_SIZE / 2,
+      top: upsideDown
+        ? rect.bottom + TRASH_OFFSET
+        : rect.top - TRASH_OFFSET - TRASH_BUTTON_SIZE,
+    })
+  }, [
+    selectedTextId,
+    selectedGraphicId,
+    isManipulating,
+    textElements,
+    graphicElements,
+    editingTextId,
+    zoom,
+    mobileZoom,
+    mobilePan,
+  ])
+
   // Adds a graphic into the current print area, centred and sized to ~40% of the
   // print-area width while preserving the image's aspect ratio.
   const placeGraphicElement = (
@@ -1156,7 +1274,16 @@ export default function Designer({
         ? { centerX: 76, centerY: 15, widthPct: 26 }
         : undefined)
     const clampPos = (v: number, size: number) => Math.max(0, Math.min(100 - size, v))
-    const place = (width: number, height: number) => {
+    const place = (rawWidth: number, rawHeight: number) => {
+      // AI artwork lands at (or below) its print-quality cap rather than the
+      // usual default size, so it never appears already too large.
+      const fraction = (rawWidth / 100) * (rawHeight / 100)
+      const fit =
+        isAiImage(src) && fraction > AI_MAX_PRINT_AREA_FRACTION
+          ? Math.sqrt(AI_MAX_PRINT_AREA_FRACTION / fraction)
+          : 1
+      const width = rawWidth * fit
+      const height = rawHeight * fit
       const x =
         placement?.centerX != null
           ? clampPos(placement.centerX - width / 2, width)
@@ -1165,7 +1292,10 @@ export default function Designer({
         placement?.centerY != null
           ? clampPos(placement.centerY - height / 2, height)
           : (100 - height) / 2
-      setGraphicElements(prev => [...prev, { id, printAreaId, src, x, y, width, height, z: nextZ() }])
+      setGraphicElements(prev => [
+        ...prev,
+        { id, printAreaId, src, x, y, width, height, z: nextZ(), isAi: isAiImage(src) },
+      ])
       setActivePanel(null)
       // Defer so the same click's document handler doesn't clear the new selection.
       setTimeout(() => {
@@ -1246,6 +1376,124 @@ export default function Designer({
     setSelectedGraphicId(newId)
   }
 
+  // The pointerup handler is bound once at mount, so it reads the live elements
+  // through this mirror rather than a stale closure.
+  const graphicElementsRef = useRef<GraphicElement[]>([])
+  useEffect(() => {
+    graphicElementsRef.current = graphicElements
+  }, [graphicElements])
+
+  // Port of create-omat's print-area restriction (PrintAreaRestriction.ts →
+  // fitBlockToRect, hard boundary): once an edit completes, anything whose
+  // rotated screen bbox exceeds the print area is scaled down to fit, then the
+  // bbox is clamped fully back inside. create-omat runs this on every history
+  // update; here it runs on drag/resize/rotate release. Returns the corrected
+  // model geometry, or null when the element already sits fully inside.
+  const computePrintAreaFit = (kind: "text" | "graphic", id: string) => {
+    const node = (kind === "graphic" ? graphicElementRefs : textElementRefs).current[id]
+    const pa = printAreaBoxRef.current
+    if (!node || !pa) return null
+    const paRect = pa.getBoundingClientRect()
+    if (paRect.width <= 0 || paRect.height <= 0) return null
+    // The rotated on-screen bbox — the same thing create-omat measures via
+    // getGlobalBoundingBox*.
+    const rect = node.getBoundingClientRect()
+    // Step 1 — scale down if the bbox exceeds the print area.
+    const s = Math.min(1, paRect.width / rect.width, paRect.height / rect.height)
+    // Post-scale bbox, scaled about the element centre.
+    const bw = rect.width * s
+    const bh = rect.height * s
+    const cx = rect.left + rect.width / 2 - paRect.left
+    const cy = rect.top + rect.height / 2 - paRect.top
+    // Step 2 — clamp the bbox inside the area.
+    const bx = Math.max(0, Math.min(paRect.width - bw, cx - bw / 2))
+    const by = Math.max(0, Math.min(paRect.height - bh, cy - bh / 2))
+    if (s === 1 && Math.abs(bx - (cx - bw / 2)) < 0.5 && Math.abs(by - (cy - bh / 2)) < 0.5) {
+      return null
+    }
+    // Recover the unrotated top-left the model stores (CSS lays out the
+    // unrotated box, then rotates it about its centre — so model x/y is the
+    // new centre minus half the unrotated size). offsetWidth/Height ignore
+    // transforms; scale by the canvas' visual scale to get screen px.
+    const vs = canvasScaleRef.current
+    const w = node.offsetWidth * vs * s
+    const h = node.offsetHeight * vs * s
+    return {
+      s,
+      xPct: ((bx + bw / 2 - w / 2) / paRect.width) * 100,
+      yPct: ((by + bh / 2 - h / 2) / paRect.height) * 100,
+    }
+  }
+
+  // Drag/rotate release (and text resize release): fit back into the area.
+  const fitElementAfterRelease = (kind: "text" | "graphic", id: string) => {
+    const fit = computePrintAreaFit(kind, id)
+    if (!fit) return
+    if (kind === "graphic") {
+      setGraphicElements(prev =>
+        prev.map(g =>
+          g.id === id
+            ? { ...g, x: fit.xPct, y: fit.yPct, width: g.width * fit.s, height: g.height * fit.s }
+            : g
+        )
+      )
+    } else {
+      setTextElements(prev =>
+        prev.map(t =>
+          t.id === id
+            ? {
+                ...t,
+                x: fit.xPct,
+                y: fit.yPct,
+                fontSize: Math.max(MIN_TEXT_FONT_SIZE, t.fontSize * fit.s),
+              }
+            : t
+        )
+      )
+    }
+  }
+
+  // Graphic resize release: print-area fit first, then the AI print-quality cap
+  // on the fitted geometry, committed as one update so neither acts on stale
+  // values from the other.
+  const settleGraphicResize = (id: string) => {
+    const el = graphicElementsRef.current.find(g => g.id === id)
+    if (!el) return
+    const fit = computePrintAreaFit("graphic", id)
+    let { x, y, width, height } = el
+    if (fit) {
+      x = fit.xPct
+      y = fit.yPct
+      width *= fit.s
+      height *= fit.s
+    }
+    // Both dimensions are % of the print area, so their product is the fraction
+    // of it the object covers.
+    const fraction = (width / 100) * (height / 100)
+    let capped = false
+    if (el.isAi && fraction > AI_MAX_PRINT_AREA_FRACTION) {
+      const scale = Math.sqrt(AI_MAX_PRINT_AREA_FRACTION / fraction)
+      // Shrink about the centre so the object stays where it was released.
+      x += (width - width * scale) / 2
+      y += (height - height * scale) / 2
+      width *= scale
+      height *= scale
+      capped = true
+    }
+    if (!fit && !capped) return
+    setGraphicElements(prev =>
+      prev.map(g => (g.id === id ? { ...g, x, y, width, height } : g))
+    )
+    if (capped) setAiSizeCappedId(id)
+  }
+
+  // The max-size notice is transient — it explains the snap-back, then leaves.
+  useEffect(() => {
+    if (!aiSizeCappedId) return
+    const timer = setTimeout(() => setAiSizeCappedId(null), 3000)
+    return () => clearTimeout(timer)
+  }, [aiSizeCappedId])
+
   // Backspace / Delete removes the selected text — only when not actively typing
   // and not inside any input/contenteditable element.
   useEffect(() => {
@@ -1319,9 +1567,14 @@ export default function Designer({
           if (Math.abs(next - snap) <= ROTATE_SNAP_DEG) next = snap % 360
         }
         if (next > 180) next -= 360
-        setTextElements(prev =>
-          prev.map(t => (t.id === rot.id ? { ...t, rotation: Math.round(next) } : t))
-        )
+        const rotation = Math.round(next)
+        if (rot.kind === "graphic") {
+          setGraphicElements(prev =>
+            prev.map(g => (g.id === rot.id ? { ...g, rotation } : g))
+          )
+        } else {
+          setTextElements(prev => prev.map(t => (t.id === rot.id ? { ...t, rotation } : t)))
+        }
         return
       }
       const rs = resizeStateRef.current
@@ -1403,27 +1656,17 @@ export default function Designer({
       const draggedNode = (
         ds.kind === "graphic" ? graphicElementRefs : textElementRefs
       ).current[ds.id]
-      // Unrotated box (offset*) drives the model x/y (CSS positions the box then
-      // rotates it about its centre). The rotated bbox (getBoundingClientRect)
-      // drives the clamp, so a rotated element stays inside the print area on its
-      // real footprint and can still reach every edge/corner.
       // offsetWidth/Height are layout px (transforms don't affect them) while
       // paRect is screen px — scale the former by the canvas' visual scale so
       // the ratio is correct while the mobile pinch-zoom transform is applied.
       const vs = canvasScaleRef.current
       const unrotWPct = draggedNode ? ((draggedNode.offsetWidth * vs) / paRect.width) * 100 : 0
       const unrotHPct = draggedNode ? ((draggedNode.offsetHeight * vs) / paRect.height) * 100 : 0
-      const bbox = draggedNode?.getBoundingClientRect()
-      const bboxWPct = bbox ? (bbox.width / paRect.width) * 100 : unrotWPct
-      const bboxHPct = bbox ? (bbox.height / paRect.height) * 100 : unrotHPct
-      // Clamp the element centre so the rotated bbox stays within [0, 100].
-      const clampCenter = (c: number, bboxPct: number) => {
-        const lo = bboxPct / 2
-        const hi = 100 - bboxPct / 2
-        return lo > hi ? 50 : Math.max(lo, Math.min(hi, c))
-      }
-      let centerXpct = clampCenter(newXPct + unrotWPct / 2, bboxWPct)
-      let centerYpct = clampCenter(newYPct + unrotHPct / 2, bboxHPct)
+      // No clamp while dragging — like create-omat, the element follows the
+      // pointer freely (even outside the print area) and the release handler
+      // fits it back inside (fitElementAfterRelease).
+      let centerXpct = newXPct + unrotWPct / 2
+      let centerYpct = newYPct + unrotHPct / 2
       const snapVThresholdPct = (SNAP_THRESHOLD_PX / paRect.width) * 100
       const snapHThresholdPct = (SNAP_THRESHOLD_PX / paRect.height) * 100
       const snapV = Math.abs(centerXpct - 50) < snapVThresholdPct
@@ -1448,13 +1691,21 @@ export default function Designer({
     const onUp = () => {
       setIsManipulating(false)
       if (rotateStateRef.current) {
+        const rot = rotateStateRef.current
         rotateStateRef.current = null
+        // Rotation changes the footprint — the rotated bbox may now poke out.
+        fitElementAfterRelease(rot.kind, rot.id)
         setEmbroiderySettling(true)
         suppressNextClick() // don't let the release click deselect the object
         return
       }
       if (resizeStateRef.current) {
+        const rs = resizeStateRef.current
         resizeStateRef.current = null
+        // Release is the moment the element fits back into the print area (and
+        // an over-sized AI graphic snaps back to its print-quality cap).
+        if (rs.kind === "graphic") settleGraphicResize(rs.id)
+        else fitElementAfterRelease("text", rs.id)
         // Resize changed the design — wait for the flatten before revealing.
         setEmbroiderySettling(true)
         suppressNextClick() // don't let the release click deselect the object
@@ -1465,6 +1716,9 @@ export default function Designer({
       // A move happened — wait for the flatten to settle the position so the
       // stitched render reappears at the final spot without jumping.
       if (ds.moved) {
+        // Dragging is unclamped, so the release is what brings an element that
+        // left the print area back inside — same as create-omat.
+        fitElementAfterRelease(ds.kind, ds.id)
         setEmbroiderySettling(true)
         suppressNextClick() // don't let the release click deselect the object
       }
@@ -1555,7 +1809,10 @@ export default function Designer({
     // the box centre, so use it to recover the rotated anchor corner.
     const cx = rect.left + rect.width / 2
     const cy = rect.top + rect.height / 2
-    const rotation = kind === "text" ? textElements.find(t => t.id === el.id)?.rotation ?? 0 : 0
+    const rotation =
+      (kind === "graphic"
+        ? graphicElements.find(g => g.id === el.id)?.rotation
+        : textElements.find(t => t.id === el.id)?.rotation) ?? 0
     const theta = (rotation * Math.PI) / 180
     const cos = Math.cos(theta)
     const sin = Math.sin(theta)
@@ -1908,7 +2165,7 @@ export default function Designer({
   // on-canvas embroidery preview when text/graphics change.
   const designSignature = JSON.stringify({
     t: visibleTextElements.map(t => [t.x, t.y, t.z, t.content, t.fontSize, t.fontFamily, t.color, t.textAlign, t.bold, t.italic, t.underline, t.rotation]),
-    g: visibleGraphicElements.map(g => [g.x, g.y, g.z, g.width, g.height, g.src]),
+    g: visibleGraphicElements.map(g => [g.x, g.y, g.z, g.width, g.height, g.src, g.rotation]),
   })
   // Appearance signature, normalized to the design's top-left so a pure
   // translation (single element, or whole design) leaves it unchanged — used to
@@ -1938,6 +2195,7 @@ export default function Designer({
       g.width,
       g.height,
       g.src,
+      g.rotation,
     ]),
   })
   // Decide what shows on the canvas for the embroidery technique:
@@ -2122,13 +2380,20 @@ export default function Designer({
           const g = item.el
           const img = await loadImage(g.src).catch(() => null)
           if (!img) continue
-          ctx.drawImage(
-            img,
-            Math.round((g.x / 100) * W),
-            Math.round((g.y / 100) * H),
-            Math.round((g.width / 100) * W),
-            Math.round((g.height / 100) * H)
-          )
+          const gx = Math.round((g.x / 100) * W)
+          const gy = Math.round((g.y / 100) * H)
+          const gw = Math.round((g.width / 100) * W)
+          const gh = Math.round((g.height / 100) * H)
+          const rotation = g.rotation ?? 0
+          if (rotation) {
+            // Same pivot the DOM uses: the box centre.
+            ctx.save()
+            ctx.translate(gx + gw / 2, gy + gh / 2)
+            ctx.rotate((rotation * Math.PI) / 180)
+            ctx.translate(-(gx + gw / 2), -(gy + gh / 2))
+          }
+          ctx.drawImage(img, gx, gy, gw, gh)
+          if (rotation) ctx.restore()
         }
       }
       // Crop to the design's content bounding box.
@@ -3410,7 +3675,7 @@ export default function Designer({
                                 resize: "none",
                                 overflow: "hidden",
                                 whiteSpace: "pre",
-                                boxShadow: "0 0 0 1px #6366F1",
+                                boxShadow: "0 0 0 1px #3355FF",
                               }}
                               ref={node => {
                                 if (!node) return
@@ -3458,7 +3723,7 @@ export default function Designer({
                                 >
                                   <span
                                     className={`absolute ${edge} ${size} transition-all duration-200 ease-out ${
-                                      textBorderHover ? "bg-[#4F46E5]" : "bg-[#6366F1]"
+                                      textBorderHover ? "bg-[#2B48D9]" : "bg-[#3355FF]"
                                     }`}
                                   />
                                 </span>
@@ -3484,19 +3749,16 @@ export default function Designer({
                                 <span
                                   key={corner}
                                   style={{ cursor }} onPointerDown={e => startResize(e, el, corner)}
-                                  className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 border-[#6366F1] bg-white transition-colors hover:border-white hover:bg-[#6366F1]`}
+                                  className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 border-[#3355FF] bg-white transition-colors hover:bg-[#3355FF]`}
                                 />
                               )
                             })}
-                            <span
-                              onPointerDown={e => startTextRotate(e, el)}
-                              style={{ cursor: ROTATE_CURSOR }}
-                              className="absolute -bottom-[34px] left-1/2 z-30 flex size-[22px] -translate-x-1/2 touch-none items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-sm"
-                            >
-                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                                <path fillRule="evenodd" clipRule="evenodd" d="M5.97279 2.70765e-05C8.99188 0.00908166 11.534 2.26003 11.9085 5.25582C12.283 8.25161 10.3731 11.0591 7.44915 11.811C5.1471 12.4029 2.78103 11.5756 1.33347 9.82817L1.33341 11.3069C1.33341 11.6488 1.07605 11.9305 0.744489 11.9691L0.666742 11.9735C0.324851 11.9735 0.0430704 11.7162 0.00456036 11.3846L7.52098e-05 11.3069V7.97354C7.52098e-05 7.63165 0.257435 7.34986 0.588994 7.31135L0.666742 7.30687H4.00008C4.36827 7.30687 4.66674 7.60535 4.66674 7.97354C4.66674 8.31543 4.40938 8.59721 4.07782 8.63572L4.00008 8.6402L2.10646 8.64083C3.19414 10.2276 5.18461 11.0166 7.11708 10.5196C9.39128 9.93483 10.8767 7.75126 10.5855 5.4212C10.2942 3.09114 8.31698 1.3404 5.9688 1.33335C3.62061 1.32635 1.63294 3.06524 1.32775 5.39351C1.2799 5.75858 0.945165 6.01573 0.580098 5.96788C0.215031 5.92003 -0.0421227 5.58529 0.00572962 5.22023C0.398111 2.22673 2.95368 -0.00897306 5.97279 2.70765e-05Z" fill="currentColor"/>
-                              </svg>
-                            </span>
+                            <SelectionBottomHandles
+                              onRotateStart={e => startRotate(e, el)}
+                              // startTextMove keeps the textarea focused, so
+                              // editing continues while moving.
+                              onMoveStart={e => startTextMove(e, el)}
+                            />
                           </div>
                         )
                       })()
@@ -3535,7 +3797,7 @@ export default function Designer({
                           transform: `rotate(${el.rotation ?? 0}deg)`,
                           transformOrigin: "center",
                           boxShadow:
-                            selectedTextId === el.id ? "0 0 0 1px #6366F1" : undefined,
+                            selectedTextId === el.id ? "0 0 0 1px #3355FF" : undefined,
                         }}
                         className="pointer-events-auto select-none cursor-move leading-none"
                       >
@@ -3558,20 +3820,18 @@ export default function Designer({
                               <span
                                 key={corner}
                                 style={{ cursor }} onPointerDown={e => startResize(e, el, corner)}
-                                className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 border-[#6366F1] bg-white transition-colors hover:border-white hover:bg-[#6366F1]`}
+                                className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 border-[#3355FF] bg-white transition-colors hover:bg-[#3355FF]`}
                               />
                             )
                           })}
                         {selectedTextId === el.id && (
-                          <span
-                            onPointerDown={e => startTextRotate(e, el)}
-                            style={{ cursor: ROTATE_CURSOR }}
-                            className="absolute -bottom-[34px] left-1/2 z-30 flex size-[22px] -translate-x-1/2 touch-none items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-sm"
-                          >
-                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                              <path fillRule="evenodd" clipRule="evenodd" d="M5.97279 2.70765e-05C8.99188 0.00908166 11.534 2.26003 11.9085 5.25582C12.283 8.25161 10.3731 11.0591 7.44915 11.811C5.1471 12.4029 2.78103 11.5756 1.33347 9.82817L1.33341 11.3069C1.33341 11.6488 1.07605 11.9305 0.744489 11.9691L0.666742 11.9735C0.324851 11.9735 0.0430704 11.7162 0.00456036 11.3846L7.52098e-05 11.3069V7.97354C7.52098e-05 7.63165 0.257435 7.34986 0.588994 7.31135L0.666742 7.30687H4.00008C4.36827 7.30687 4.66674 7.60535 4.66674 7.97354C4.66674 8.31543 4.40938 8.59721 4.07782 8.63572L4.00008 8.6402L2.10646 8.64083C3.19414 10.2276 5.18461 11.0166 7.11708 10.5196C9.39128 9.93483 10.8767 7.75126 10.5855 5.4212C10.2942 3.09114 8.31698 1.3404 5.9688 1.33335C3.62061 1.32635 1.63294 3.06524 1.32775 5.39351C1.2799 5.75858 0.945165 6.01573 0.580098 5.96788C0.215031 5.92003 -0.0421227 5.58529 0.00572962 5.22023C0.398111 2.22673 2.95368 -0.00897306 5.97279 2.70765e-05Z" fill="currentColor"/>
-                            </svg>
-                          </span>
+                          <SelectionBottomHandles
+                            onRotateStart={e => startRotate(e, el)}
+                            onMoveStart={e => {
+                              e.stopPropagation()
+                              startTextDrag(e, el)
+                            }}
+                          />
                         )}
                       </div>
                     )
@@ -3593,11 +3853,21 @@ export default function Designer({
                         top: `${el.y}%`,
                         width: `${el.width}%`,
                         height: `${el.height}%`,
+                        transform: `rotate(${el.rotation ?? 0}deg)`,
+                        transformOrigin: "center",
                         boxShadow:
-                          selectedGraphicId === el.id ? "0 0 0 1px #6366F1" : undefined,
+                          selectedGraphicId === el.id ? "0 0 0 1px #3355FF" : undefined,
                       }}
                       className="pointer-events-auto select-none cursor-move"
                     >
+                      {aiSizeCappedId === el.id && (
+                        // Overlays the rotate/move handles (same mt-5 offset,
+                        // z-40 over their z-30) — they stay rendered beneath
+                        // and re-emerge when the notice fades.
+                        <div className="pointer-events-none absolute top-full left-1/2 z-40 mt-5 -translate-x-1/2 rounded-[4px] bg-black px-2.5 py-1 text-center text-[14px] leading-snug font-medium whitespace-nowrap text-white">
+                          Max. size for best print quality.
+                        </div>
+                      )}
                       <img
                         src={el.src}
                         alt=""
@@ -3624,12 +3894,48 @@ export default function Designer({
                             <span
                               key={corner}
                               style={{ cursor }} onPointerDown={e => startResize(e, el, corner, "graphic")}
-                              className={`absolute ${pos} ${cursor} block size-[15px] touch-none rounded-full border-2 border-[#6366F1] bg-white transition-colors hover:border-white hover:bg-[#6366F1]`}
+                              className={`absolute ${pos} ${cursor} block size-[15px] touch-none rounded-full border-2 border-[#3355FF] bg-white transition-colors hover:bg-[#3355FF]`}
                             />
                           )
                         })}
+                      {selectedGraphicId === el.id && (
+                        <SelectionBottomHandles
+                          onRotateStart={e => startRotate(e, el, "graphic")}
+                          onMoveStart={e => {
+                            e.stopPropagation()
+                            startGraphicDrag(e, el)
+                          }}
+                        />
+                      )}
                     </div>
                   ))}
+                  {/* create-omat's trashcan button: fixed above the selection,
+                      portaled to body so canvas zoom transforms can't re-anchor
+                      its fixed positioning. */}
+                  {trashPos &&
+                    createPortal(
+                      <button
+                        type="button"
+                        aria-label="Delete object"
+                        onPointerDown={e => e.stopPropagation()}
+                        onClick={e => {
+                          e.stopPropagation()
+                          if (selectedTextId) deleteSelectedText()
+                          else deleteSelectedGraphic()
+                        }}
+                        style={{
+                          transform: `translate(${trashPos.left}px, ${trashPos.top}px)`,
+                          width: TRASH_BUTTON_SIZE,
+                          height: TRASH_BUTTON_SIZE,
+                        }}
+                        className="fixed top-0 left-0 z-[60] flex cursor-pointer items-center justify-center rounded-full border-2 border-[#d01c00] bg-[#f4f4f4] text-[#d01c00] shadow-[0_2px_4px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#ffebeb]"
+                      >
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M14 2C15.0543 2 15.9177 2.81581 15.9941 3.85059L16 4V6H20C20.5523 6 21 6.44772 21 7C21 7.51284 20.6136 7.9354 20.1162 7.99316L20 8H19.9199L19 19C19 20.5975 17.7513 21.9036 16.1768 21.9951L16 22H8C6.4024 22 5.09608 20.7512 5.00781 19.251L5.00391 19.083L4.08008 8H4C3.44772 8 3 7.55228 3 7C3 6.48716 3.38645 6.0646 3.88379 6.00684L4 6H8V4C8 2.9457 8.81581 2.08229 9.85059 2.00586L10 2H14ZM7 19C7 19.5128 7.38645 19.9354 7.88379 19.9932L8 20H16C16.5155 20 16.94 19.6096 16.9971 19.041L17.0039 18.917L17.9141 8H6.08594L7 19ZM10 10C10.5128 10 10.9354 10.3865 10.9932 10.8838L11 11V17C11 17.5523 10.5523 18 10 18C9.48716 18 9.0646 17.6135 9.00684 17.1162L9 17V11C9 10.4477 9.44772 10 10 10ZM14 10C14.5128 10 14.9354 10.3865 14.9932 10.8838L15 11V17C15 17.5523 14.5523 18 14 18C13.4872 18 13.0646 17.6135 13.0068 17.1162L13 17V11C13 10.4477 13.4477 10 14 10ZM10 6H14V4H10V6Z" fill="currentColor"/>
+                        </svg>
+                      </button>,
+                      document.body
+                    )}
                   {/* Stitched embroidery preview, overlaid on the design's
                       footprint. Pointer-events pass through so clicking an
                       element beneath selects it and reveals the editable version. */}
@@ -3793,7 +4099,9 @@ export default function Designer({
                 onMoreClick={() => setMobileMoreMenuOpen(true)}
               />
             )}
-            {productData && (
+            {/* Hidden while an object is selected, like the action header —
+                the editor bar + Done pill own the screen during editing. */}
+            {productData && !selectedText && !selectedGraphicId && (
               <MobileViewSwitcher
                 views={productData.views.map(v => ({ id: v.id, name: v.name }))}
                 activeIndex={activeViewIndex}
@@ -3883,8 +4191,11 @@ export default function Designer({
 
             {/* Model circle (left) + print-technique selection (right), grouped
                 at the bottom-right of the canvas. Hidden in CS mode — the print
-                technique is set inside the CS modal instead. */}
-            {!csMode && (currentModelImage || productData?.embroidery) && (
+                technique is set inside the CS modal instead. Currently gated
+                off entirely via SHOW_PRINT_TECHNIQUE_SELECTOR. */}
+            {SHOW_PRINT_TECHNIQUE_SELECTOR &&
+              !csMode &&
+              (currentModelImage || productData?.embroidery) && (
               <div className="max-dlg:hidden absolute bottom-6 right-6 z-20 flex items-center gap-1">
                 {/* Temporarily hidden — "See all pictures" model circle.
                 {currentModelImage && (
@@ -4138,11 +4449,27 @@ export default function Designer({
                 {panel === "graphics" && (
                   <div className="flex-1 overflow-y-auto">
                     <div className="grid grid-cols-3 gap-0">
-                      {[
-                        "/img/graphics/croco.png",
-                        ...Array.from({ length: 16 }, (_, i) => `/img/graphics/graphics${i + 1}.png`),
-                        ...Array.from({ length: 32 }, (_, i) => `/img/graphics/graphics${i + 17}.webp`),
-                      ].map(src => (
+                      {GRAPHIC_SRCS.map(src => (
+                        <button
+                          key={src}
+                          type="button"
+                          onClick={() => addGraphicElement(src)}
+                          className="aspect-square flex items-center justify-center p-3 cursor-pointer overflow-hidden border-r border-b border-neutral-100 hover:bg-neutral-50 transition-colors"
+                        >
+                          <img
+                            src={src}
+                            alt=""
+                            className="max-h-full max-w-full object-contain select-none"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {panel === "ai" && (
+                  <div className="flex-1 overflow-y-auto">
+                    <div className="grid grid-cols-3 gap-0">
+                      {AI_IMAGE_SRCS.map(src => (
                         <button
                           key={src}
                           type="button"
@@ -4170,9 +4497,19 @@ export default function Designer({
               </div>
             ))}
 
-            {/* Desktop selection UI — below dlg the mobile edit sheet replaces
-                all four (wrapper is display:contents on desktop, so layout is
-                untouched there). */}
+            {/* Design editor bar — like create-omat, the SAME bar shows on
+                desktop and mobile (a selected image gets the floating pill over
+                the canvas on both; the mobile dock swaps to the Done button). */}
+            <GraphicEditorBar
+              show={!!selectedGraphicId && !selectedText}
+              isAi={!!graphicElements.find(g => g.id === selectedGraphicId)?.isAi}
+              onDuplicate={duplicateSelectedGraphic}
+              onDelete={deleteSelectedGraphic}
+            />
+
+            {/* Desktop text-selection UI — below dlg the mobile edit sheet
+                replaces these three (wrapper is display:contents on desktop, so
+                layout is untouched there). */}
             <div className="contents max-dlg:hidden">
             <EditorBar
               show={!!selectedText}
@@ -4210,12 +4547,6 @@ export default function Designer({
               onDelete={deleteSelectedText}
             />
 
-            <GraphicEditorBar
-              show={!!selectedGraphicId && !selectedText}
-              onDuplicate={duplicateSelectedGraphic}
-              onDelete={deleteSelectedGraphic}
-            />
-
             <TextColorPanel
               open={textColorPanelOpen && !!selectedText}
               onClose={() => setTextColorPanelOpen(false)}
@@ -4238,7 +4569,9 @@ export default function Designer({
               // Sits outside #canvas-section (so it stays sharp when it is
               // itself the control in use), which means it needs the size-sheet
               // blur applied separately.
-              className={`max-dlg:hidden absolute bottom-6 left-1/2 -translate-x-1/2 ${
+              className={`max-dlg:hidden absolute ${
+                DESKTOP_VIEW_SWITCHER === "thumbs" ? "bottom-2" : "bottom-6"
+              } left-1/2 -translate-x-1/2 ${
                 viewDropdownOpen ? "z-50" : "z-20"
               } ${dimForSizeSheet ? "pointer-events-none" : ""}`}
               style={{
@@ -4246,14 +4579,12 @@ export default function Designer({
                 filter: dimForSizeSheet ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
               }}
             >
-              {/* ===== LEGACY VERSION (disabled) =====================================
-                  The view-thumbnail dropdown + (hidden) trigger button + the first-run
-                  "where do you want to place?" picker. The dot switcher further down is
-                  the active version. To switch back to this version: flip `false` below
-                  to `true`, and re-enable the commented first-run logic in
-                  addGraphicElement / startAdd / the outside-click + runPendingAdd
-                  effects. ==================================================== */}
-              {true && (
+              {/* ===== PREVIOUS VERSION (kept, gated off) ============================
+                  The pill button + view-thumbnail dropdown, incl. the first-run
+                  "where do you want to place?" picker. Set DESKTOP_VIEW_SWITCHER
+                  to "dropdown" (top of file) to come back to it.
+                  ==================================================== */}
+              {DESKTOP_VIEW_SWITCHER === "dropdown" && (
                 <>
               <div
                 className={`absolute bottom-full left-1/2 mb-2 flex w-max max-w-[calc(100cqw-100px)] origin-bottom -translate-x-1/2 flex-col gap-3 rounded-2xl bg-white p-6 shadow-xl transition-all duration-150 ease-out ${
@@ -4380,7 +4711,71 @@ export default function Designer({
               </button>
                 </>
               )}
-              {/* ===== END LEGACY VERSION ===== */}
+              {/* ===== END PREVIOUS VERSION ===== */}
+
+              {/* create-omat's ProductAreas desktop row (ProductAreas.tsx →
+                  ProductAreasDesktopView): one 44px thumbnail per view in a white
+                  p-1 box — black border when selected, neutral border on hover —
+                  with the view label under it, visible for the selected view and
+                  fading in on hover for the rest. The current design is
+                  composited into each thumb via ViewDesignThumb. */}
+              {DESKTOP_VIEW_SWITCHER === "thumbs" && (
+                <div className="flex items-start gap-1.5">
+                  {productData.views.map(view => {
+                    const thumb = currentAppearance?.views.find(v => v.id === view.id)?.image
+                    const selected = activeViewId === view.id
+                    const viewPaId = view.viewMaps[0]?.printAreaId
+                    const viewOverlay = getPrintAreaOverlay(productData, view.id)
+                    const viewTexts = textElements.filter(t => t.printAreaId === viewPaId)
+                    const viewGraphics = graphicElements.filter(g => g.printAreaId === viewPaId)
+                    return (
+                      <button
+                        key={view.id}
+                        type="button"
+                        aria-label={view.name}
+                        aria-current={selected}
+                        onClick={() => {
+                          setActiveViewId(view.id)
+                          // Switching sides manually — skip the first-run
+                          // "where to add" picker for the rest of the session.
+                          setFirstAddDone(true)
+                        }}
+                        className="group flex cursor-pointer flex-col items-center gap-2"
+                      >
+                        <div
+                          className={`relative box-border flex-none rounded-md border bg-white p-1 ${
+                            selected
+                              ? "border-black"
+                              : "border-transparent group-hover:border-neutral-200"
+                          }`}
+                        >
+                          <div className="relative size-[44px] overflow-hidden">
+                            {thumb && (
+                              <ViewDesignThumb
+                                image={thumb}
+                                overlay={viewOverlay}
+                                textElements={viewTexts}
+                                graphicElements={viewGraphics}
+                                displaySize={liveCanvasContentSize / zoom}
+                                size={44}
+                              />
+                            )}
+                          </div>
+                        </div>
+                        <p
+                          className={`w-[52px] break-words text-center text-xs font-semibold ${
+                            selected
+                              ? "text-black opacity-100"
+                              : "text-neutral-700 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                          }`}
+                        >
+                          {view.name}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
 
               {/* Dot-based view switcher (disabled — dropdown version active). The
                   active view name sits above a pill of prev/next chevrons and one
@@ -4926,15 +5321,13 @@ export default function Designer({
                 <Popover.Portal>
                   <Popover.Content
                     side="top"
-                    sideOffset={
-                      basketHypotheses
-                        ? isDockCompact
-                          ? -44
-                          : 4
-                        : isDockCompact
-                          ? -48
-                          : 0
-                    }
+                    // Always a 4px gap above the selector row here. The
+                    // compact-height branch (negative offset) deliberately drags
+                    // the sheet down over the trigger and the cart button to buy
+                    // room on short screens — but those two stay in use while it
+                    // is open, so it may never cover them. The sheet simply gets
+                    // shorter instead: its height is Radix's available height.
+                    sideOffset={basketHypotheses ? 4 : isDockCompact ? -48 : 0}
                     align="start"
                     collisionPadding={12}
                     collisionBoundary={
@@ -5841,11 +6234,13 @@ export default function Designer({
         pendingUpload={pendingPanelUpload}
         onPendingUploadConsumed={() => setPendingPanelUpload(null)}
       />
-      {/* Selection editing below dlg — replaces EditorBar/FontPanel/
-          TextColorPanel/GraphicEditorBar (create-omat MobileEditDrawer
-          pattern: no overlay, canvas stays interactive). */}
+      {/* Text-selection editing below dlg — replaces EditorBar/FontPanel/
+          TextColorPanel (create-omat MobileEditDrawer pattern: no overlay,
+          canvas stays interactive). A selected graphic no longer opens this
+          sheet — like create-omat it gets the floating design editor bar over
+          the canvas plus the Done pill in the dock. */}
       <MobileEditSheet
-        open={isDlgMobile && (!!selectedText || !!selectedGraphicId) && !editingTextId}
+        open={isDlgMobile && !!selectedText && !editingTextId}
         onClose={() => {
           setSelectedTextId(null)
           setSelectedGraphicId(null)
@@ -5900,7 +6295,7 @@ function ViewDesignThumb({
   image: string
   overlay: { left: number; top: number; width: number; height: number } | null
   textElements: { id: string; x: number; y: number; z: number; color: string; fontSize: number; fontFamily: string; content: string; rotation?: number }[]
-  graphicElements: { id: string; x: number; y: number; z: number; width: number; height: number; src: string }[]
+  graphicElements: { id: string; x: number; y: number; z: number; width: number; height: number; src: string; rotation?: number }[]
   displaySize: number
   size: number
 }) {
@@ -5970,6 +6365,8 @@ function ViewDesignThumb({
               width: `${el.width}%`,
               height: `${el.height}%`,
               objectFit: "contain",
+              transform: `rotate(${el.rotation ?? 0}deg)`,
+              transformOrigin: "center",
             }}
           />
         ))}
