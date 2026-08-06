@@ -5341,7 +5341,9 @@ export default function Designer({
                       instead of stacking, so the rail stays compact. */}
                   <div
                     data-keeps-sizes-open="true"
-                    className="mb-3 flex items-end justify-between gap-3"
+                    // 18px, not the 12px scale step — 6px more breathing room
+                    // above the selector row.
+                    className="mb-[18px] flex items-end justify-between gap-3"
                   >
                     {/* H3 — plain link, no panel: the icon carries the emphasis
                         the pink ground used to. */}
