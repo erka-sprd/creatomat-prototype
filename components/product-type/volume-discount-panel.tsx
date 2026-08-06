@@ -14,8 +14,12 @@ import { VOLUME_DISCOUNT_MAX_QUANTITY } from "@/lib/volume-discount"
 const QUANTITY_FIELD_ID = "volume-discount-order-quantity"
 const MIN_QUANTITY = 1
 
-// kit --brand-blue-contrast
-const PANEL_BG = "#bfb9fd"
+// Volume-discount red, matching every other discount surface in the proto
+// (the rail banner, the size sheet's tier line, the basket): #FFEEEB ground
+// with #DC2626 for the figure itself. Was the kit's --brand-blue-contrast
+// purple (#bfb9fd), which read as unrelated to the discount it announces.
+const PANEL_BG = "#FFEEEB"
+const PANEL_ACCENT = "#DC2626"
 
 type QuantityFieldProps = {
   id?: string
@@ -46,7 +50,7 @@ export function QuantityField({ id, quantity, onQuantityChange, size = "m" }: Qu
       className={cn(
         "flex h-full cursor-pointer items-center justify-center hover:bg-neutral-100 disabled:pointer-events-none disabled:opacity-40",
         size === "m" ? "w-12" : "w-18",
-        dir === -1 ? "border-r border-neutral-200" : "border-l border-neutral-200"
+        dir === -1 ? "border-r border-[#F8C6C4]" : "border-l border-[#F8C6C4]"
       )}
     >
       {dir === -1 ? <Minus className="size-4" /> : <Plus className="size-4" />}
@@ -56,7 +60,7 @@ export function QuantityField({ id, quantity, onQuantityChange, size = "m" }: Qu
   return (
     <div
       className={cn(
-        "flex w-full items-stretch border border-neutral-200 bg-white",
+        "flex w-full items-stretch border border-[#F8C6C4] bg-white",
         size === "m" ? "h-10" : "h-12"
       )}
     >
@@ -95,13 +99,18 @@ export default function VolumeDiscountPanel({
 }: VolumeDiscountPanelProps) {
   return (
     <div
-      className="flex flex-col border p-6"
+      // #F8C6C4 is #DC2626 at 20% already composited over the #FFEEEB ground.
+      // Using the flat value rather than an alpha keeps the frame and the
+      // stepper identical — with alpha the stepper blends into its white fill
+      // instead and renders visibly lighter.
+      className="flex flex-col border border-[#F8C6C4] p-6"
       style={{
-        backgroundColor: `color-mix(in srgb, ${PANEL_BG} 30%, transparent)`,
-        borderColor: PANEL_BG,
+        // #FFEEEB is already the light tint, so it is used as-is rather than
+        // mixed down the way the purple was.
+        backgroundColor: PANEL_BG,
       }}
     >
-      <div className="mb-3">
+      <div className="mb-3" style={{ color: PANEL_ACCENT }}>
         <p className="font-display text-2xl font-bold">Up to {maxDiscountPercentage}%</p>
         <p className="font-display text-lg font-medium">Volume discounts</p>
       </div>

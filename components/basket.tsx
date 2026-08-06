@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 
+import { discountedPrice, volumeDiscountPercentage } from "@/lib/volume-discount"
+
 export type BasketDesignText = {
   id: string
   content: string
@@ -22,6 +24,7 @@ export type BasketDesignGraphic = {
   z?: number
   width: number
   height: number
+  rotation?: number
 }
 
 export type BasketDesign = {
@@ -53,6 +56,10 @@ type BasketProps = {
 
 const fmt = (n: number) => n.toFixed(2).replace(".", ",")
 
+/** Basket line thumbnail frame — portrait, product centred inside it. */
+const THUMBNAIL_WIDTH = 160
+const THUMBNAIL_HEIGHT = 210
+
 export function Basket({ open, onClose, items, onQuantityChange, onRemove }: BasketProps) {
   // Keep the panel mounted long enough to play the slide-out animation.
   const [shouldRender, setShouldRender] = useState(false)
@@ -70,10 +77,23 @@ export function Basket({ open, onClose, items, onQuantityChange, onRemove }: Bas
 
   if (!shouldRender) return null
 
-  const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0)
+  // The volume discount is an ORDER-level thing: the tier comes from the total
+  // quantity in the basket, not per line — same as create-omat, which passes
+  // the order's totalQuantity to useDiscount. So adding a second size can lift
+  // the discount on everything already in the basket.
+  const itemCount = items.reduce((sum, item) => sum + item.qty, 0)
+  const discountPct = volumeDiscountPercentage(itemCount)
+  // create-omat discounts the UNIT price and multiplies out, so the row's
+  // single-item figure and the total stay consistent (20,39 € × 10 = 203,90 €).
+  // Discounting the line total instead would round differently.
+  const lineOriginal = (item: BasketItem) => item.price * item.qty
+  const lineDiscounted = (item: BasketItem) => discountedPrice(item.price, discountPct) * item.qty
+  const originalSubtotal = items.reduce((sum, item) => sum + lineOriginal(item), 0)
+  // Summed from the rounded unit prices so the rows always add up to the subtotal.
+  const subtotal = items.reduce((sum, item) => sum + lineDiscounted(item), 0)
+  const savings = originalSubtotal - subtotal
   const shipping = items.length > 0 ? 7.99 : 0
   const total = subtotal + shipping
-  const itemCount = items.reduce((sum, item) => sum + item.qty, 0)
 
   return (
     <>
@@ -86,7 +106,7 @@ export function Basket({ open, onClose, items, onQuantityChange, onRemove }: Bas
       {/* Desktop: right side drawer. Below dlg: bottom sheet (top/left/width
           overrides + slide-up transform), matching the other mobile sheets. */}
       <div
-        className={`fixed top-0 right-0 bottom-0 z-[9999] w-[500px] max-w-[90vw] bg-white shadow-xl flex flex-col transition-transform duration-300 ease-out max-dlg:top-auto max-dlg:left-0 max-dlg:h-[85dvh] max-dlg:w-full max-dlg:max-w-none max-dlg:rounded-t-2xl ${
+        className={`fixed top-0 right-0 bottom-0 z-[9999] w-[560px] max-w-[90vw] bg-white shadow-xl flex flex-col transition-transform duration-300 ease-out max-dlg:top-auto max-dlg:left-0 max-dlg:h-[85dvh] max-dlg:w-full max-dlg:max-w-none max-dlg:rounded-t-2xl ${
           mounted
             ? "translate-x-0 max-dlg:translate-y-0"
             : "translate-x-full max-dlg:translate-x-0 max-dlg:translate-y-full"
@@ -119,6 +139,7 @@ export function Basket({ open, onClose, items, onQuantityChange, onRemove }: Bas
                   <BasketItemRow
                     key={item.id}
                     item={item}
+                    discountPct={discountPct}
                     onQuantityChange={onQuantityChange}
                     onRemove={onRemove}
                   />
@@ -129,7 +150,16 @@ export function Basket({ open, onClose, items, onQuantityChange, onRemove }: Bas
                 <span className="text-sm font-medium text-black">
                   {itemCount} {itemCount === 1 ? "item" : "items"}
                 </span>
-                <span className="text-sm font-medium text-black">{fmt(subtotal)} €</span>
+                <span className="flex items-baseline gap-2 text-sm font-medium">
+                  {discountPct > 0 && (
+                    <span className="leading-none text-[#6A6A6A] line-through">
+                      {fmt(originalSubtotal)} €
+                    </span>
+                  )}
+                  <span className={discountPct > 0 ? "text-[#DC2626]" : "text-black"}>
+                    {fmt(subtotal)} €
+                  </span>
+                </span>
               </div>
             </>
           )}
@@ -138,10 +168,19 @@ export function Basket({ open, onClose, items, onQuantityChange, onRemove }: Bas
         {items.length > 0 && (
           <div className="flex-shrink-0">
             <div className="border-t border-neutral-200 px-6 py-4">
+              {/* Per create-omat: the summary shows the FULL subtotal and then
+                  subtracts the discount on its own line — no strikethrough
+                  here, since the saving is already stated as a figure. */}
               <div className="flex items-center justify-between text-sm">
                 <span>Subtotal</span>
-                <span>{fmt(subtotal)} €</span>
+                <span>{fmt(originalSubtotal)} €</span>
               </div>
+              {discountPct > 0 && (
+                <div className="flex items-center justify-between text-sm mt-2 text-[#DC2626]">
+                  <span>Volume discount</span>
+                  <span className="whitespace-nowrap">−{fmt(savings)} €</span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-sm mt-2">
                 <span>Shipping</span>
                 <span>{fmt(shipping)} €</span>
@@ -169,22 +208,38 @@ export function Basket({ open, onClose, items, onQuantityChange, onRemove }: Bas
 
 function BasketItemRow({
   item,
+  discountPct,
   onQuantityChange,
   onRemove,
 }: {
   item: BasketItem
+  /** Order-level volume discount, applied to every line. */
+  discountPct: number
   onQuantityChange: (id: string, qty: number) => void
   onRemove: (id: string) => void
 }) {
+  // Single-item price, per create-omat — the line total lives in the footer.
+  const original = item.price
+  const discounted = discountedPrice(original, discountPct)
   return (
     <div className="flex gap-4 px-6 py-4 border-b border-neutral-200">
-      <div className="w-24 h-24 flex-shrink-0 bg-[#f5f5f5] overflow-hidden relative">
-        <DesignThumbnail item={item} size={96} />
+      <div
+        className="flex-shrink-0 bg-[#f5f5f5] overflow-hidden relative flex items-center justify-center"
+        style={{ width: THUMBNAIL_WIDTH, height: THUMBNAIL_HEIGHT }}
+      >
+        <DesignThumbnail item={item} width={THUMBNAIL_WIDTH} height={THUMBNAIL_HEIGHT} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between">
-          <div className="text-sm font-semibold text-black">
-            {fmt(item.price * item.qty)} €
+          <div className="flex items-baseline gap-2 text-sm font-semibold">
+            {discountPct > 0 && (
+              <span className="leading-none font-medium text-[#6A6A6A] line-through">
+                {fmt(original)} €
+              </span>
+            )}
+            <span className={discountPct > 0 ? "text-[#DC2626]" : "text-black"}>
+              {fmt(discounted)} €
+            </span>
           </div>
           <button
             type="button"
@@ -257,7 +312,15 @@ function BasketItemRow({
   )
 }
 
-function DesignThumbnail({ item, size }: { item: BasketItem; size: number }) {
+function DesignThumbnail({
+  item,
+  width,
+  height,
+}: {
+  item: BasketItem
+  width: number
+  height: number
+}) {
   const { design, image, productName } = item
   if (!design || design.displayWidth <= 0 || design.displayHeight <= 0) {
     return (
@@ -270,7 +333,9 @@ function DesignThumbnail({ item, size }: { item: BasketItem; size: number }) {
   }
   const { textElements, printAreaOverlay, displayWidth, displayHeight } = design
   const graphicElements = design.graphicElements ?? []
-  const scale = Math.min(size / displayWidth, size / displayHeight)
+  // Fit the rendered design into the frame's actual box — the frame is no
+  // longer square, so width and height constrain the scale independently.
+  const scale = Math.min(width / displayWidth, height / displayHeight)
   return (
     <div
       style={{
@@ -331,6 +396,8 @@ function DesignThumbnail({ item, size }: { item: BasketItem; size: number }) {
               width: `${el.width}%`,
               height: `${el.height}%`,
               objectFit: "contain",
+              transform: `rotate(${el.rotation ?? 0}deg)`,
+              transformOrigin: "center",
             }}
           />
         ))}

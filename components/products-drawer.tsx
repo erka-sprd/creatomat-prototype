@@ -254,7 +254,8 @@ export default function ProductsDrawer({
                   <KitButton
                     variant="plain"
                     onClick={() => setVolumeDiscountOpen(true)}
-                    className="w-full rounded-full bg-[#bfb9fd]/30 text-sm"
+                    // Same discount red as the panel it opens.
+                    className="w-full rounded-full bg-[#FFEEEB] text-sm text-[#DC2626]"
                   >
                     Calculate volume discount
                   </KitButton>
