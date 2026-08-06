@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 
+import { hasImageDrag, startImageDrag } from "@/lib/canvas-drop"
 import { cn } from "@/lib/utils"
 
 // Ported from create-omat's upload panel (desktop). Self-contained: native
@@ -114,6 +115,10 @@ function UploadCard({
                 <img
                     src={image.url}
                     alt={image.name}
+                    // Draggable onto the canvas once uploaded — a half-uploaded
+                    // image has nothing to place yet.
+                    draggable={done}
+                    onDragStart={e => startImageDrag(e, { src: image.url, source: "image-upload" })}
                     className={cn("h-[130px] w-full object-contain", uploading && "opacity-50")}
                 />
             )}
@@ -271,6 +276,7 @@ export function UploadPanel({
     const openFilePicker = () => inputRef.current?.click()
 
     const onDrop = (e: React.DragEvent) => {
+        if (hasImageDrag(e)) return
         e.preventDefault()
         dragDepth.current = 0
         setDragActive(false)
@@ -281,13 +287,21 @@ export function UploadPanel({
     return (
         <div
             className="relative flex flex-1 flex-col overflow-hidden"
+            // Dragging one of the panel's own thumbnails out to the canvas must
+            // not raise the "Drop your design here" overlay over the panel —
+            // this dropzone is for files coming from outside the app.
             onDragEnter={e => {
+                if (hasImageDrag(e)) return
                 e.preventDefault()
                 dragDepth.current += 1
                 setDragActive(true)
             }}
-            onDragOver={e => e.preventDefault()}
+            onDragOver={e => {
+                if (hasImageDrag(e)) return
+                e.preventDefault()
+            }}
             onDragLeave={e => {
+                if (hasImageDrag(e)) return
                 e.preventDefault()
                 dragDepth.current -= 1
                 if (dragDepth.current <= 0) setDragActive(false)

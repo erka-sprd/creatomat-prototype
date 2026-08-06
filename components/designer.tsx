@@ -21,6 +21,7 @@ import {
   type ProductTypeData,
   type StaticProduct,
 } from "product-catalog-client"
+import { hasImageDrag, readImageDrag, startImageDrag } from "@/lib/canvas-drop"
 import { IMAGE_SERVER_BASE, loadCatalog, modelImagesFor } from "@/lib/catalog"
 import {
   AI_IMAGE_SRCS,
@@ -50,6 +51,7 @@ import {
   onlyDigits,
   shouldTriggerRemoveOnBlur,
 } from "@/lib/quantity-utils"
+import { DiscountIcon } from "@/components/kit-icons"
 import ProductsDrawer, { type SelectedProduct } from "@/components/products-drawer"
 import VolumeDiscountDialog from "@/components/volume-discount-dialog"
 import MobileActionHeader from "@/components/mobile/mobile-action-header"
@@ -1354,6 +1356,59 @@ export default function Designer({
     //   return
     // }
     placeGraphicElement(src, opts)
+  }
+
+  // ── Drag an image from the graphics / uploads / AI panel onto the canvas ──
+  // create-omat shows a dashed overlay while a card is over the editor and adds
+  // the element on drop. Here the drop point also decides where the element
+  // lands: the cursor is mapped into print-area percentages, which is what
+  // placeGraphicElement already takes for the polo left-chest default.
+  const [dropActive, setDropActive] = useState(false)
+  // dragenter/dragleave fire for every descendant, so nesting is counted rather
+  // than treating the first leave as "gone".
+  const canvasDragDepth = useRef(0)
+
+  const handleCanvasDragEnter = (e: React.DragEvent) => {
+    if (!hasImageDrag(e)) return
+    e.preventDefault()
+    canvasDragDepth.current += 1
+    setDropActive(true)
+  }
+
+  const handleCanvasDragOver = (e: React.DragEvent) => {
+    if (!hasImageDrag(e)) return
+    // Without preventDefault the browser refuses the drop entirely.
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "copy"
+  }
+
+  const handleCanvasDragLeave = (e: React.DragEvent) => {
+    if (!hasImageDrag(e)) return
+    canvasDragDepth.current -= 1
+    if (canvasDragDepth.current <= 0) {
+      canvasDragDepth.current = 0
+      setDropActive(false)
+    }
+  }
+
+  const handleCanvasDrop = (e: React.DragEvent) => {
+    canvasDragDepth.current = 0
+    setDropActive(false)
+    const payload = readImageDrag(e)
+    if (!payload) return
+    e.preventDefault()
+    const pa = printAreaBoxRef.current?.getBoundingClientRect()
+    // Drop outside the print area (on the sleeve, the canvas background) still
+    // places the image — clamped to the nearest point inside, like a normal add.
+    const pct = (v: number) => Math.max(0, Math.min(100, v))
+    const opts =
+      pa && pa.width > 0 && pa.height > 0
+        ? {
+            centerX: pct(((e.clientX - pa.left) / pa.width) * 100),
+            centerY: pct(((e.clientY - pa.top) / pa.height) * 100),
+          }
+        : undefined
+    addGraphicElement(payload.src, opts)
   }
 
   const deleteSelectedGraphic = () => {
@@ -3521,7 +3576,22 @@ export default function Designer({
               filter:
                 viewDropdownOpen || dimForSizeSheet ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
             }}
+            onDragEnter={handleCanvasDragEnter}
+            onDragOver={handleCanvasDragOver}
+            onDragLeave={handleCanvasDragLeave}
+            onDrop={handleCanvasDrop}
           >
+            {/* Drop hint while a panel image is dragged over the canvas — port
+                of create-omat's DropOverlay (kit --brand-blue-light #6A5CFC, 20% fill,
+                dashed border, 12px inset). z-10 puts it over the canvas objects
+                (they live inside the z-0 scroll area below) while staying under
+                the graphics/uploads/AI panels, which are z-30 siblings of this
+                canvas box. */}
+            {dropActive && (
+              <div className="pointer-events-none absolute inset-0 z-10 p-3">
+                <div className="h-full w-full rounded-[12px] border border-dashed border-[#6A5CFC] bg-[#6A5CFC]/20" />
+              </div>
+            )}
             {/* Intro overlay: the loader animation runs from the start (1.85s),
                 then fades out to reveal the canvas. */}
             {loadPhase !== "done" && (
@@ -4525,9 +4595,13 @@ export default function Designer({
                           onClick={() => addGraphicElement(src)}
                           className="aspect-square flex items-center justify-center p-3 cursor-pointer overflow-hidden border-r border-b border-neutral-100 hover:bg-neutral-50 transition-colors"
                         >
+                          {/* Dragging the image onto the canvas places it where
+                              it is dropped; clicking still centres it. */}
                           <img
                             src={src}
                             alt=""
+                            draggable
+                            onDragStart={e => startImageDrag(e, { src, source: "marketplace-design" })}
                             className="max-h-full max-w-full object-contain select-none"
                           />
                         </button>
@@ -4548,6 +4622,8 @@ export default function Designer({
                           <img
                             src={src}
                             alt=""
+                            draggable
+                            onDragStart={e => startImageDrag(e, { src, source: "ai-panel" })}
                             className="max-h-full max-w-full object-contain select-none"
                           />
                         </button>
@@ -5259,13 +5335,55 @@ export default function Designer({
                       footer, where the quantities that produce it are visible.
                       The "Per item" label only appears once sizes are chosen —
                       before that there is no quantity for it to qualify. */}
-                  <div data-keeps-sizes-open="true" className="mb-3 flex flex-col gap-0.5">
-                    {totalSelected > 0 && (
-                      <span className="text-[12px] leading-none text-[var(--sprd-neutral-700)]">
-                        Per item
-                      </span>
-                    )}
-                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  {/* One row: the discount entry point on the left, the price
+                      block on the right. H3 (discount visible before anything is
+                      selected) and the price now sit on the same baseline band
+                      instead of stacking, so the rail stays compact. */}
+                  <div
+                    data-keeps-sizes-open="true"
+                    className="mb-3 flex items-end justify-between gap-3"
+                  >
+                    {/* H3 — plain link, no panel: the icon carries the emphasis
+                        the pink ground used to. */}
+                    <button
+                      type="button"
+                      data-keeps-sizes-open="true"
+                      onClick={() => setTiersDialogOpen(true)}
+                      className="flex min-w-0 cursor-pointer items-center gap-2 text-left text-[14px] text-red-600 outline-none"
+                    >
+                      {/* Kit v2 Discount glyph — same one as the mobile
+                          volume-discount button, on currentColor. */}
+                      <DiscountIcon className="size-5 shrink-0" />
+                      <span className="underline font-medium">See volume discounts</span>
+                      {/* Kit v2 Chevron — points down: the tier table opens
+                          below/over this row, same glyph as the sheet's tier
+                          affordance. */}
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                        className="shrink-0"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          clipRule="evenodd"
+                          d="M5.29289 8.29289C5.65338 7.93241 6.22061 7.90468 6.6129 8.2097L6.70711 8.29289L12 13.585L17.2929 8.29289C17.6534 7.93241 18.2206 7.90468 18.6129 8.2097L18.7071 8.29289C19.0676 8.65338 19.0953 9.22061 18.7903 9.6129L18.7071 9.70711L12.7071 15.7071C12.3466 16.0676 11.7794 16.0953 11.3871 15.7903L11.2929 15.7071L5.29289 9.70711C4.90237 9.31658 4.90237 8.68342 5.29289 8.29289Z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                    </button>
+                    {/* Price column, right-aligned: the figure with its details
+                        link underneath. The "Per item" label only appears once
+                        sizes are chosen — before that there is no quantity for
+                        it to qualify. */}
+                    <div className="flex shrink-0 flex-col items-end gap-0.5">
+                      {totalSelected > 0 && (
+                        <span className="text-[12px] leading-none text-[var(--sprd-neutral-700)]">
+                          Per item
+                        </span>
+                      )}
                       <span
                         className={`text-[24px] leading-7 font-medium ${
                           discountPercent > 0 ? "text-[#DC2626]" : "text-black"
@@ -5286,22 +5404,6 @@ export default function Designer({
                   {/* H4 — with the sheet closed there is nothing to sit beside,
                       so the same content opens as a modal instead (rendered near
                       the other dialogs, below). */}
-
-                  {/* H3 — the discount is stated before anything is selected,
-                      directly under the price it applies to. */}
-                  <button
-                    type="button"
-                    data-keeps-sizes-open="true"
-                    onClick={() => setTiersDialogOpen(true)}
-                    className="mb-3 flex w-full cursor-pointer flex-wrap items-center gap-x-2 gap-y-0.5 rounded-[8px] bg-[#FFEEEB] px-4 py-3 text-left text-[14px] text-red-600 outline-none"
-                  >
-                    <span className="font-medium">
-                      {discountPercent > 0
-                        ? `−${Math.round(discountPercent * 100)}% applied`
-                        : "Ordering 5+ pieces?"}
-                    </span>
-                    <span className="underline">See volume discounts</span>
-                  </button>
                 </>
               )}
 
@@ -5576,12 +5678,13 @@ export default function Designer({
                         <button
                           type="button"
                           onClick={toggleSizeGuide}
-                          className="flex min-w-0 cursor-pointer items-center gap-2 text-[14px] text-black outline-none"
+                          className="inline-flex min-w-0 cursor-pointer items-center gap-2 text-[14px] text-black outline-none"
                         >
-                          {/* Supplied Ruler glyph, on currentColor. */}
+                          {/* Supplied Ruler glyph, on currentColor. 22px — one
+                              step under the 24px header icons. */}
                           <svg
-                            width="24"
-                            height="24"
+                            width="22"
+                            height="22"
                             viewBox="0 0 24 24"
                             fill="none"
                             xmlns="http://www.w3.org/2000/svg"
@@ -5922,7 +6025,7 @@ export default function Designer({
                         }`}
                       >
                         <span className="pl-3 text-[14px] font-semibold">Add to basket</span>
-                        <span className="ml-3 rounded-[4px] bg-white/20 px-2 py-0.5 text-[14px] font-semibold tabular-nums">
+                        <span className="ml-3 rounded-[4px] bg-white px-2 py-0.5 text-[14px] font-semibold text-black tabular-nums">
                           {totalSelected}
                         </span>
                       </span>

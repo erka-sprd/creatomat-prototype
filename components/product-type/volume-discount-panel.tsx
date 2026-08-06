@@ -15,11 +15,10 @@ const QUANTITY_FIELD_ID = "volume-discount-order-quantity"
 const MIN_QUANTITY = 1
 
 // Volume-discount red, matching every other discount surface in the proto
-// (the rail banner, the size sheet's tier line, the basket): #FFEEEB ground
-// with #DC2626 for the figure itself. Was the kit's --brand-blue-contrast
-// purple (#bfb9fd), which read as unrelated to the discount it announces.
+// (the rail banner, the size sheet's tier line, the basket). Was the kit's
+// --brand-blue-contrast purple (#bfb9fd), which read as unrelated to the
+// discount it announces. Ground only — the type on it stays black.
 const PANEL_BG = "#FFEEEB"
-const PANEL_ACCENT = "#DC2626"
 
 type QuantityFieldProps = {
   id?: string
@@ -28,6 +27,11 @@ type QuantityFieldProps = {
   /** kit sizes: m = h-10/w-12 buttons (desktop panel), l = h-12/w-18 (mobile drawer) */
   size?: "m" | "l"
 }
+
+// The field's borders are neutral on both surfaces — the red frame around the
+// desktop panel is the discount signal, the control inside it reads as an
+// ordinary input.
+const FIELD_BORDER = "border-neutral-200"
 
 export function QuantityField({ id, quantity, onQuantityChange, size = "m" }: QuantityFieldProps) {
   const handleInputChange = (raw: string) => {
@@ -50,7 +54,8 @@ export function QuantityField({ id, quantity, onQuantityChange, size = "m" }: Qu
       className={cn(
         "flex h-full cursor-pointer items-center justify-center hover:bg-neutral-100 disabled:pointer-events-none disabled:opacity-40",
         size === "m" ? "w-12" : "w-18",
-        dir === -1 ? "border-r border-[#F8C6C4]" : "border-l border-[#F8C6C4]"
+        dir === -1 ? "border-r" : "border-l",
+        FIELD_BORDER
       )}
     >
       {dir === -1 ? <Minus className="size-4" /> : <Plus className="size-4" />}
@@ -60,7 +65,8 @@ export function QuantityField({ id, quantity, onQuantityChange, size = "m" }: Qu
   return (
     <div
       className={cn(
-        "flex w-full items-stretch border border-[#F8C6C4] bg-white",
+        "flex w-full items-stretch border bg-white",
+        FIELD_BORDER,
         size === "m" ? "h-10" : "h-12"
       )}
     >
@@ -85,7 +91,6 @@ export function QuantityField({ id, quantity, onQuantityChange, size = "m" }: Qu
 type VolumeDiscountPanelProps = {
   quantity: number
   onQuantityChange: (value: number) => void
-  maxDiscountPercentage: number
   onUpdatePrices: () => void
   isUpdating?: boolean
 }
@@ -93,7 +98,6 @@ type VolumeDiscountPanelProps = {
 export default function VolumeDiscountPanel({
   quantity,
   onQuantityChange,
-  maxDiscountPercentage,
   onUpdatePrices,
   isUpdating = false,
 }: VolumeDiscountPanelProps) {
@@ -110,9 +114,13 @@ export default function VolumeDiscountPanel({
         backgroundColor: PANEL_BG,
       }}
     >
-      <div className="mb-3" style={{ color: PANEL_ACCENT }}>
-        <p className="font-display text-2xl font-bold">Up to {maxDiscountPercentage}%</p>
-        <p className="font-display text-lg font-medium">Volume discounts</p>
+      {/* Headline stays black — the red ground already carries the discount
+          signal, so red type on it read as over-emphasis. */}
+      {/* Both lines share one type treatment — the smaller/lighter of the two
+          (18px medium) — so the block reads as a single headline. */}
+      <div className="font-display mb-3 text-xl font-bold text-black">
+        <p>Calculate</p>
+        <p>volume discounts</p>
       </div>
       <div className="mb-3 flex flex-col">
         <label htmlFor={QUANTITY_FIELD_ID} className="mb-2 text-sm">

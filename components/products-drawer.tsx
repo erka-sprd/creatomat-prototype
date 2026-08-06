@@ -6,7 +6,7 @@ import { Drawer } from "vaul"
 import type { StaticProduct } from "product-catalog-client"
 
 import { KitButton } from "@/components/kit-button"
-import { ArrowIcon, CloseIcon, FilterIcon, SortIcon } from "@/components/kit-icons"
+import { ArrowIcon, CloseIcon, DiscountIcon, FilterIcon, SortIcon } from "@/components/kit-icons"
 import ProductTile, { type ProductTileData } from "@/components/product-tile"
 import CategoryChipBar from "@/components/product-type/category-chip-bar"
 import CategoryTree from "@/components/product-type/category-tree"
@@ -253,6 +253,9 @@ export default function ProductsDrawer({
                 volumeDiscountBtn={
                   <KitButton
                     variant="plain"
+                    // Icon inherits the button's text colour, so it picks up the
+                    // same discount red as the label.
+                    startIcon={<DiscountIcon className="size-5" />}
                     onClick={() => setVolumeDiscountOpen(true)}
                     // Same discount red as the panel it opens.
                     className="w-full rounded-full bg-[#FFEEEB] text-sm text-[#DC2626]"
@@ -320,7 +323,6 @@ export default function ProductsDrawer({
                   <VolumeDiscountPanel
                     quantity={orderQuantity}
                     onQuantityChange={setOrderQuantity}
-                    maxDiscountPercentage={VOLUME_DISCOUNT_MAX_PERCENTAGE}
                     // Only block the button while the value on screen is the one
                     // being applied; a newer value stays committable mid-update.
                     isUpdating={isPriceUpdating && orderQuantity === appliedQuantity}
