@@ -929,6 +929,10 @@ export default function Designer({
   // True while actively dragging/resizing an element — the on-canvas embroidery
   // preview drops to the live, flat element during manipulation, then returns.
   const [isManipulating, setIsManipulating] = useState(false)
+  // Id of the element currently being MOVED (not resized/rotated) — its
+  // selection frame and handles hide for the duration of the drag, like the
+  // imgly gizmo in create-omat.
+  const [draggingElId, setDraggingElId] = useState<string | null>(null)
   // On-canvas embroidery: after the design settles, wait ~1s (showing a spinner
   // over the design) before revealing the stitched render — no opacity fade.
   const [embroideryShown, setEmbroideryShown] = useState(false)
@@ -1425,6 +1429,51 @@ export default function Designer({
     }
   }
 
+  // Clip an element's CONTENT to the print area, so whatever hangs outside the
+  // frame is invisible (create-omat masks designs to the print-area page the
+  // same way). Only the content is clipped — the selection chrome (handles,
+  // notice) stays unclipped. The polygon is the print-area rect expressed in
+  // the element's local space; content sits inside the rotated element div, so
+  // for rotated elements the corners are rotated by -θ about the element's
+  // centre (centre needs the element's layout size, read from its node — on
+  // the very first paint the node isn't there yet and the unrotated rect is a
+  // fine stand-in).
+  const contentClipPath = (
+    kind: "text" | "graphic",
+    el: { id: string; x: number; y: number; rotation?: number }
+  ): string | undefined => {
+    const pa = printAreaBoxRef.current
+    if (!pa) return undefined
+    const paW = pa.offsetWidth
+    const paH = pa.offsetHeight
+    if (paW <= 0 || paH <= 0) return undefined
+    const ex = (el.x / 100) * paW
+    const ey = (el.y / 100) * paH
+    let corners: [number, number][] = [
+      [-ex, -ey],
+      [paW - ex, -ey],
+      [paW - ex, paH - ey],
+      [-ex, paH - ey],
+    ]
+    const rotation = el.rotation ?? 0
+    if (rotation) {
+      const node = (kind === "graphic" ? graphicElementRefs : textElementRefs).current[el.id]
+      if (node) {
+        const cx = node.offsetWidth / 2
+        const cy = node.offsetHeight / 2
+        const th = (-rotation * Math.PI) / 180
+        const cos = Math.cos(th)
+        const sin = Math.sin(th)
+        corners = corners.map(([px, py]) => {
+          const dx = px - cx
+          const dy = py - cy
+          return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos]
+        })
+      }
+    }
+    return `polygon(${corners.map(([px, py]) => `${px.toFixed(1)}px ${py.toFixed(1)}px`).join(", ")})`
+  }
+
   // Drag/rotate release (and text resize release): fit back into the area.
   const fitElementAfterRelease = (kind: "text" | "graphic", id: string) => {
     const fit = computePrintAreaFit(kind, id)
@@ -1644,11 +1693,13 @@ export default function Designer({
         ds.startY = e.clientY
         ds.moved = true
         setIsManipulating(true)
+        setDraggingElId(ds.id)
         return
       }
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
         ds.moved = true
         setIsManipulating(true)
+        setDraggingElId(ds.id)
       }
       const newXPct = ds.elX + (dx / paRect.width) * 100
       const newYPct = ds.elY + (dy / paRect.height) * 100
@@ -1690,6 +1741,7 @@ export default function Designer({
     }
     const onUp = () => {
       setIsManipulating(false)
+      setDraggingElId(null)
       if (rotateStateRef.current) {
         const rot = rotateStateRef.current
         rotateStateRef.current = null
@@ -3676,6 +3728,9 @@ export default function Designer({
                                 overflow: "hidden",
                                 whiteSpace: "pre",
                                 boxShadow: "0 0 0 1px #3355FF",
+                                // Glyphs (and the ring with them) clip at the
+                                // print-area edge like every other content.
+                                clipPath: contentClipPath("text", el),
                               }}
                               ref={node => {
                                 if (!node) return
@@ -3731,8 +3786,9 @@ export default function Designer({
                             })}
                             {/* Resize handles stay available while editing. startResize
                                 preventDefaults, so the textarea keeps focus (editing
-                                is not exited). */}
-                            {(["nw", "ne", "sw", "se"] as const).map(corner => {
+                                is not exited). Hidden while the text is being moved. */}
+                            {draggingElId !== el.id &&
+                              (["nw", "ne", "sw", "se"] as const).map(corner => {
                               const cursor =
                                 corner === "nw" || corner === "se"
                                   ? RESIZE_NWSE_CURSOR
@@ -3753,12 +3809,14 @@ export default function Designer({
                                 />
                               )
                             })}
-                            <SelectionBottomHandles
-                              onRotateStart={e => startRotate(e, el)}
-                              // startTextMove keeps the textarea focused, so
-                              // editing continues while moving.
-                              onMoveStart={e => startTextMove(e, el)}
-                            />
+                            {draggingElId !== el.id && (
+                              <SelectionBottomHandles
+                                onRotateStart={e => startRotate(e, el)}
+                                // startTextMove keeps the textarea focused, so
+                                // editing continues while moving.
+                                onMoveStart={e => startTextMove(e, el)}
+                              />
+                            )}
                           </div>
                         )
                       })()
@@ -3797,12 +3855,19 @@ export default function Designer({
                           transform: `rotate(${el.rotation ?? 0}deg)`,
                           transformOrigin: "center",
                           boxShadow:
-                            selectedTextId === el.id ? "0 0 0 1px #3355FF" : undefined,
+                            selectedTextId === el.id && draggingElId !== el.id
+                              ? "0 0 0 1px #3355FF"
+                              : undefined,
                         }}
                         className="pointer-events-auto select-none cursor-move leading-none"
                       >
-                        {el.content}
+                        {/* Block wrapper so the glyphs clip to the print area
+                            without clipping the handle children. */}
+                        <span style={{ display: "block", clipPath: contentClipPath("text", el) }}>
+                          {el.content}
+                        </span>
                         {selectedTextId === el.id &&
+                          draggingElId !== el.id &&
                           (["nw", "ne", "sw", "se"] as const).map(corner => {
                             const cursor =
                               corner === "nw" || corner === "se"
@@ -3824,7 +3889,7 @@ export default function Designer({
                               />
                             )
                           })}
-                        {selectedTextId === el.id && (
+                        {selectedTextId === el.id && draggingElId !== el.id && (
                           <SelectionBottomHandles
                             onRotateStart={e => startRotate(e, el)}
                             onMoveStart={e => {
@@ -3856,7 +3921,9 @@ export default function Designer({
                         transform: `rotate(${el.rotation ?? 0}deg)`,
                         transformOrigin: "center",
                         boxShadow:
-                          selectedGraphicId === el.id ? "0 0 0 1px #3355FF" : undefined,
+                          selectedGraphicId === el.id && draggingElId !== el.id
+                            ? "0 0 0 1px #3355FF"
+                            : undefined,
                       }}
                       className="pointer-events-auto select-none cursor-move"
                     >
@@ -3872,11 +3939,13 @@ export default function Designer({
                         src={el.src}
                         alt=""
                         draggable={false}
+                        style={{ clipPath: contentClipPath("graphic", el) }}
                         className={`pointer-events-none h-full w-full select-none object-contain ${
                           embroideryShown ? "opacity-0" : ""
                         }`}
                       />
                       {selectedGraphicId === el.id &&
+                        draggingElId !== el.id &&
                         (["nw", "ne", "sw", "se"] as const).map(corner => {
                           const cursor =
                             corner === "nw" || corner === "se"
@@ -3898,7 +3967,7 @@ export default function Designer({
                             />
                           )
                         })}
-                      {selectedGraphicId === el.id && (
+                      {selectedGraphicId === el.id && draggingElId !== el.id && (
                         <SelectionBottomHandles
                           onRotateStart={e => startRotate(e, el, "graphic")}
                           onMoveStart={e => {
