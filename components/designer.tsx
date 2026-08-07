@@ -35,7 +35,7 @@ import {
 import { printAreaCosts, printAreaTotal } from "@/lib/print-area-pricing"
 import {
   VOLUME_DISCOUNT_MAX_PERCENTAGE,
-  VOLUME_DISCOUNT_TIERS,
+  majorVolumeDiscountTiers,
   nextVolumeDiscountTier,
   volumeDiscountPercentage,
 } from "@/lib/volume-discount"
@@ -5955,8 +5955,11 @@ export default function Designer({
                             Compare the measurements with a product you already have at home.
                             It&rsquo;s best to lay clothing flat on the floor when measuring.
                           </p>
-                          {sizeGuideColumns.length > 0 ? (
-                            <div className="mt-1.5 flex gap-4">
+                          {/* Rendered for every product, like create-omat —
+                              one-size products publish no measures upstream,
+                              so their table is just the size column (see the
+                              product-details dialog note). */}
+                          <div className="mt-1.5 flex gap-4">
                               <div className="flex flex-col items-center gap-2">
                                 <img
                                   src={`${IMAGE_SERVER_BASE}/productTypes/${productData?.id}/variants/size.webp`}
@@ -5969,13 +5972,15 @@ export default function Designer({
                                     e.currentTarget.style.display = "none"
                                   }}
                                 />
-                                <ul className="self-start text-sm font-medium">
-                                  {sizeGuideColumns.map(name => (
-                                    <li key={name}>
-                                      {name} - {SIZE_MEASURE_LABELS[name] ?? name} in cm
-                                    </li>
-                                  ))}
-                                </ul>
+                                {sizeGuideColumns.length > 0 && (
+                                  <ul className="self-start text-sm font-medium">
+                                    {sizeGuideColumns.map(name => (
+                                      <li key={name}>
+                                        {name} - {SIZE_MEASURE_LABELS[name] ?? name} in cm
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
                               </div>
                               <div className="flex-1">
                                 <table className="min-w-full">
@@ -6006,12 +6011,7 @@ export default function Designer({
                                   </tbody>
                                 </table>
                               </div>
-                            </div>
-                          ) : (
-                            <p className="mt-4 text-sm text-neutral-500">
-                              No measurements published for this product.
-                            </p>
-                          )}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -6240,35 +6240,26 @@ export default function Designer({
                                 />
                               </svg>
                             </span>
-                            {/* Every tier, not the condensed five: the line
-                                above names the NEXT threshold on the real
-                                scale, so a hint like "%40 off" has to have a
-                                row here to point at. The row it refers to is
-                                highlighted. */}
+                            {/* The five condensed thresholds, exactly as
+                                create-omat's VolumeDiscountContent renders them
+                                (getMajorThresholds). Its own hint line names the
+                                next REAL tier, so it can mention a percentage
+                                that is not one of these five — production
+                                behaves the same way. */}
                             <div className="pointer-events-none absolute right-0 bottom-full z-50 mb-2 w-52 overflow-hidden rounded-[12px] bg-white p-2 opacity-0 shadow-lg transition-opacity duration-150 group-hover/tiers:opacity-100">
-                              {VOLUME_DISCOUNT_TIERS.map(t => {
-                                const reached = totalSelected >= t.from
-                                const isNext = nextVolumeDiscountTier(totalSelected)?.from === t.from
-                                return (
-                                  <div
-                                    key={t.from}
-                                    className={`flex items-center justify-between gap-3 border-b border-neutral-200 px-3 py-2 text-[13px] last:border-b-0 ${
-                                      isNext ? "bg-neutral-50" : ""
-                                    }`}
-                                  >
-                                    <span
-                                      className={`font-normal ${
-                                        reached ? "text-black" : "text-[var(--sprd-neutral-700)]"
-                                      }`}
-                                    >
-                                      {t.from}+ products
-                                    </span>
-                                    <span className="font-bold text-[#DC2626]">
-                                      −{t.percentage}% off
-                                    </span>
-                                  </div>
-                                )
-                              })}
+                              {majorVolumeDiscountTiers().map(t => (
+                                <div
+                                  key={t.from}
+                                  className="flex items-center justify-between gap-3 border-b border-neutral-200 px-3 py-2 text-[13px] last:border-b-0"
+                                >
+                                  <span className="font-normal text-black">
+                                    {t.from}+ products
+                                  </span>
+                                  <span className="font-bold text-[#DC2626]">
+                                    −{t.percentage}% off
+                                  </span>
+                                </div>
+                              ))}
                             </div>
                           </span>
                         </div>
@@ -6674,19 +6665,24 @@ export default function Designer({
                       It&rsquo;s best to lay clothing flat on the floor when measuring.
                     </p>
                   </div>
-                  {sizeGuideColumns.length > 0 ? (
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-4">
-                        <img
-                          src={`${IMAGE_SERVER_BASE}/productTypes/${productData?.id}/variants/size.webp`}
-                          alt="Size Image"
-                          className="w-[260px]"
-                          onError={e => {
-                            // Not every product type publishes a diagram;
-                            // drop it rather than show a broken image.
-                            e.currentTarget.style.display = "none"
-                          }}
-                        />
+                  {/* Rendered for every product, like create-omat — one-size
+                      products (caps, mugs, plush) publish no measures upstream
+                      (verified against the API), so their table is just the
+                      size column. create-omat pads those rows with hardcoded
+                      0.0 cells; the empty columns are simply omitted here. */}
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-4">
+                      <img
+                        src={`${IMAGE_SERVER_BASE}/productTypes/${productData?.id}/variants/size.webp`}
+                        alt="Size Image"
+                        className="w-[260px]"
+                        onError={e => {
+                          // Not every product type publishes a diagram;
+                          // drop it rather than show a broken image.
+                          e.currentTarget.style.display = "none"
+                        }}
+                      />
+                      {sizeGuideColumns.length > 0 && (
                         <ul className="text-sm font-medium">
                           {sizeGuideColumns.map(name => (
                             <li key={name}>
@@ -6694,42 +6690,38 @@ export default function Designer({
                             </li>
                           ))}
                         </ul>
-                      </div>
-                      <div className="flex-1">
-                        <table className="min-w-full">
-                          <thead className="border-b border-neutral-300">
-                            <tr className="even:bg-neutral-100">
-                              <th className="p-2 text-start">Size</th>
-                              {sizeGuideColumns.map(name => (
-                                <th key={name} className="p-2">
-                                  {name} (cm)
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {sizes.map(label => (
-                              <tr key={label} className="text-sm even:bg-neutral-100">
-                                <td className="p-2">{label}</td>
-                                {sizeGuideColumns.map(name => {
-                                  const mm = sizeMeasure(productSizeGuide, label, name)
-                                  return (
-                                    <td key={name} className="p-2 text-center">
-                                      {mm === null ? "—" : formatMeasure(mm)}
-                                    </td>
-                                  )
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      )}
                     </div>
-                  ) : (
-                    <p className="text-sm text-neutral-500">
-                      No measurements published for this product.
-                    </p>
-                  )}
+                    <div className="flex-1">
+                      <table className="min-w-full">
+                        <thead className="border-b border-neutral-300">
+                          <tr className="even:bg-neutral-100">
+                            <th className="p-2 text-start">Size</th>
+                            {sizeGuideColumns.map(name => (
+                              <th key={name} className="p-2">
+                                {name} (cm)
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sizes.map(label => (
+                            <tr key={label} className="text-sm even:bg-neutral-100">
+                              <td className="p-2">{label}</td>
+                              {sizeGuideColumns.map(name => {
+                                const mm = sizeMeasure(productSizeGuide, label, name)
+                                return (
+                                  <td key={name} className="p-2 text-center">
+                                    {mm === null ? "—" : formatMeasure(mm)}
+                                  </td>
+                                )
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
