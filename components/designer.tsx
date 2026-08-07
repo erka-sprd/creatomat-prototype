@@ -20,8 +20,11 @@ import {
   getProductType,
   type ProductTypeData,
   type StaticProduct,
+  type StaticView,
 } from "product-catalog-client"
 import { hasImageDrag, readImageDrag, startImageDrag } from "@/lib/canvas-drop"
+import { formatDeliveryWindow } from "@/lib/delivery"
+import { buildCarryMap, carryBox, carryTextPoint } from "@/lib/design-carry"
 import { IMAGE_SERVER_BASE, loadCatalog, modelImagesFor } from "@/lib/catalog"
 import {
   AI_IMAGE_SRCS,
@@ -1645,15 +1648,48 @@ export default function Designer({
     return () => document.removeEventListener("click", onDocClick)
   }, [])
 
-  // Reset texts and graphics when switching products. The print technique is
-  // intentionally NOT reset — standard print is the default, and the user's
-  // technique choice persists across products.
+  // Product switch: carry placed designs over instead of wiping them — the
+  // create-omat behaviour (SceneContext keeps the engine scene and reparents
+  // print-area children into the new product's areas). Matching is by VIEW id,
+  // which Spreadshirt keeps stable across product types (1=Front, 2=Back…);
+  // elements on views the new product lacks are dropped, like create-omat
+  // destroying the orphaned print-area block with its children. The print
+  // technique is intentionally NOT reset either — standard print is the
+  // default, and the user's technique choice persists across products.
+  const carrySourceViewsRef = useRef<{ productId: string; views: StaticView[] } | null>(null)
   useEffect(() => {
-    setTextElements([])
+    const prev = carrySourceViewsRef.current
+    carrySourceViewsRef.current = productData
+      ? { productId: productData.id, views: productData.views }
+      : null
+    // Selection/edit state never survives the switch (ids may be dropped).
     setEditingTextId(null)
-    setGraphicElements([])
     setSelectedGraphicId(null)
+    setSelectedTextId(null)
     setPrintTechniqueOpen(false)
+    if (!productData) {
+      setTextElements([])
+      setGraphicElements([])
+      return
+    }
+    // First load, or a re-derive of the same product (e.g. catalogue refresh):
+    // nothing to remap.
+    if (!prev || prev.productId === productData.id) return
+    const carryMap = buildCarryMap(prev.views, productData.views)
+    setGraphicElements(els =>
+      els.flatMap(el => {
+        const target = carryMap.get(el.printAreaId)
+        if (!target) return []
+        return [{ ...el, printAreaId: target.printAreaId, ...carryBox(el, target) }]
+      })
+    )
+    setTextElements(els =>
+      els.flatMap(el => {
+        const target = carryMap.get(el.printAreaId)
+        if (!target) return []
+        return [{ ...el, printAreaId: target.printAreaId, ...carryTextPoint(el, target) }]
+      })
+    )
   }, [productData])
 
   // Document-level mousemove/up so dragging and resizing keep working when cursor leaves the element.
@@ -2879,6 +2915,9 @@ export default function Designer({
     effectivePrintTechnique
   )
   const unitPrice = BASE_PRICE + decoratedPrintAreaTotal
+  // Delivery estimate counted from today, not a fixed date. Memoised so it is
+  // computed once per mount instead of on every render of this large component.
+  const deliveryWindow = useMemo(() => formatDeliveryWindow(new Date()), [])
   const originalPrice = totalSelected > 0 ? unitPrice * totalSelected : unitPrice
   const discountPercent = getDiscountPercentage(totalSelected)
   const discountedPrice = originalPrice * (1 - discountPercent)
@@ -5356,25 +5395,7 @@ export default function Designer({
                       {/* Kit v2 Discount glyph — same one as the mobile
                           volume-discount button, on currentColor. */}
                       <DiscountIcon className="size-5 shrink-0" />
-                      <span className="underline font-medium">See volume discounts</span>
-                      {/* Kit v2 Chevron — points down: the tier table opens
-                          below/over this row, same glyph as the sheet's tier
-                          affordance. */}
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        aria-hidden="true"
-                        className="shrink-0"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          clipRule="evenodd"
-                          d="M5.29289 8.29289C5.65338 7.93241 6.22061 7.90468 6.6129 8.2097L6.70711 8.29289L12 13.585L17.2929 8.29289C17.6534 7.93241 18.2206 7.90468 18.6129 8.2097L18.7071 8.29289C19.0676 8.65338 19.0953 9.22061 18.7903 9.6129L18.7071 9.70711L12.7071 15.7071C12.3466 16.0676 11.7794 16.0953 11.3871 15.7903L11.2929 15.7071L5.29289 9.70711C4.90237 9.31658 4.90237 8.68342 5.29289 8.29289Z"
-                          fill="currentColor"
-                        />
-                      </svg>
+                      <span className="underline font-medium">Calculate volume discount</span>
                     </button>
                     {/* Price column, right-aligned: the figure with its details
                         link underneath. The "Per item" label only appears once
@@ -6125,7 +6146,10 @@ export default function Designer({
                   <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M8.66602 2.66699C9.00787 2.66699 9.28957 2.92435 9.32812 3.25586L9.33301 3.33398H12C12.2048 3.33408 12.3961 3.42801 12.5215 3.58594L12.5713 3.65723L14.5713 6.99023L14.5957 7.03516L14.624 7.10059L14.6504 7.18848L14.6631 7.2666L14.666 7.33398V11.334C14.6659 11.6757 14.4086 11.9576 14.0771 11.9961L14 12H13.2168C12.9421 12.7766 12.2036 13.334 11.333 13.334C10.4624 13.334 9.72391 12.7766 9.44922 12H6.5498C6.27509 12.7765 5.53662 13.334 4.66602 13.334C3.79548 13.3338 3.05685 12.7765 2.78223 12H2C1.65811 12 1.3764 11.7427 1.33789 11.4111L1.33301 11.334V4C1.33318 3.29739 1.87682 2.722 2.56641 2.6709L2.66602 2.66699H8.66602ZM4.66602 10.667C4.30015 10.6672 4.00252 10.9621 3.99902 11.3271L4 11.334C4 11.3356 3.99904 11.3372 3.99902 11.3389C4.00182 11.7046 4.29971 12.0008 4.66602 12.001C5.0341 12.001 5.33283 11.702 5.33301 11.334C5.33301 10.9658 5.03421 10.667 4.66602 10.667ZM11.333 10.667C10.9648 10.667 10.666 10.9658 10.666 11.334C10.6662 11.702 10.9649 12.001 11.333 12.001C11.7011 12.001 11.9998 11.702 12 11.334C12 10.9658 11.7012 10.667 11.333 10.667ZM9.33301 10.667H9.44922C9.72399 9.89059 10.4625 9.33398 11.333 9.33398C12.2035 9.33398 12.942 9.89059 13.2168 10.667H13.333V8H9.33301V10.667ZM2.66602 10.667H2.78223C3.05693 9.89064 3.79559 9.33412 4.66602 9.33398C5.53651 9.33398 6.275 9.89065 6.5498 10.667H8V4H2.66602V10.667ZM9.33301 6.66699H12.8223L11.6221 4.66699H9.33301V6.66699Z" fill="#000000"/>
                   </svg>
-                  Dec. 13-15 or
+                  {/* Server and browser can straddle midnight in different
+                      zones, so the rendered date is allowed to differ from the
+                      SSR one rather than warning about it. */}
+                  <span suppressHydrationWarning>{deliveryWindow} or</span>
                   <span className="text-[14px] text-black font-regular underline px-0 py-0">
                     faster
                   </span>
@@ -6308,7 +6332,15 @@ export default function Designer({
       {/* H3 — full tier table, openable from the teaser row and the dropdown
           footer ("All tiers"). basketHypotheses page only. */}
       {basketHypotheses && (
-        <VolumeDiscountDialog open={tiersDialogOpen} onOpenChange={setTiersDialogOpen} />
+        <VolumeDiscountDialog
+          open={tiersDialogOpen}
+          onOpenChange={setTiersDialogOpen}
+          unitPrice={unitPrice}
+          container={creatomatContainer}
+          productName={productData?.name}
+          productImage={appearances[activeColorIndex]?.image ?? productData?.appearances[0]?.image}
+          printingCost={decoratedPrintAreaTotal}
+        />
       )}
       {/* H4 — the same price-details content as the companion panel, shown as a
           modal when the size sheet is closed (nothing to sit beside then). */}
