@@ -227,7 +227,13 @@ function BasketItemRow({
         className="flex-shrink-0 bg-[#f5f5f5] overflow-hidden relative flex items-center justify-center"
         style={{ width: THUMBNAIL_WIDTH, height: THUMBNAIL_HEIGHT }}
       >
-        <DesignThumbnail item={item} width={THUMBNAIL_WIDTH} height={THUMBNAIL_HEIGHT} />
+        <DesignThumbnail
+          design={item.design}
+          image={item.image}
+          alt={item.productName}
+          width={THUMBNAIL_WIDTH}
+          height={THUMBNAIL_HEIGHT}
+        />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between">
@@ -312,16 +318,26 @@ function BasketItemRow({
   )
 }
 
-function DesignThumbnail({
-  item,
+/**
+ * Product image with the placed design composited on top, exactly as the
+ * canvas lays it out. Exported because the volume-discount calculator shows
+ * the same preview — the price it quotes covers that design, so the thumbnail
+ * has to be the designed product, not a blank garment.
+ */
+export function DesignThumbnail({
+  design,
+  image,
+  alt = "",
   width,
   height,
 }: {
-  item: BasketItem
+  design?: BasketDesign
+  image: string
+  alt?: string
   width: number
   height: number
 }) {
-  const { design, image, productName } = item
+  const productName = alt
   if (!design || design.displayWidth <= 0 || design.displayHeight <= 0) {
     return (
       <img

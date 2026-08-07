@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+
 import { Minus, Plus } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -34,21 +36,45 @@ type QuantityFieldProps = {
 const FIELD_BORDER = "border-neutral-200"
 
 export function QuantityField({ id, quantity, onQuantityChange, size = "m" }: QuantityFieldProps) {
+  // What the user is typing, while they are typing. null means "show the
+  // committed quantity". Without this the field could never be cleared: every
+  // keystroke was clamped to the minimum, so deleting "1" put "1" straight
+  // back and typing "30" was impossible.
+  const [draft, setDraft] = useState<string | null>(null)
+
   const handleInputChange = (raw: string) => {
     const digits = raw.replace(/\D/g, "")
-    // Empty/0 snaps to the minimum; a pasted huge number clamps to the maximum.
-    const next = Math.min(VOLUME_DISCOUNT_MAX_QUANTITY, Math.max(MIN_QUANTITY, Number(digits)))
-    onQuantityChange(next)
+    if (digits === "") {
+      // Allowed to stand empty while editing; blur decides what it means.
+      setDraft("")
+      return
+    }
+    const next = Math.min(VOLUME_DISCOUNT_MAX_QUANTITY, Number(digits))
+    setDraft(String(next))
+    // 0 is only ever an intermediate state (e.g. before typing "0" + "5"), so
+    // it is not committed — blur resolves it.
+    if (next >= MIN_QUANTITY) onQuantityChange(next)
+  }
+
+  // Empty or 0 on the way out reverts to the minimum; anything else is already
+  // committed.
+  const handleBlur = () => {
+    if (draft !== null && (draft === "" || Number(draft) < MIN_QUANTITY)) {
+      onQuantityChange(MIN_QUANTITY)
+    }
+    setDraft(null)
   }
 
   const stepButton = (dir: -1 | 1) => (
     <button
       type="button"
-      onClick={() =>
+      onClick={() => {
+        // Stepping abandons whatever was half-typed.
+        setDraft(null)
         onQuantityChange(
           Math.min(VOLUME_DISCOUNT_MAX_QUANTITY, Math.max(MIN_QUANTITY, quantity + dir))
         )
-      }
+      }}
       disabled={dir === -1 ? quantity <= MIN_QUANTITY : quantity >= VOLUME_DISCOUNT_MAX_QUANTITY}
       aria-label={dir === -1 ? "Decrease quantity" : "Increase quantity"}
       className={cn(
@@ -77,8 +103,9 @@ export function QuantityField({ id, quantity, onQuantityChange, size = "m" }: Qu
           name={id}
           type="text"
           inputMode="numeric"
-          value={quantity}
+          value={draft ?? String(quantity)}
           onChange={e => handleInputChange(e.target.value)}
+          onBlur={handleBlur}
           aria-label="Order quantity"
           className="w-full min-w-0 border-0 bg-transparent px-2 text-center font-bold focus:outline-none"
         />

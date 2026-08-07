@@ -35,7 +35,7 @@ import {
 import { printAreaCosts, printAreaTotal } from "@/lib/print-area-pricing"
 import {
   VOLUME_DISCOUNT_MAX_PERCENTAGE,
-  majorVolumeDiscountTiers,
+  VOLUME_DISCOUNT_TIERS,
   nextVolumeDiscountTier,
   volumeDiscountPercentage,
 } from "@/lib/volume-discount"
@@ -67,6 +67,11 @@ import MobileSizeSheet from "@/components/mobile/mobile-size-sheet"
 import MobileViewSwitcher from "@/components/mobile/mobile-view-switcher"
 import { useDlgMobile } from "@/hooks/use-dlg-mobile"
 import SiteHeader from "@/components/site-header"
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card"
 import { IconsScroller } from "@/components/ui/icons-scroller"
 import { EditorBar } from "@/components/ui/editor-bar"
 import { GraphicEditorBar } from "@/components/ui/editor-bar/GraphicEditorBar"
@@ -734,6 +739,13 @@ export default function Designer({
     setWelcomeOpen(false)
   }, [])
   const [detailsOpen, setDetailsOpen] = useState(false)
+  // The rail title is one line, faded out at its end when it does not fit.
+  // Measured rather than always-on, so a short name is not faded for nothing.
+  const titleRef = useRef<HTMLHeadingElement | null>(null)
+  // How far the name runs past the rail, in px. 0 = it fits (no fade, no
+  // hover slide); > 0 drives both.
+  const [titleOverflowPx, setTitleOverflowPx] = useState(0)
+  const titleOverflows = titleOverflowPx > 0
   // Mobile (<1080px) shell state — color drawer, more menu and the Finish size
   // sheet. All mobile-only; desktop never opens these.
   const [mobileColorDrawerOpen, setMobileColorDrawerOpen] = useState(false)
@@ -2086,6 +2098,35 @@ export default function Designer({
         : {},
     [productData]
   )
+  // A colour with every one of its sizes sold out cannot be ordered at all —
+  // on the hypotheses page its swatch is not selectable, and hovering it shows
+  // the garment large with the reason. (For a one-size product that is simply
+  // "the single size is gone".)
+  const isColorSoldOut = (index: number) => {
+    if (!basketHypotheses) return false
+    const id = appearances[index]?.id
+    if (!id || sizes.length === 0) return false
+    return (outOfStockMap[id] ?? []).length >= sizes.length
+  }
+
+  // Hover card for a sold-out swatch: the garment large, with the reason. Same
+  // markup for both swatch layouts, so they cannot drift.
+  const soldOutColorCard = (img: { src: string; alt: string; color?: string }) => (
+    <HoverCardContent
+      side="top"
+      sideOffset={8}
+      className="flex w-[220px] flex-col items-center gap-2 rounded-2xl border-0 bg-white p-4 shadow-lg"
+    >
+      <img
+        src={img.src || "/placeholder.svg"}
+        alt={img.alt}
+        className="h-[150px] w-full object-contain"
+      />
+      <span className="text-sm font-medium text-black">{img.alt}</span>
+      <span className="text-sm text-[var(--sprd-neutral-700)]">Currently out of stock</span>
+    </HoverCardContent>
+  )
+
   const togglePanel = (panel: DesignerPanel) =>
     setActivePanel(p => (p === panel ? null : panel))
 
@@ -2898,6 +2939,62 @@ export default function Designer({
     return seen
   }, [textElements, graphicElements])
   const decoratedPrintAreaCount = decoratedPrintAreaIdList.length
+  // One preview per DECORATED view for the volume-discount calculator, so a
+  // design on the back is visible there too — the quoted price covers it.
+  // Falls back to the plain current view when nothing is placed yet.
+  //
+  // displayWidth/Height come from the current view's measured print area: the
+  // product image occupies the same canvas box in every view, so that box is
+  // the right scale reference for all of them; only the overlay rect differs.
+  const volumeDiscountPreviews = useMemo(() => {
+    const appearance = appearances[activeColorIndex]
+    if (!productData || !appearance) return []
+    const imageFor = (viewId: string) =>
+      appearance.views.find(v => v.id === viewId)?.image ?? appearance.image
+    const canScale = printAreaPxSize.width > 0 && printAreaPxSize.height > 0
+    const decorated = productData.views.filter(view => {
+      const areaId = view.viewMaps[0]?.printAreaId
+      return areaId != null && decoratedPrintAreaIdList.includes(areaId)
+    })
+    if (decorated.length === 0) {
+      return [{ id: activeViewId, image: currentViewImage || appearance.image }]
+    }
+    return decorated.map(view => {
+      const areaId = view.viewMaps[0]?.printAreaId
+      const overlay = getPrintAreaOverlay(productData, view.id)
+      const reference = printAreaOverlay ?? overlay
+      return {
+        id: view.id,
+        name: view.name,
+        image: imageFor(view.id),
+        design:
+          overlay && reference && canScale
+            ? {
+                textElements: textElements
+                  .filter(t => t.printAreaId === areaId)
+                  .map(t => ({ ...t })),
+                graphicElements: graphicElements
+                  .filter(g => g.printAreaId === areaId)
+                  .map(g => ({ ...g })),
+                printAreaOverlay: overlay,
+                displayWidth: (printAreaPxSize.width * 100) / reference.width,
+                displayHeight: (printAreaPxSize.height * 100) / reference.height,
+              }
+            : undefined,
+      }
+    })
+  }, [
+    productData,
+    appearances,
+    activeColorIndex,
+    activeViewId,
+    currentViewImage,
+    decoratedPrintAreaIdList,
+    textElements,
+    graphicElements,
+    printAreaOverlay,
+    printAreaPxSize,
+  ])
   // Named + priced print areas for the price-details breakdown. The catalogue's
   // print areas carry no label of their own, so borrow the name of the view each
   // one belongs to (Front, Back, …), which is what the shop shows.
@@ -2918,6 +3015,21 @@ export default function Designer({
   // Delivery estimate counted from today, not a fixed date. Memoised so it is
   // computed once per mount instead of on every render of this large component.
   const deliveryWindow = useMemo(() => formatDeliveryWindow(new Date()), [])
+  // Re-measured whenever the name changes: the fade is only applied when the
+  // title actually runs past the rail.
+  useEffect(() => {
+    const el = titleRef.current
+    if (!el) return
+    const measure = () => setTitleOverflowPx(Math.max(0, el.scrollWidth - el.clientWidth))
+    measure()
+    // MADE Outer Sans is wider than the fallback, so a first-paint measurement
+    // reads "fits" for names that will not. Re-measure once it is in, and
+    // whenever the rail resizes.
+    document.fonts?.ready.then(measure).catch(() => {})
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [productData?.name])
   const originalPrice = totalSelected > 0 ? unitPrice * totalSelected : unitPrice
   const discountPercent = getDiscountPercentage(totalSelected)
   const discountedPrice = originalPrice * (1 - discountPercent)
@@ -3095,24 +3207,17 @@ export default function Designer({
       {/* Your Product */}
       <div className="border-b border-neutral-200">
         <div className="px-6 pb-4">
-          <p className="mb-2 text-sm font-semibold">Your Product</p>
-          <div className="flex gap-3">
-            <div className="flex h-20 w-20 shrink-0 items-start rounded-md bg-[#F2F2F2] p-1 shadow-[0_1px_1px_0_rgba(37,33,31,0.05)]">
-              {currentAppearance?.image ? (
-                <img
-                  src={currentAppearance.image}
-                  alt={productData?.name ?? ""}
-                  width={80}
-                  className="flex-1 self-stretch object-contain"
-                />
-              ) : (
-                <span className="text-xs text-gray-500">IMG</span>
+          {/* The garment on its own, before decoration. */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              {currentAppearance?.image && (
+                <span className="shrink-0 rounded-sm bg-[var(--sprd-neutral-100)] p-1">
+                  <img src={currentAppearance.image} alt="" className="w-9 object-contain" />
+                </span>
               )}
+              <p className="text-sm font-regular">Product base price</p>
             </div>
-            <div className="flex flex-1 items-center gap-4 self-stretch">
-              <p className="flex-1 text-sm">{productData?.name}</p>
-              <span className="text-sm">{formatEUR(BASE_PRICE)} €</span>
-            </div>
+            <span className="text-sm">{formatEUR(BASE_PRICE)} €</span>
           </div>
         </div>
       </div>
@@ -3120,24 +3225,28 @@ export default function Designer({
           named after the view it sits on. */}
       {decoratedPrintAreas.length > 0 && (
         <div className="border-b border-neutral-200 px-6 py-4">
-          <div className="flex items-center justify-between gap-3">
+          {/* Heading with the help link folded into a "?" beside it. The kit
+              has no question-mark glyph (InfoCircle/InformationCircle are both
+              an "i"), so it is drawn as a circled character. */}
+          <div className="mb-2 flex items-center gap-2">
             <p className="text-sm font-semibold">
               {effectivePrintTechnique === "embroidery"
                 ? "Embroidery Costs"
                 : "Printing Costs"}
             </p>
-            <span className="text-sm text-gray-500">
-              Calculated per print area
-            </span>
-          </div>
-          <div className="mb-2">
             <a
               href="https://help.spreadshirt.com/hc/en-gb/articles/207153579"
               target="_blank"
               rel="noopener noreferrer"
-              className="cursor-pointer text-sm leading-5 underline"
+              aria-label={
+                effectivePrintTechnique === "embroidery"
+                  ? "Learn more about embroidery costs"
+                  : "Learn more about printing costs"
+              }
+              title="Learn more"
+              className="flex size-[18px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-[var(--sprd-neutral-100)] text-[12px] leading-none font-semibold text-[var(--sprd-neutral-700)] hover:bg-[var(--sprd-neutral-200)] hover:text-black"
             >
-              Learn More
+              ?
             </a>
           </div>
           <div className="space-y-1">
@@ -3157,81 +3266,51 @@ export default function Designer({
           </div>
         </div>
       )}
-      {/* Design Prices — the designs themselves carry no
-          surcharge here; the cost is per print area. */}
-      {visibleTextElements.length + visibleGraphicElements.length > 0 && (
-        <div className="px-6 py-4">
-          <p className="mb-2 text-sm font-semibold">Design Prices</p>
-          <div className="space-y-2">
-            {visibleGraphicElements.map(g => (
-              <div
-                key={g.id}
-                className="flex items-center justify-between gap-3"
-              >
-                <div className="flex min-w-0 items-center gap-1">
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded bg-blue-100">
-                    {g.src ? (
-                      <img
-                        src={g.src}
-                        alt=""
-                        className="h-6 w-6 rounded object-contain"
-                      />
-                    ) : (
-                      <span className="text-xs">🎨</span>
-                    )}
-                  </div>
-                  <span className="truncate text-sm">Uploaded Image</span>
-                </div>
-                <span className="text-sm">Free</span>
-              </div>
-            ))}
-            {visibleTextElements.map(t => (
-              <div
-                key={t.id}
-                className="flex items-center justify-between gap-3"
-              >
-                <div className="flex min-w-0 items-center gap-1">
-                  <span className="truncate text-sm">Text: {t.content}</span>
-                </div>
-                <span className="text-sm">Free</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* No "Design Prices" section: the designs themselves carry no
+          surcharge — the cost is per print area, listed above. */}
     </div>
-    {/* Total — production's footer: single-item line only
-        while a discount applies, then the total with the
-        struck original and the red percentage badge. */}
-    <div className="flex flex-shrink-0 flex-col gap-2.5 px-6 py-6 shadow-[0_-4px_8px_0_rgba(37,33,31,0.05)]">
-      {discountPercent > 0 && (
+    {/* Total — the single-item line always precedes it, so the per-item price
+        stays readable however many products are selected (production only
+        showed it while a discount applied). */}
+    {/* No border-t of its own: every section above ends in a border-b, so the
+        separator is already there — two would read as a 2px rule. */}
+    <div className="flex flex-shrink-0 flex-col gap-2.5 px-6 py-6">
+      {/* Only once there is more than one product: with a single item the row
+          below already states the same figure. Discount or not. */}
+      {totalSelected > 1 && (
         <div className="flex items-center justify-between gap-3 text-sm">
           <p>Single item</p>
           <div className="flex items-center gap-2">
-            <span className="text-neutral-700 line-through">
-              {formatEUR(unitPrice)} €
-            </span>
+            {discountPercent > 0 && (
+              <span className="text-neutral-700 line-through">
+                {formatEUR(unitPrice)} €
+              </span>
+            )}
             <span className="pr-1">{formatEUR(hypoDiscountedUnit)} €</span>
           </div>
         </div>
       )}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-semibold text-black">
           {totalSelected > 1
             ? `Total price (${totalSelected} items)`
             : "Single item total"}
         </p>
-        <span className="flex items-center gap-2">
+        {/* The percentage sits under the figures rather than between them —
+            wedged in the middle it broke the struck-through/actual pairing. */}
+        <span className="flex flex-col items-end gap-1">
           {discountPercent > 0 && totalSelected > 0 ? (
             <>
-              <span className="text-lg leading-none text-neutral-700 line-through">
-                {formatEUR(originalPrice)} €
+              <span className="flex items-center gap-2">
+                <span className="text-lg leading-none text-neutral-700 line-through">
+                  {formatEUR(originalPrice)} €
+                </span>
+                <span className="pr-1 text-lg font-semibold text-red-600">
+                  {formatEUR(discountedPrice)} €
+                </span>
               </span>
               <span className="flex rounded-xs bg-red-600 px-1 py-0.5 text-sm text-white">
                 %{Math.round(discountPercent * 100)}
-              </span>
-              <span className="pr-1 text-lg font-semibold text-red-600">
-                {formatEUR(discountedPrice)} €
               </span>
             </>
           ) : (
@@ -5136,22 +5215,164 @@ export default function Designer({
               }}
             >
               <div className="flex items-start justify-between mb-[8px]">
-                <h1 className="font-display text-[20px] font-[800] text-black leading-tight line-clamp-2">
-                  {productData?.name ?? ""}
+                {/* One line — a two-line title pushed everything below it down
+                    as the shopper switched products. Faded at the edge rather
+                    than ellipsised, and the fades are overlay gradients rather
+                    than a mask: mask-image cannot be transitioned, and these
+                    have to cross-fade as the name slides.
+                    No `title` either: the browser's native tooltip fought the
+                    hover slide, which already reveals the full name. */}
+                <h1
+                  ref={titleRef}
+                  className="group/title font-display relative min-w-0 overflow-hidden text-[20px] leading-tight font-[800] whitespace-nowrap text-black"
+                  style={
+                    {
+                      "--title-shift": `-${titleOverflowPx}px`,
+                      "--title-slide": `${Math.max(300, titleOverflowPx * 12)}ms`,
+                    } as CSSProperties
+                  }
+                >
+                  {/* Hovering slides the name far enough left to read its end,
+                      then it slides back. transition-[translate], not
+                      transition-transform: Tailwind v4 compiles translate-x to
+                      the standalone `translate` property, which
+                      transition-transform does not cover. Pace is ~12ms/px so a
+                      longer name takes proportionally longer. */}
+                  <span
+                    className="inline-block transition-[translate] duration-[var(--title-slide)] ease-in-out group-hover/title:translate-x-[var(--title-shift)]"
+                  >
+                    {productData?.name ?? ""}
+                  </span>
+                  {titleOverflows && (
+                    <>
+                      {/* Left fade: appears the moment the name starts moving
+                          (there is now text hidden off-screen left). On hover
+                          out it must NOT vanish while the name is still sliding
+                          back — the base state delays its fade-out by the slide
+                          duration, so it clears only once the start of the name
+                          has fully returned, with the same smooth fade as the
+                          right one. */}
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-y-0 left-0 w-[48px] bg-gradient-to-r from-[#F4F4F4] to-transparent opacity-0 transition-opacity duration-[450ms] ease-out [transition-delay:var(--title-slide)] group-hover/title:opacity-100 group-hover/title:[transition-delay:0ms]"
+                      />
+                      {/* Right fade: the default state. It clears only once the
+                          slide has hit the far end (delayed by the slide
+                          duration) with a smooth fade, and comes straight back
+                          the moment the name starts sliding home. */}
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-y-0 right-0 w-[48px] bg-gradient-to-l from-[#F4F4F4] to-transparent opacity-100 transition-opacity duration-[450ms] ease-out [transition-delay:0ms] group-hover/title:opacity-0 group-hover/title:[transition-delay:var(--title-slide)]"
+                      />
+                    </>
+                  )}
                 </h1>
               </div>
               <button
                 type="button"
                 onClick={() => setDetailsOpen(true)}
-                className="text-[14px] text-black underline cursor-pointer"
+                className={
+                  basketHypotheses
+                    ? "inline-flex cursor-pointer items-center gap-2 text-[14px] text-black outline-none"
+                    : "text-[14px] text-black underline cursor-pointer"
+                }
               >
-                See product details
+                {basketHypotheses ? (
+                  <>
+                    {/* Supplied Ruler glyph, on currentColor — the same one the
+                        size sheet's guide toggle uses. */}
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="shrink-0"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M19 3C20.0543 3 20.9177 3.81581 20.9941 4.85059L21 5V10C21 11.0543 20.1842 11.9177 19.1494 11.9941L19 12H12V19C12 20.0543 11.1842 20.9177 10.1494 20.9941L10 21H5C3.9457 21 3.0823 20.1842 3.00586 19.1494L3 19V5C3 3.9457 3.81581 3.08229 4.85059 3.00586L5 3H19ZM5 7H6C6.55228 7 7 7.44772 7 8C7 8.51284 6.61355 8.9354 6.11621 8.99316L6 9H5V11H7C7.55228 11 8 11.4477 8 12C8 12.5128 7.61355 12.9354 7.11621 12.9932L7 13H5V15H6C6.55228 15 7 15.4477 7 16C7 16.5128 6.61355 16.9354 6.11621 16.9932L6 17H5V19H10V12C10 10.9457 10.8158 10.0823 11.8506 10.0059L12 10H19V5H17V6C17 6.55228 16.5523 7 16 7C15.4872 7 15.0646 6.61355 15.0068 6.11621L15 6V5H13V7C13 7.55228 12.5523 8 12 8C11.4872 8 11.0646 7.61355 11.0068 7.11621L11 7V5H9V6C9 6.55228 8.55228 7 8 7C7.48716 7 7.0646 6.61355 7.00684 6.11621L7 6V5H5V7Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                    <span className="underline underline-offset-4">See product details</span>
+                  </>
+                ) : (
+                  "See product details"
+                )}
               </button>
 
-              <div id="select-color" className="mb-8">
-                <div className="w-full text-left text-[12px] uppercase font-bold text-[#6A6A6A] mb-[12px] tracking-[0.08em] mt-6">
-                  COLOR: <span className="text-[#000000]">{selectedColor.toUpperCase()}</span>
+              <div id="select-color" className="mb-2">
+                {/* No flex gap: the 4px either side of the middot comes from
+                    its own mx-1, so the spacing is symmetric around it. */}
+                <div className="mt-6 mb-[12px] flex w-full items-baseline">
+                  {/* shrink-0: the colour name always wins the space it needs;
+                      whatever is left is the sold-out list's budget. */}
+                  <span className="shrink-0 text-left text-[12px] font-bold tracking-[0.08em] whitespace-nowrap text-[#6A6A6A] uppercase">
+                    COLOR: <span className="text-[#000000]">{selectedColor.toUpperCase()}</span>
+                  </span>
+                  {/* H1 — availability belongs with the colour that determines
+                      it: the sizes sold out in THIS colour, right after the
+                      colour name behind a middot. On `/` this line lives down
+                      by the Size guide link instead (see #bottom-part).
+                      Always rendered, hidden when the colour is fully stocked:
+                      the 16px middot sets this line's height, so removing the
+                      node outright would shift the swatches below as the
+                      shopper moves between colours. */}
+                  {basketHypotheses && (
+                    /* group/oos is the whole remaining row: one hover target
+                       covering every size label. It is NOT the element that
+                       clips — an overflow-hidden ancestor would swallow the
+                       tooltip — so the truncation sits on the inner span. */
+                    <span
+                      // No flex-1: the group is only as wide as its content, so
+                      // the hover area does not stretch across the empty rest
+                      // of the row. min-w-0 still lets it shrink (and the inner
+                      // span ellipsise) when the list is long.
+                      className={`group/oos relative flex min-w-0 items-baseline text-[14px] font-medium text-[var(--sprd-neutral-700)] ${
+                        (outOfStockMap[appearances[activeColorIndex]?.id] ?? []).length > 0
+                          ? ""
+                          : "invisible"
+                      }`}
+                    >
+                      {/* 10px either side (4 + 6), one step larger than the
+                          text it separates. */}
+                      <span aria-hidden className="mx-[10px] shrink-0 text-[16px]">
+                        ·
+                      </span>
+                      {/* Comma-separated, each size struck through (the commas
+                          are not). Ellipsised rather than wrapped: this line
+                          must stay one line however many sizes are sold out.
+                          A one-size product has no size worth naming ("One
+                          Size" struck through says nothing), so it just states
+                          the fact — the colour stays selectable either way. */}
+                      <span className="min-w-0 truncate">
+                        {sizes.length <= 1
+                          ? "Out of stock"
+                          : (outOfStockMap[appearances[activeColorIndex]?.id] ?? []).map(
+                              (size, i) => (
+                                <span key={size}>
+                                  {i > 0 ? ", " : ""}
+                                  <span className="line-through">{size}</span>
+                                </span>
+                              )
+                            )}
+                      </span>
+                      {/* Same tooltip as the undo/redo buttons — neutral-900,
+                          p-3, 14px, with the little arrow. Opens upward so it
+                          does not cover the swatches below. */}
+                      <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 rounded-md bg-neutral-900 p-3 text-sm whitespace-nowrap text-neutral-100 opacity-0 shadow-sm transition-opacity group-hover/oos:opacity-100 after:absolute after:top-full after:left-1/2 after:h-0 after:w-0 after:-translate-x-1/2 after:border-x-[4px] after:border-x-transparent after:border-t-[4px] after:border-t-neutral-900 after:content-['']">
+                        {sizes.length <= 1
+                          ? "This colour is currently out of stock"
+                          : `${(outOfStockMap[appearances[activeColorIndex]?.id] ?? []).join(
+                              ", "
+                            )} currently out of stock`}
+                      </span>
+                    </span>
+                  )}
                 </div>
+            </div>
+
                 {isColorScrollable ? (
                   <div className="relative">
                     <div
@@ -5159,37 +5380,68 @@ export default function Designer({
                       ref={colorRowRef}
                       className="flex flex-nowrap gap-[6px] overflow-x-auto"
                     >
-                      {productImages.map((img, index) => (
-                        <button
-                          key={index}
-                          type="button"
-                          className={
-                            "shrink-0 w-[50px] h-[50px] p-[6px] box-border rounded-[8px] flex items-center justify-center overflow-hidden cursor-pointer select-none border " +
-                            (activeColorIndex === index
-                              ? "bg-white border-black rounded-[8px]"
-                              : "bg-transparent border-transparent hover:bg-[#E9E9E9]")
-                          }
-                          onClick={() => setActiveColorIndex(index)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault()
+                      {productImages.map((img, index) => {
+                        const soldOut = isColorSoldOut(index)
+                        const swatch = (
+                          <button
+                            key={index}
+                            type="button"
+                            // aria-disabled, not disabled: a disabled button
+                            // receives no pointer events, so the hover card
+                            // explaining WHY it cannot be picked would never
+                            // open.
+                            aria-disabled={soldOut}
+                            className={
+                              "shrink-0 w-[50px] h-[50px] p-[6px] box-border rounded-[8px] flex items-center justify-center overflow-hidden select-none border " +
+                              // Not dimmed: the colour still has to be judged
+                              // by eye. The cursor and the hover card carry the
+                              // unavailability instead.
+                              (soldOut ? "cursor-not-allowed " : "cursor-pointer ") +
+                              (activeColorIndex === index
+                                ? "bg-white border-black rounded-[8px]"
+                                : soldOut
+                                  ? // No hover tint either: nothing about it
+                                    // should suggest it can be picked.
+                                    "bg-transparent border-transparent"
+                                  : "bg-transparent border-transparent hover:bg-[#E9E9E9]")
+                            }
+                            onClick={e => {
+                              if (soldOut) {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                return
+                              }
                               setActiveColorIndex(index)
-                            }
-                          }}
-                          tabIndex={0}
-                        >
-                          <img
-                            src={img.src || "/placeholder.svg"}
-                            alt={img.alt}
-                            className="max-w-full max-h-full object-contain block"
-                            style={
-                              isLightProductColor(img.color)
-                                ? { filter: LIGHT_PRODUCT_IMAGE_SHADOW }
-                                : undefined
-                            }
-                          />
-                        </button>
-                      ))}
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                if (!soldOut) setActiveColorIndex(index)
+                              }
+                            }}
+                            // Out of the tab order when it cannot be actioned.
+                            tabIndex={soldOut ? -1 : 0}
+                          >
+                            <img
+                              src={img.src || "/placeholder.svg"}
+                              alt={img.alt}
+                              className="max-w-full max-h-full object-contain block"
+                              style={
+                                isLightProductColor(img.color)
+                                  ? { filter: LIGHT_PRODUCT_IMAGE_SHADOW }
+                                  : undefined
+                              }
+                            />
+                          </button>
+                        )
+                        if (!soldOut) return swatch
+                        return (
+                          <HoverCard key={index} openDelay={80} closeDelay={80}>
+                            <HoverCardTrigger asChild>{swatch}</HoverCardTrigger>
+                            {soldOutColorCard(img)}
+                          </HoverCard>
+                        )
+                      })}
                     </div>
 
                     {/* Edge fades for color row */}
@@ -5264,24 +5516,37 @@ export default function Designer({
                   </div>
                 ) : (
                   <div className="grid grid-cols-8 gap-[6px]">
-                    {productImages.map((img, index) => (
+                    {productImages.map((img, index) => {
+                      const soldOut = isColorSoldOut(index)
+                      const swatch = (
                       <button
                         key={index}
                         type="button"
+                        aria-disabled={soldOut}
                         className={
-                          "aspect-square w-full p-[6px] box-border flex items-center justify-center overflow-hidden cursor-pointer select-none border rounded-[8px] " +
+                          "aspect-square w-full p-[6px] box-border flex items-center justify-center overflow-hidden select-none border rounded-[8px] " +
+                          (soldOut ? "cursor-not-allowed " : "cursor-pointer ") +
                           (activeColorIndex === index
                             ? "bg-white border-black rounded-[8px]"
-                            : "bg-transparent border-transparent hover:bg-[#E9E9E9]")
+                            : soldOut
+                              ? "bg-transparent border-transparent"
+                              : "bg-transparent border-transparent hover:bg-[#E9E9E9]")
                         }
-                        onClick={() => setActiveColorIndex(index)}
+                        onClick={e => {
+                          if (soldOut) {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            return
+                          }
+                          setActiveColorIndex(index)
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault()
-                            setActiveColorIndex(index)
+                            if (!soldOut) setActiveColorIndex(index)
                           }
                         }}
-                        tabIndex={0}
+                        tabIndex={soldOut ? -1 : 0}
                       >
                         <img
                           src={img.src || "/placeholder.svg"}
@@ -5294,11 +5559,20 @@ export default function Designer({
                           }
                         />
                       </button>
-                    ))}
+                      )
+                      if (!soldOut) return swatch
+                      return (
+                        <HoverCard key={index} openDelay={80} closeDelay={80}>
+                          <HoverCardTrigger asChild>{swatch}</HoverCardTrigger>
+                          {soldOutColorCard(img)}
+                        </HoverCard>
+                      )
+                    })}
                   </div>
                 )}
               </div>
-            </div>
+
+              
 
             <div id="bottom-part" className="flex-shrink-0 mt-auto">
               
@@ -5398,29 +5672,76 @@ export default function Designer({
                       <span className="underline font-medium">Calculate volume discount</span>
                     </button>
                     {/* Price column, right-aligned: the figure with its details
-                        link underneath. The "Per item" label only appears once
-                        sizes are chosen — before that there is no quantity for
-                        it to qualify. */}
+                        link underneath. With nothing chosen the figure is the
+                        per-item price; as soon as sizes are added it becomes
+                        the order total for those quantities (the per-item price
+                        stays visible in the sheet's footer). */}
                     <div className="flex shrink-0 flex-col items-end gap-0.5">
                       {totalSelected > 0 && (
-                        <span className="text-[12px] leading-none text-[var(--sprd-neutral-700)]">
-                          Per item
+                        <span className="text-[12px] leading-none font-semibold text-[var(--sprd-neutral-700)] uppercase">
+                          Total
                         </span>
                       )}
-                      <span
-                        className={`text-[24px] leading-7 font-medium ${
-                          discountPercent > 0 ? "text-[#DC2626]" : "text-black"
-                        }`}
-                      >
-                        {formatEUR(hypoDiscountedUnit)} €
-                      </span>
-                      <button
-                        type="button"
-                        onClick={togglePriceBreakdown}
-                        className="cursor-pointer text-[14px] leading-5 font-normal text-black underline outline-none"
-                      >
-                        {priceBreakdownOpen ? "Hide price details" : "Price details"}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {/* H4 — the breakdown on hover, no click needed. A
+                            portalled HoverCard, not an absolutely positioned
+                            child: the rail scrolls (overflow-y-auto), which
+                            clips horizontally too, so an in-flow panel would be
+                            cut off at the rail's edge.
+                            Offered only once there is something to break down:
+                            a decorated print area, or more than one item. On a
+                            blank single item the price IS the base price. */}
+                        {(graphicElements.length + textElements.length > 0 ||
+                          totalSelected > 1) && (
+                        <HoverCard openDelay={80} closeDelay={80}>
+                          <HoverCardTrigger asChild>
+                            <span
+                              aria-label="Price details"
+                              // 16px across: 12px glyph in 2px of padding. Same
+                              // 2px neutral-700 frame as the size selector
+                              // beside it, on no fill.
+                              className="group/pricedetails flex cursor-default items-center justify-center rounded-full bg-neutral-200 p-1 text-black outline-none"
+                            >
+                              {/* Kit v2 Chevron — transition on `rotate`, since
+                                  Tailwind v4 compiles rotate-180 to that
+                                  standalone property and transition-transform
+                                  would never fire. */}
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                aria-hidden="true"
+                                className="transition-[rotate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover/pricedetails:rotate-180"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  clipRule="evenodd"
+                                  d="M5.29289 8.29289C5.65338 7.93241 6.22061 7.90468 6.6129 8.2097L6.70711 8.29289L12 13.585L17.2929 8.29289C17.6534 7.93241 18.2206 7.90468 18.6129 8.2097L18.7071 8.29289C19.0676 8.65338 19.0953 9.22061 18.7903 9.6129L18.7071 9.70711L12.7071 15.7071C12.3466 16.0676 11.7794 16.0953 11.3871 15.7903L11.2929 15.7071L5.29289 9.70711C4.90237 9.31658 4.90237 8.68342 5.29289 8.29289Z"
+                                  fill="currentColor"
+                                />
+                              </svg>
+                            </span>
+                          </HoverCardTrigger>
+                          {/* Same breakdown the modal shows. */}
+                          <HoverCardContent
+                            side="top"
+                            align="end"
+                            sideOffset={8}
+                            className="flex max-h-[460px] w-[452px] flex-col overflow-hidden rounded-2xl border-0 bg-white p-0 pt-6 shadow-lg"
+                          >
+                            {priceDetailsContent}
+                          </HoverCardContent>
+                        </HoverCard>
+                        )}
+                        <span
+                          className={`text-[24px] leading-7 font-medium ${
+                            discountPercent > 0 ? "text-[#DC2626]" : "text-black"
+                          }`}
+                        >
+                          {formatEUR(totalSelected > 0 ? discountedPrice : hypoDiscountedUnit)} €
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -5879,7 +6200,7 @@ export default function Designer({
                          present-but-transparent so toggling it never shifts
                          layout by a pixel. */
                       <div
-                        className={`flex flex-shrink-0 flex-col gap-3 border-t bg-white p-6 pt-[18px] ${
+                        className={`flex flex-shrink-0 flex-col gap-3 border-t bg-white p-6 pt-[18px] pb-[14px] ${
                           sizeListAtEnd ? "border-neutral-200" : "border-transparent"
                         }`}
                       >
@@ -5919,28 +6240,43 @@ export default function Designer({
                                 />
                               </svg>
                             </span>
-                            {/* Hover popover — the same tier table the
-                                volume-discount dialog shows. */}
-                            <div className="pointer-events-none absolute right-0 bottom-full z-50 mb-2 w-52 rounded-[12px] bg-white p-2 opacity-0 shadow-lg transition-opacity duration-150 group-hover/tiers:opacity-100">
-                              {majorVolumeDiscountTiers().map(t => (
-                                <div
-                                  key={t.from}
-                                  className="flex items-center justify-between gap-3 border-b border-neutral-200 px-3 py-2 text-[13px] last:border-b-0"
-                                >
-                                  <span className="font-normal text-black">
-                                    {t.from}+ products
-                                  </span>
-                                  <span className="font-bold text-[#DC2626]">
-                                    −{t.percentage}% off
-                                  </span>
-                                </div>
-                              ))}
+                            {/* Every tier, not the condensed five: the line
+                                above names the NEXT threshold on the real
+                                scale, so a hint like "%40 off" has to have a
+                                row here to point at. The row it refers to is
+                                highlighted. */}
+                            <div className="pointer-events-none absolute right-0 bottom-full z-50 mb-2 w-52 overflow-hidden rounded-[12px] bg-white p-2 opacity-0 shadow-lg transition-opacity duration-150 group-hover/tiers:opacity-100">
+                              {VOLUME_DISCOUNT_TIERS.map(t => {
+                                const reached = totalSelected >= t.from
+                                const isNext = nextVolumeDiscountTier(totalSelected)?.from === t.from
+                                return (
+                                  <div
+                                    key={t.from}
+                                    className={`flex items-center justify-between gap-3 border-b border-neutral-200 px-3 py-2 text-[13px] last:border-b-0 ${
+                                      isNext ? "bg-neutral-50" : ""
+                                    }`}
+                                  >
+                                    <span
+                                      className={`font-normal ${
+                                        reached ? "text-black" : "text-[var(--sprd-neutral-700)]"
+                                      }`}
+                                    >
+                                      {t.from}+ products
+                                    </span>
+                                    <span className="font-bold text-[#DC2626]">
+                                      −{t.percentage}% off
+                                    </span>
+                                  </div>
+                                )
+                              })}
                             </div>
                           </span>
                         </div>
                         <div className="flex flex-col gap-2">
                           <div className="flex items-center justify-between gap-3 text-[14px] text-black">
-                            <span>Per product</span>
+                            <span className="text-[14px] font-medium text-[var(--sprd-neutral-600)]">
+                              Per item
+                            </span>
                             {/* Undiscounted value struck through beside the
                                 current one, so the saving is legible per item
                                 and on the total. */}
@@ -5950,28 +6286,46 @@ export default function Designer({
                                   {formatEUR(unitPrice)}
                                 </span>
                               )}
-                              <span>{formatEUR(hypoDiscountedUnit)} €</span>
+                              {/* The figure that applies is a step heavier than
+                                  the label and the struck original beside it,
+                                  and red exactly while that original shows. */}
+                              <span
+                                className={`font-semibold ${
+                                  discountPercent > 0 ? "text-[#DC2626]" : "text-black"
+                                }`}
+                              >
+                                {formatEUR(hypoDiscountedUnit)} €
+                              </span>
                             </span>
                           </div>
                           <div className="flex items-end justify-between gap-3">
-                            <button
-                              type="button"
-                              onClick={togglePriceBreakdown}
-                              className="cursor-pointer text-[14px] text-black underline underline-offset-4 outline-none"
-                            >
-                              {priceBreakdownOpen ? "Hide price details" : "See price details"}
-                            </button>
+                            {/* The breakdown is reachable from the rail's
+                                chevron, so this slot just labels the figure. */}
+                            <span className="text-[14px] font-medium text-[var(--sprd-neutral-600)]">
+                              TOTAL
+                            </span>
                             <span className="flex items-baseline gap-2">
                               {discountPercent > 0 && totalSelected > 0 && (
                                 <span className="text-[16px] leading-none text-[#6A6A6A] line-through">
                                   {formatEUR(originalPrice)}
                                 </span>
                               )}
-                              <span className="text-[24px] leading-7 font-medium text-black">
+                              <span
+                                className={`text-[24px] leading-7 font-medium ${
+                                  discountPercent > 0 && totalSelected > 0
+                                    ? "text-[#DC2626]"
+                                    : "text-black"
+                                }`}
+                              >
                                 {formatEUR(totalSelected > 0 ? discountedPrice : 0)} €
                               </span>
                             </span>
                           </div>
+                          {/* What the total does and does not contain, under
+                              the figure it qualifies. */}
+                          <p className="text-right text-[12px] text-[#6A6A6A]">
+                            Excl. shipping, incl. printing costs
+                          </p>
                           {/* The breakdown itself opens as a companion panel
                               beside the sheet — see above, next to the size
                               guide. */}
@@ -6048,7 +6402,10 @@ export default function Designer({
                         }`}
                       >
                         <span className="pl-3 text-[14px] font-semibold">Add to basket</span>
-                        <span className="ml-3 rounded-[4px] bg-white px-2 py-0.5 text-[14px] font-semibold text-black tabular-nums">
+                        {/* A circle at one digit (min-w = height), stretching
+                            into a pill from two digits up. Fully rounded
+                            either way. */}
+                        <span className="ml-3 flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-white px-1.5 text-[14px] font-semibold text-black tabular-nums">
                           {totalSelected}
                         </span>
                       </span>
@@ -6257,12 +6614,18 @@ export default function Designer({
             </div>
           </ScopedDialog>
 
+          {/* Product details — create-omat's ProductDetailsDialog
+              (src/components/ui/ProductDetailsDialog.tsx): a wide two-column
+              dialog, the description HTML on the left and the SizeGuide
+              "description" variant on the right (Size Chart title, fit line,
+              sizing hint, 260px garment diagram with the measurement legend
+              beside it, zebra measurements table below). */}
           <ScopedDialog
             open={detailsOpen}
             onOpenChange={setDetailsOpen}
             container={creatomatContainer}
             overlayClassName="rounded-[12px]"
-            className="flex max-h-[80%] w-[480px] max-w-[90%] flex-col gap-0 overflow-hidden rounded-2xl bg-white p-0 shadow-xl"
+            className="flex max-h-[85%] w-[1080px] max-w-[92%] flex-col gap-0 overflow-hidden rounded-2xl bg-white p-0 shadow-xl"
           >
             <div className="flex items-start justify-between gap-4 p-[24px] pb-[16px]">
               <ScopedDialogTitle className="font-display text-[18px] font-[800] leading-tight text-black">
@@ -6276,52 +6639,99 @@ export default function Designer({
               </ScopedDialogClose>
             </div>
 
-            <div className="flex flex-col gap-5 overflow-y-auto px-[24px] pb-[24px] text-[14px] text-black">
-              {productData?.details.shortDescription && (
-                <p className="leading-relaxed text-neutral-700">
-                  {productData.details.shortDescription}
-                </p>
-              )}
+            <div className="overflow-y-auto px-[24px] pb-[24px]">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-8">
+                {/* Left — Product Description (raw HTML, as create-omat
+                    renders selectedProductType.description). */}
+                <div className="flex flex-col gap-[10px] text-sm text-black">
+                  <p className="font-semibold">Product Description</p>
+                  <div
+                    className="[&_li]:ml-4 [&_li]:list-disc"
+                    dangerouslySetInnerHTML={{
+                      __html: productData?.details.description ?? "",
+                    }}
+                  />
+                </div>
 
-              {productData?.details.description && (
-                <div
-                  className="leading-relaxed text-neutral-700 [&_li]:mt-1 [&_ul]:list-disc [&_ul]:pl-5"
-                  dangerouslySetInnerHTML={{ __html: productData.details.description }}
-                />
-              )}
+                <hr className="block border-t border-neutral-200 md:hidden" />
 
-              <dl className="flex flex-col gap-2 border-t border-neutral-200 pt-4">
-                {productData?.details.brand && (
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-neutral-500">Brand</dt>
-                    <dd className="text-right font-medium">{productData.details.brand}</dd>
+                {/* Right — SizeGuide, source="description". */}
+                <div className="flex flex-col gap-2.5 overflow-x-auto">
+                  <p className="text-sm font-semibold">Size Chart</p>
+                  <div>
+                    {productData?.details.sizeFitHint && (
+                      <div className="text-sm text-black">
+                        Fit:{" "}
+                        <span className="font-bold capitalize">
+                          {productData.details.sizeFitHint}
+                        </span>
+                      </div>
+                    )}
+                    <p className="mt-4 text-sm text-black">
+                      <span>Find the right size:</span>
+                      <br />
+                      Compare the measurements with a product you already have at home.
+                      It&rsquo;s best to lay clothing flat on the floor when measuring.
+                    </p>
                   </div>
-                )}
-                {productData?.details.sizeFitHint && (
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-neutral-500">Fit</dt>
-                    <dd className="text-right font-medium capitalize">
-                      {productData.details.sizeFitHint}
-                    </dd>
-                  </div>
-                )}
-                {!!productData?.details.weight && (
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-neutral-500">Weight</dt>
-                    <dd className="text-right font-medium">
-                      {Math.round(productData.details.weight)} g
-                    </dd>
-                  </div>
-                )}
-                {!!productData?.sizes.length && (
-                  <div className="flex justify-between gap-4">
-                    <dt className="text-neutral-500">Sizes</dt>
-                    <dd className="text-right font-medium">
-                      {productData.sizes.map(s => s.name).join(", ")}
-                    </dd>
-                  </div>
-                )}
-              </dl>
+                  {sizeGuideColumns.length > 0 ? (
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={`${IMAGE_SERVER_BASE}/productTypes/${productData?.id}/variants/size.webp`}
+                          alt="Size Image"
+                          className="w-[260px]"
+                          onError={e => {
+                            // Not every product type publishes a diagram;
+                            // drop it rather than show a broken image.
+                            e.currentTarget.style.display = "none"
+                          }}
+                        />
+                        <ul className="text-sm font-medium">
+                          {sizeGuideColumns.map(name => (
+                            <li key={name}>
+                              {name} - {SIZE_MEASURE_LABELS[name] ?? name} in cm
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="flex-1">
+                        <table className="min-w-full">
+                          <thead className="border-b border-neutral-300">
+                            <tr className="even:bg-neutral-100">
+                              <th className="p-2 text-start">Size</th>
+                              {sizeGuideColumns.map(name => (
+                                <th key={name} className="p-2">
+                                  {name} (cm)
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sizes.map(label => (
+                              <tr key={label} className="text-sm even:bg-neutral-100">
+                                <td className="p-2">{label}</td>
+                                {sizeGuideColumns.map(name => {
+                                  const mm = sizeMeasure(productSizeGuide, label, name)
+                                  return (
+                                    <td key={name} className="p-2 text-center">
+                                      {mm === null ? "—" : formatMeasure(mm)}
+                                    </td>
+                                  )
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-neutral-500">
+                      No measurements published for this product.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </ScopedDialog>
         </div>
@@ -6340,6 +6750,7 @@ export default function Designer({
           productName={productData?.name}
           productImage={appearances[activeColorIndex]?.image ?? productData?.appearances[0]?.image}
           printingCost={decoratedPrintAreaTotal}
+          previews={volumeDiscountPreviews}
         />
       )}
       {/* H4 — the same price-details content as the companion panel, shown as a
