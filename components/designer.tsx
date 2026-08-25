@@ -11,7 +11,7 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 import * as Popover from "@radix-ui/react-popover"
-import { Basket, type BasketItem } from "@/components/basket"
+import { Basket, type BasketItem, mergeIntoBasket } from "@/components/basket"
 import {
   EmbroideryPreview,
   buildOutOfStockMap,
@@ -3089,11 +3089,12 @@ export default function Designer({
           appearanceName: currentApp.name,
           image: currentViewImage || currentApp.image,
           size,
+          sizeIndex: sizes.indexOf(size),
           qty,
           price: unitPrice,
           design: designSnapshot,
         }))
-      setBasketItems(prev => [...prev, ...newItems])
+      setBasketItems(prev => mergeIntoBasket(prev, newItems))
       setSizeQuantities({})
       setAddingToBasket(false)
       setMobileSizeSheetOpen(false)
