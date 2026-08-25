@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import { Minus, Plus } from "lucide-react"
 
@@ -15,6 +15,13 @@ import { VOLUME_DISCOUNT_MAX_QUANTITY } from "@/lib/volume-discount"
 
 const QUANTITY_FIELD_ID = "volume-discount-order-quantity"
 const MIN_QUANTITY = 1
+
+// Entrance of the split panel, 500ms end to end, in two steps: the artwork
+// column starts at zero width with the calculator using the full panel and
+// expands to its half, pushing the calculator across; only once that has landed
+// does the illustration scale up, with a slight bounce.
+const PUSH_MS = 300
+const ART_MS = 200
 
 // Volume-discount red, matching every other discount surface in the proto
 // (the rail banner, the size sheet's tier line, the basket). Was the kit's
@@ -137,6 +144,22 @@ export default function VolumeDiscountPanel({
   split = false,
   className,
 }: VolumeDiscountPanelProps) {
+  // The split panel mounts with the artwork column collapsed and expands it on
+  // the next frame, so the drawer opening plays the reveal. Two frames, because
+  // the collapsed state has to be painted before the transition can run from it.
+  const [revealed, setRevealed] = useState(false)
+  useEffect(() => {
+    if (!split) return
+    let inner = 0
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setRevealed(true))
+    })
+    return () => {
+      cancelAnimationFrame(outer)
+      cancelAnimationFrame(inner)
+    }
+  }, [split])
+
   // Headline stays black — the red ground already carries the discount
   // signal, so red type on it read as over-emphasis. Both lines share one
   // type treatment so the block reads as a single headline.
@@ -208,12 +231,33 @@ export default function VolumeDiscountPanel({
               capped so it never outgrows the column or the panel height. It
               carries its own 24px side padding — the panel drops its left
               padding for this column, and keeping the inset symmetric here
-              leaves the image centred. */}
-          <div className="flex w-1/2 shrink-0 items-center justify-center px-8">
+              leaves the image centred. Width and padding animate together, so
+              the collapsed column takes up no space at all on the way in. */}
+          <div
+            className={cn(
+              "flex shrink-0 items-center justify-center transition-[width,padding] ease-out motion-reduce:transition-none",
+              revealed ? "w-1/2 px-8" : "w-0 px-0"
+            )}
+            style={{ transitionDuration: `${PUSH_MS}ms` }}
+          >
+            {/* Scales up only after the push has landed, so the overshoot plays
+                against a column that has stopped moving and stays inside its
+                padding — the bounce never laps the calculator. */}
             <img
               src="/images/volume-discount-illustration.png"
               alt=""
-              className="max-h-full max-w-full object-contain"
+              className={cn(
+                // Tailwind v4's scale-* utilities set the standalone `scale`
+                // property, not `transform` — transition-transform would never
+                // fire on them.
+                "max-h-full max-w-full object-contain transition-[scale] motion-reduce:transition-none",
+                revealed ? "scale-100" : "scale-0"
+              )}
+              style={{
+                transitionDuration: `${ART_MS}ms`,
+                transitionDelay: `${PUSH_MS}ms`,
+                transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)",
+              }}
             />
           </div>
           <div className="flex min-w-0 flex-1 flex-col justify-center">
