@@ -6396,8 +6396,9 @@ export default function Designer({
                         <span className="pl-3 text-[14px] font-semibold">Add to basket</span>
                         {/* A circle at one digit (min-w = height), stretching
                             into a pill from two digits up. Fully rounded
-                            either way. */}
-                        <span className="ml-3 flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-white px-1.5 text-[14px] font-semibold text-black tabular-nums">
+                            either way. #007D38 is the header cart badge's
+                            green — the count reads as the same basket signal. */}
+                        <span className="ml-3 flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-[#007D38] px-1.5 text-[14px] font-semibold text-white tabular-nums">
                           {totalSelected}
                         </span>
                       </span>
