@@ -19,6 +19,7 @@ import VolumeDiscountPanel from "@/components/product-type/volume-discount-panel
 import { useDlgMobile } from "@/hooks/use-dlg-mobile"
 import { useProductFilters } from "@/hooks/use-product-filters"
 import { findCategory, type CategoryNode } from "@/lib/assortment"
+import { cn } from "@/lib/utils"
 import {
   VOLUME_DISCOUNT_MAX_PERCENTAGE,
   discountedPrice,
@@ -135,6 +136,39 @@ export default function ProductsDrawer({
   }, [tiles, products, filters.filteredIds, filters.sortId])
 
   const title = filters.selectedCategory?.label ?? "All products"
+
+  // Desktop: the discount panel lives inside the product grid (first two tile
+  // slots). Once it scrolls fully out of view, a second copy expands at the
+  // top of the sidebar, pushing the category tree down; scrolling back up
+  // collapses it again.
+  // Callback refs, not useRef: the drawer mounts its content after this
+  // component's effects run, so a plain ref is still null when the effect
+  // fires and nothing would re-trigger it. Holding the nodes in state makes
+  // them effect dependencies, so the observer attaches as soon as they exist.
+  const [gridPanelNode, setGridPanelNode] = useState<HTMLDivElement | null>(null)
+  const [productScrollNode, setProductScrollNode] = useState<HTMLDivElement | null>(null)
+  const [showSidebarPanel, setShowSidebarPanel] = useState(false)
+  const hasGridPanel = visibleTiles.length > 0
+
+  useEffect(() => {
+    if (!open) {
+      setShowSidebarPanel(false)
+      return
+    }
+    if (isMobile) return
+    // Empty result set → no grid, so the sidebar copy is the only calculator.
+    if (!hasGridPanel) {
+      setShowSidebarPanel(true)
+      return
+    }
+    if (!gridPanelNode || !productScrollNode) return
+    const observer = new IntersectionObserver(
+      ([entry]) => setShowSidebarPanel(!entry.isIntersecting),
+      { root: productScrollNode, threshold: 0 }
+    )
+    observer.observe(gridPanelNode)
+    return () => observer.disconnect()
+  }, [open, isMobile, hasGridPanel, gridPanelNode, productScrollNode])
 
   // Sale display per production: caption whenever a bulk quantity is applied;
   // red discounted price + struck original only when a tier is reached.
@@ -319,15 +353,30 @@ export default function ProductsDrawer({
                   defaults, where xl would be 1280px). */}
               <div className="grid min-h-0 flex-1 grid-cols-5 gap-6 px-10 pt-8 min-[1920px]:grid-cols-6">
               <aside className="col-span-1 overflow-y-auto pb-6">
-                <div className="mb-9">
-                  <VolumeDiscountPanel
-                    quantity={orderQuantity}
-                    onQuantityChange={setOrderQuantity}
-                    // Only block the button while the value on screen is the one
-                    // being applied; a newer value stays committable mid-update.
-                    isUpdating={isPriceUpdating && orderQuantity === appliedQuantity}
-                    onUpdatePrices={() => setAppliedQuantity(orderQuantity)}
-                  />
+                {/* Collapsed to 0fr while the in-grid panel is on screen; the
+                    0fr→1fr transition slides it open and pushes the category
+                    tree down. `inert` keeps the hidden copy out of tab order. */}
+                <div
+                  inert={!showSidebarPanel}
+                  className={cn(
+                    "grid transition-[grid-template-rows,opacity] duration-300 ease-in-out",
+                    showSidebarPanel ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                  )}
+                >
+                  <div className="overflow-hidden">
+                    <div className="pb-9">
+                      <VolumeDiscountPanel
+                        fieldId="volume-discount-order-quantity-sidebar"
+                        quantity={orderQuantity}
+                        onQuantityChange={setOrderQuantity}
+                        // Only block the button while the value on screen is the
+                        // one being applied; a newer value stays committable
+                        // mid-update.
+                        isUpdating={isPriceUpdating && orderQuantity === appliedQuantity}
+                        onUpdatePrices={() => setAppliedQuantity(orderQuantity)}
+                      />
+                    </div>
+                  </div>
                 </div>
                 <CategoryTree
                   tree={filters.categoryTree}
@@ -345,12 +394,28 @@ export default function ProductsDrawer({
                     ({visibleTiles.length})
                   </span>
                 </h2>
-                <div className="min-h-0 flex-1 overflow-y-auto pt-4">
+                <div ref={setProductScrollNode} className="min-h-0 flex-1 overflow-y-auto pt-4">
                   <FilterBar filters={filters} />
                   {visibleTiles.length === 0 ? (
                     emptyState
                   ) : (
                     <div className="grid grid-cols-4 gap-x-4 gap-y-6 pb-6 min-[1920px]:grid-cols-5">
+                      {/* The calculator takes the first two tile slots and
+                          stretches to the row height the tiles define. */}
+                      <div ref={setGridPanelNode} className="col-span-2">
+                        <VolumeDiscountPanel
+                          fieldId="volume-discount-order-quantity-grid"
+                          split
+                          className="h-full"
+                          quantity={orderQuantity}
+                          onQuantityChange={setOrderQuantity}
+                          // Only block the button while the value on screen is
+                          // the one being applied; a newer value stays
+                          // committable mid-update.
+                          isUpdating={isPriceUpdating && orderQuantity === appliedQuantity}
+                          onUpdatePrices={() => setAppliedQuantity(orderQuantity)}
+                        />
+                      </div>
                       {visibleTiles.map(tileButton)}
                     </div>
                   )}

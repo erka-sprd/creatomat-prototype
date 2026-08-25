@@ -120,6 +120,12 @@ type VolumeDiscountPanelProps = {
   onQuantityChange: (value: number) => void
   onUpdatePrices: () => void
   isUpdating?: boolean
+  /** override when the panel renders twice on one screen — ids must stay unique */
+  fieldId?: string
+  /** two-column layout for the wide in-grid copy: illustration in one half,
+      title and calculator together in the other */
+  split?: boolean
+  className?: string
 }
 
 export default function VolumeDiscountPanel({
@@ -127,34 +133,30 @@ export default function VolumeDiscountPanel({
   onQuantityChange,
   onUpdatePrices,
   isUpdating = false,
+  fieldId = QUANTITY_FIELD_ID,
+  split = false,
+  className,
 }: VolumeDiscountPanelProps) {
-  return (
-    <div
-      // #F8C6C4 is #DC2626 at 20% already composited over the #FFEEEB ground.
-      // Using the flat value rather than an alpha keeps the frame and the
-      // stepper identical — with alpha the stepper blends into its white fill
-      // instead and renders visibly lighter.
-      className="flex flex-col border border-[#F8C6C4] p-6"
-      style={{
-        // #FFEEEB is already the light tint, so it is used as-is rather than
-        // mixed down the way the purple was.
-        backgroundColor: PANEL_BG,
-      }}
-    >
-      {/* Headline stays black — the red ground already carries the discount
-          signal, so red type on it read as over-emphasis. */}
-      {/* Both lines share one type treatment — the smaller/lighter of the two
-          (18px medium) — so the block reads as a single headline. */}
-      <div className="font-display mb-3 text-xl font-bold text-black">
-        <p>Calculate</p>
-        <p>volume discounts</p>
-      </div>
+  // Headline stays black — the red ground already carries the discount
+  // signal, so red type on it read as over-emphasis. Both lines share one
+  // type treatment so the block reads as a single headline.
+  const headline = (
+    // Split gives the title 12px more air below it than the narrow sidebar copy,
+    // which sits directly above its calculator.
+    <div className={cn("font-display text-xl font-bold text-black", split ? "mb-6" : "mb-3")}>
+      <p>Calculate</p>
+      <p>volume discounts</p>
+    </div>
+  )
+
+  const calculator = (
+    <>
       <div className="mb-3 flex flex-col">
-        <label htmlFor={QUANTITY_FIELD_ID} className="mb-2 text-sm">
+        <label htmlFor={fieldId} className="mb-2 text-sm">
           Order quantity
         </label>
         <QuantityField
-          id={QUANTITY_FIELD_ID}
+          id={fieldId}
           quantity={quantity}
           onQuantityChange={onQuantityChange}
         />
@@ -177,6 +179,54 @@ export default function VolumeDiscountPanel({
         Prices are per item for an order of {quantity} {quantity === 1 ? "product" : "products"}.
         Excl. printing.
       </p>
+    </>
+  )
+
+  return (
+    <div
+      // #F8C6C4 is #DC2626 at 20% already composited over the #FFEEEB ground.
+      // Using the flat value rather than an alpha keeps the frame and the
+      // stepper identical — with alpha the stepper blends into its white fill
+      // instead and renders visibly lighter.
+      className={cn(
+        "flex border border-[#F8C6C4]",
+        // Split: both columns stretch to the panel height so the calculator can
+        // centre. No left padding — the artwork column runs to the panel edge,
+        // so the padding lives on the other three sides only.
+        split ? "flex-row items-stretch py-6 pr-6" : "flex-col p-6",
+        className
+      )}
+      style={{
+        // #FFEEEB is already the light tint, so it is used as-is rather than
+        // mixed down the way the purple was.
+        backgroundColor: PANEL_BG,
+      }}
+    >
+      {split ? (
+        <>
+          {/* Artwork column: the illustration sits centred in both axes and is
+              capped so it never outgrows the column or the panel height. It
+              carries its own 24px side padding — the panel drops its left
+              padding for this column, and keeping the inset symmetric here
+              leaves the image centred. */}
+          <div className="flex w-1/2 shrink-0 items-center justify-center px-8">
+            <img
+              src="/images/volume-discount-illustration.png"
+              alt=""
+              className="max-h-full max-w-full object-contain"
+            />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col justify-center">
+            {headline}
+            {calculator}
+          </div>
+        </>
+      ) : (
+        <>
+          {headline}
+          {calculator}
+        </>
+      )}
     </div>
   )
 }
