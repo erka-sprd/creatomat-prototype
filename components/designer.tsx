@@ -72,6 +72,8 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card"
+import QuantityStepper from "@/components/quantity-stepper"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { IconsScroller } from "@/components/ui/icons-scroller"
 import { EditorBar } from "@/components/ui/editor-bar"
 import { GraphicEditorBar } from "@/components/ui/editor-bar/GraphicEditorBar"
@@ -756,6 +758,10 @@ export default function Designer({
   // size-guide panel, H4 inline price breakdown, H3 tier-table dialog.
   const [sizeGuideOpen, setSizeGuideOpen] = useState(false)
   const [priceBreakdownOpen, setPriceBreakdownOpen] = useState(false)
+  // Breakdown opened from the chevron beside the rail's price figure. Separate
+  // from priceBreakdownOpen, which is the companion panel beside the open size
+  // sheet — these two are different surfaces for the same content.
+  const [priceDetailsOpen, setPriceDetailsOpen] = useState(false)
   const [tiersDialogOpen, setTiersDialogOpen] = useState(false)
   // The two companion panels occupy the same slot beside the sheet, so opening
   // one closes the other.
@@ -5677,6 +5683,13 @@ export default function Designer({
                         per-item price; as soon as sizes are added it becomes
                         the order total for those quantities (the per-item price
                         stays visible in the sheet's footer). */}
+                    {/* The breakdown is anchored to this whole column, not to
+                        the chevron: the chevron sits left of the figure, so
+                        anchoring there would leave the panel short of the rail's
+                        edge. Anchored here, align="end" lands it flush with the
+                        right edge of the rail. */}
+                    <Popover.Root open={priceDetailsOpen} onOpenChange={setPriceDetailsOpen}>
+                    <Popover.Anchor asChild>
                     <div className="flex shrink-0 flex-col items-end gap-0.5">
                       {totalSelected > 0 && (
                         <span className="text-[12px] leading-none font-semibold text-[var(--sprd-neutral-700)] uppercase">
@@ -5684,36 +5697,42 @@ export default function Designer({
                         </span>
                       )}
                       <div className="flex items-center gap-2">
-                        {/* H4 — the breakdown on hover, no click needed. A
-                            portalled HoverCard, not an absolutely positioned
-                            child: the rail scrolls (overflow-y-auto), which
-                            clips horizontally too, so an in-flow panel would be
-                            cut off at the rail's edge.
+                        {/* H4 — hovering the chevron only names what it does;
+                            the breakdown itself opens on click. Both the tooltip
+                            and the panel are portalled, not absolutely
+                            positioned children: the rail scrolls
+                            (overflow-y-auto), which clips horizontally too, so
+                            an in-flow panel would be cut off at the rail's edge.
                             Offered only once there is something to break down:
                             a decorated print area, or more than one item. On a
                             blank single item the price IS the base price. */}
                         {(graphicElements.length + textElements.length > 0 ||
                           totalSelected > 1) && (
-                        <HoverCard openDelay={80} closeDelay={80}>
-                          <HoverCardTrigger asChild>
-                            <span
-                              aria-label="Price details"
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Popover.Trigger asChild>
+                            <button
+                              type="button"
+                              aria-label="See price details"
                               // 16px across: 12px glyph in 2px of padding. Same
                               // 2px neutral-700 frame as the size selector
                               // beside it, on no fill.
-                              className="group/pricedetails flex cursor-default items-center justify-center rounded-full bg-neutral-200 p-1 text-black outline-none"
+                              className="group/pricedetails flex cursor-pointer items-center justify-center rounded-full bg-neutral-200 p-1 text-black outline-none"
                             >
                               {/* Kit v2 Chevron — transition on `rotate`, since
                                   Tailwind v4 compiles rotate-180 to that
                                   standalone property and transition-transform
-                                  would never fire. */}
+                                  would never fire. Follows the open state now
+                                  that hover no longer opens anything. */}
                               <svg
                                 width="14"
                                 height="14"
                                 viewBox="0 0 24 24"
                                 fill="none"
                                 aria-hidden="true"
-                                className="transition-[rotate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover/pricedetails:rotate-180"
+                                className={`transition-[rotate] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                                  priceDetailsOpen ? "rotate-180" : ""
+                                }`}
                               >
                                 <path
                                   fillRule="evenodd"
@@ -5722,18 +5741,19 @@ export default function Designer({
                                   fill="currentColor"
                                 />
                               </svg>
-                            </span>
-                          </HoverCardTrigger>
-                          {/* Same breakdown the modal shows. */}
-                          <HoverCardContent
+                            </button>
+                            </Popover.Trigger>
+                          </TooltipTrigger>
+                          {/* House tooltip look (dark bubble, 14px), but the
+                              portalled primitive so the rail cannot clip it. */}
+                          <TooltipContent
                             side="top"
-                            align="end"
                             sideOffset={8}
-                            className="flex max-h-[460px] w-[452px] flex-col overflow-hidden rounded-2xl border-0 bg-white p-0 pt-6 shadow-lg"
+                            className="rounded-md bg-neutral-900 p-3 text-sm whitespace-nowrap text-neutral-100"
                           >
-                            {priceDetailsContent}
-                          </HoverCardContent>
-                        </HoverCard>
+                            See price details
+                          </TooltipContent>
+                        </Tooltip>
                         )}
                         <span
                           className={`text-[24px] leading-7 font-medium ${
@@ -5744,6 +5764,27 @@ export default function Designer({
                         </span>
                       </div>
                     </div>
+                    </Popover.Anchor>
+                    {/* Same breakdown the modal shows. */}
+                    <Popover.Portal>
+                      <Popover.Content
+                        side="top"
+                        align="end"
+                        sideOffset={8}
+                        // Kept inside the rail, like the size sheet: the rail is
+                        // the collision boundary, and the width is capped to the
+                        // space Radix reports inside it so a panel wider than
+                        // the rail shrinks instead of hanging over the canvas.
+                        collisionPadding={12}
+                        collisionBoundary={
+                          rightSectionRef.current ? [rightSectionRef.current] : undefined
+                        }
+                        className="z-[9999] flex max-h-[460px] w-[452px] max-w-[var(--radix-popper-available-width)] flex-col overflow-hidden rounded-2xl border-0 bg-white p-0 pt-6 shadow-lg outline-none"
+                      >
+                        {priceDetailsContent}
+                      </Popover.Content>
+                    </Popover.Portal>
+                    </Popover.Root>
                   </div>
 
                   {/* H4 — with the sheet closed there is nothing to sit beside,
@@ -6110,76 +6151,14 @@ export default function Designer({
                                   Out of stock
                                 </span>
                               )}
-                              <div
-                                className={`flex w-fit items-center border border-neutral-200 ${
-                                  isOOS ? "opacity-60 pointer-events-none" : ""
-                                }`}
-                              >
-                              <button
-                                type="button"
-                                aria-label="Decrease"
-                                disabled={qty <= 0}
-                                onClick={() => setSizeQuantity(label, qty - 1)}
-                                className={`border-r border-neutral-200 cursor-pointer hover:bg-neutral-100 active:bg-white disabled:opacity-50 disabled:pointer-events-none ${
-                                  basketHypotheses
-                                    ? "flex h-9 w-9 items-center justify-center"
-                                    : "p-1.5"
-                                }`}
-                              >
-                                <svg
-                                  viewBox="0 0 20 20"
-                                  className="w-5 h-5"
-                                  fill="currentColor"
-                                  aria-hidden="true"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    clipRule="evenodd"
-                                    d="M15.8333 9.16663C16.2935 9.16663 16.6666 9.53972 16.6666 9.99996C16.6666 10.4273 16.3449 10.7795 15.9305 10.8277L15.8333 10.8333H4.16665C3.70641 10.8333 3.33331 10.4602 3.33331 9.99996C3.33331 9.5726 3.65501 9.22037 4.06946 9.17223L4.16665 9.16663H15.8333Z"
-                                  />
-                                </svg>
-                              </button>
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                pattern="[0-9]*"
-                                value={qty === 0 ? "" : String(qty)}
-                                placeholder="0"
-                                aria-label={`${label} quantity`}
-                                onChange={e => {
-                                  const digits = e.target.value
-                                    .replace(/[^0-9]/g, "")
-                                    .slice(0, 5)
-                                  setSizeQuantity(label, digits === "" ? 0 : Number(digits))
-                                }}
-                                className={`self-stretch text-center outline-none placeholder:text-black focus:placeholder:text-transparent ${
-                                  basketHypotheses ? "w-11 text-base" : "w-12 text-sm"
-                                }`}
+                              <QuantityStepper
+                                quantity={qty}
+                                onChange={value => setSizeQuantity(label, value)}
+                                min={0}
+                                size={basketHypotheses ? "lg" : "sm"}
+                                disabled={isOOS}
+                                inputAriaLabel={`${label} quantity`}
                               />
-                              <button
-                                type="button"
-                                aria-label="Increase"
-                                onClick={() => setSizeQuantity(label, qty + 1)}
-                                className={`border-l border-neutral-200 cursor-pointer hover:bg-neutral-100 active:bg-white ${
-                                  basketHypotheses
-                                    ? "flex h-9 w-9 items-center justify-center"
-                                    : "p-1.5"
-                                }`}
-                              >
-                                <svg
-                                  viewBox="0 0 20 20"
-                                  className="w-5 h-5"
-                                  fill="currentColor"
-                                  aria-hidden="true"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    clipRule="evenodd"
-                                    d="M10.8277 4.06952C10.7796 3.65507 10.4273 3.33337 9.99998 3.33337C9.53974 3.33337 9.16665 3.70647 9.16665 4.16671V9.16671H4.16665L4.06946 9.17231C3.65501 9.22045 3.33331 9.57268 3.33331 10C3.33331 10.4603 3.70641 10.8334 4.16665 10.8334H9.16665V15.8334L9.17225 15.9306C9.22039 16.345 9.57262 16.6667 9.99998 16.6667C10.4602 16.6667 10.8333 16.2936 10.8333 15.8334V10.8334H15.8333L15.9305 10.8278C16.3449 10.7796 16.6666 10.4274 16.6666 10C16.6666 9.5398 16.2935 9.16671 15.8333 9.16671H10.8333V4.16671L10.8277 4.06952Z"
-                                  />
-                                </svg>
-                              </button>
-                            </div>
                             </div>
                           </div>
                         )

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 
+import QuantityStepper from "@/components/quantity-stepper"
 import { discountedPrice, volumeDiscountPercentage } from "@/lib/volume-discount"
 
 export type BasketDesignText = {
@@ -271,9 +272,9 @@ export function Basket({ open, onClose, items, onQuantityChange, onRemove }: Bas
   )
 }
 
-function TrashIcon({ size = 18 }: { size?: number }) {
+function TrashIcon() {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
       <path
         fillRule="evenodd"
         clipRule="evenodd"
@@ -368,44 +369,16 @@ function SizeQuantityRow({
   return (
     <div className="flex items-center justify-between mt-3">
       <span className="text-sm font-bold text-black">{item.size}</span>
-      <div className="flex items-center border border-neutral-200">
-        <button
-          type="button"
-          aria-label="Decrease quantity"
-          onClick={() =>
-            item.qty <= 1 ? onRemove(item.id) : onQuantityChange(item.id, item.qty - 1)
-          }
-          className="p-1.5 border-r border-neutral-200 cursor-pointer hover:bg-neutral-100"
-        >
-          {/* At one left, the minus becomes a bin — stepping down removes the size. */}
-          {item.qty <= 1 ? (
-            <TrashIcon size={20} />
-          ) : (
-            <svg viewBox="0 0 20 20" width="20" height="20" fill="currentColor" aria-hidden="true">
-              <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M15.8333 9.16663C16.2935 9.16663 16.6666 9.53972 16.6666 9.99996C16.6666 10.4273 16.3449 10.7795 15.9305 10.8277L15.8333 10.8333H4.16665C3.70641 10.8333 3.33331 10.4602 3.33331 9.99996C3.33331 9.5726 3.65501 9.22037 4.06946 9.17223L4.16665 9.16663H15.8333Z"
-              />
-            </svg>
-          )}
-        </button>
-        <span className="w-10 text-center text-sm">{item.qty}</span>
-        <button
-          type="button"
-          aria-label="Increase quantity"
-          onClick={() => onQuantityChange(item.id, item.qty + 1)}
-          className="p-1.5 border-l border-neutral-200 cursor-pointer hover:bg-neutral-100"
-        >
-          <svg viewBox="0 0 20 20" width="20" height="20" fill="currentColor" aria-hidden="true">
-            <path
-              fillRule="evenodd"
-              clipRule="evenodd"
-              d="M10.8277 4.06952C10.7796 3.65507 10.4273 3.33337 9.99998 3.33337C9.53974 3.33337 9.16665 3.70647 9.16665 4.16671V9.16671H4.16665L4.06946 9.17231C3.65501 9.22045 3.33331 9.57268 3.33331 10C3.33331 10.4603 3.70641 10.8334 4.16665 10.8334H9.16665V15.8334L9.17225 15.9306C9.22039 16.345 9.57262 16.6667 9.99998 16.6667C10.4602 16.6667 10.8333 16.2936 10.8333 15.8334V10.8334H15.8333L15.9305 10.8278C16.3449 10.7796 16.6666 10.4274 16.6666 10C16.6666 9.5398 16.2935 9.16671 15.8333 9.16671H10.8333V4.16671L10.8277 4.06952Z"
-            />
-          </svg>
-        </button>
-      </div>
+      {/* Same control as the size selector: the quantity is typeable, not just
+          steppable. min=1 with onDelete, so the minus turns into a bin at the
+          last item rather than stepping the size down to zero. */}
+      <QuantityStepper
+        quantity={item.qty}
+        onChange={qty => onQuantityChange(item.id, qty)}
+        min={1}
+        onDelete={() => onRemove(item.id)}
+        inputAriaLabel={`${item.size} quantity`}
+      />
     </div>
   )
 }
