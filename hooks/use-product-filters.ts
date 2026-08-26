@@ -14,6 +14,7 @@ import {
   type FilterSection,
   type SortId,
 } from "@/lib/assortment"
+import { discountedPrice } from "@/lib/volume-discount"
 
 // Same thresholds as create-omat's product search.
 const SEARCH_MIN_LENGTH = 2
@@ -25,7 +26,13 @@ const SEARCH_DEBOUNCE_MS = 400
 
 export type ProductFiltersState = ReturnType<typeof useProductFilters>
 
-export function useProductFilters(products: StaticProduct[]) {
+/**
+ * @param discountPct Volume discount in effect, so the price filter measures
+ *   what the tiles actually show. Once a discount applies the tile displays the
+ *   discounted price in red and strikes the original; filtering on the struck
+ *   price would contradict what the user is reading.
+ */
+export function useProductFilters(products: StaticProduct[], discountPct = 0) {
   const faceted = useMemo(() => deriveAllFacets(products), [products])
   const categoryTree = useMemo(() => buildCategoryTree(faceted), [faceted])
   const sections = useMemo(() => buildFilterSections(faceted), [faceted])
@@ -55,9 +62,14 @@ export function useProductFilters(products: StaticProduct[]) {
   }, [products, appliedSearch])
 
   const priceSection = sections.find(s => s.type === "price")
+  // Rounded per item the same way the tiles round, so a product sitting exactly
+  // on the slider value falls on the same side of it in both places.
   const priceById = useMemo(
-    () => new Map(products.map(p => [p.id, p.price])),
-    [products]
+    () =>
+      new Map(
+        products.map(p => [p.id, discountPct > 0 ? discountedPrice(p.price, discountPct) : p.price])
+      ),
+    [products, discountPct]
   )
 
   // One id-set per active section (selections OR-ed within the section).
@@ -99,7 +111,7 @@ export function useProductFilters(products: StaticProduct[]) {
   const globalFilteredIds = useMemo(
     () => new Set(filteredIgnoring()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filterSets, priceValue, products, searchSet]
+    [filterSets, priceValue, priceById, products, searchSet]
   )
 
   const selectedCategory = selectedCategoryId
@@ -130,7 +142,7 @@ export function useProductFilters(products: StaticProduct[]) {
     }
     return available
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sections, filterSets, priceValue, selectedCategory, products, searchSet])
+  }, [sections, filterSets, priceValue, priceById, selectedCategory, products, searchSet])
 
   const isCategoryDisabled = (node: CategoryNode): boolean => {
     const hasMatch = (n: CategoryNode): boolean =>

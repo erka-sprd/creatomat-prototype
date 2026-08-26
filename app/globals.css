@@ -201,6 +201,65 @@
   animation-delay: -4s;
 }
 
+/* Volume-discount quantity field: a short bright-red segment travels around the
+   field's red border to pull the eye to the input. Built as a masked conic
+   gradient rather than four animated edges — one rotating background, and the
+   mask leaves only a ring of it visible.
+   The angle needs @property so it can be interpolated; a plain custom property
+   would jump between keyframes instead of sweeping. */
+@property --sprd-spin-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes sprd-border-spin {
+  to {
+    --sprd-spin-angle: 360deg;
+  }
+}
+
+.sprd-spin-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* Ring thickness: the gradient fills the padding box, the mask cuts the
+     content box back out, so only this 2px frame shows. */
+  padding: 2px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--sprd-spin-angle),
+    transparent 0deg 296deg,
+    var(--sprd-red-500) 330deg,
+    var(--sprd-red-600) 348deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: sprd-border-spin 2.6s linear infinite;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 400ms ease-out;
+}
+
+/* Set once the user touches the field: the nudge has done its job, so it fades
+   out rather than cutting. The static red border underneath stays. */
+.sprd-spin-border[data-spin="off"]::before {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sprd-spin-border::before {
+    animation: none;
+  }
+}
+
 /* Size-pill enter: pill grows width + bounce scale + opacity 0 → 1.
    Animating max-width + padding makes the row push neighbors smoothly. */
 @keyframes size-pill-pop {

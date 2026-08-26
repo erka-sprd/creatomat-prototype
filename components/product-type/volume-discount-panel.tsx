@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { Minus, Plus } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { DiscountIcon } from "@/components/kit-icons"
 import { KitButton } from "@/components/kit-button"
 import { VOLUME_DISCOUNT_MAX_QUANTITY } from "@/lib/volume-discount"
 
@@ -35,6 +36,10 @@ type QuantityFieldProps = {
   onQuantityChange: (value: number) => void
   /** kit sizes: m = h-10/w-12 buttons (desktop panel), l = h-12/w-18 (mobile drawer) */
   size?: "m" | "l"
+  /** Picks up the panel's red frame plus a segment travelling around it, to draw
+      the eye to the field. Opt-in: the mobile drawer and the tier dialog use the
+      plain neutral field. */
+  attention?: boolean
 }
 
 // The field's borders are neutral on both surfaces — the red frame around the
@@ -42,12 +47,42 @@ type QuantityFieldProps = {
 // ordinary input.
 const FIELD_BORDER = "border-neutral-200"
 
-export function QuantityField({ id, quantity, onQuantityChange, size = "m" }: QuantityFieldProps) {
+// The travelling-border nudge is a one-off per page session, and both copies of
+// the panel (in-grid and sidebar) have to stop together — hence a module-level
+// flag with listeners rather than per-component state, which would leave the
+// other copy still spinning and would restart every time the drawer reopens.
+let attentionDismissed = false
+const attentionListeners = new Set<() => void>()
+
+function dismissAttention() {
+  if (attentionDismissed) return
+  attentionDismissed = true
+  attentionListeners.forEach(notify => notify())
+}
+
+export function QuantityField({
+  id,
+  quantity,
+  onQuantityChange,
+  size = "m",
+  attention = false,
+}: QuantityFieldProps) {
   // What the user is typing, while they are typing. null means "show the
   // committed quantity". Without this the field could never be cleared: every
   // keystroke was clamped to the minimum, so deleting "1" put "1" straight
   // back and typing "30" was impossible.
   const [draft, setDraft] = useState<string | null>(null)
+
+  // Mounts already-stopped if the nudge was dismissed earlier this session.
+  const [spinning, setSpinning] = useState(!attentionDismissed)
+  useEffect(() => {
+    if (!attention || attentionDismissed) return
+    const stop = () => setSpinning(false)
+    attentionListeners.add(stop)
+    return () => {
+      attentionListeners.delete(stop)
+    }
+  }, [attention])
 
   const handleInputChange = (raw: string) => {
     const digits = raw.replace(/\D/g, "")
@@ -99,9 +134,27 @@ export function QuantityField({ id, quantity, onQuantityChange, size = "m" }: Qu
     <div
       className={cn(
         "flex w-full items-stretch border bg-white",
-        FIELD_BORDER,
-        size === "m" ? "h-10" : "h-12"
+        size === "m" ? "h-10" : "h-12",
+        // relative so the travelling segment can be positioned against the box.
+        // While nudging: 2px in the panel's red, matching the moving segment's
+        // thickness. Once dismissed it settles back to the ordinary neutral
+        // field, fading over the same 400ms as the segment.
+        attention
+          ? cn(
+              "sprd-spin-border relative transition-[border-color,border-width] duration-[400ms]",
+              spinning ? "border-2 border-[#F8C6C4]" : `border ${FIELD_BORDER}`
+            )
+          : FIELD_BORDER
       )}
+      {...(attention
+        ? {
+            "data-spin": spinning ? "on" : "off",
+            // Capture, so stepping or typing counts as interaction too — the
+            // events reach this box before the buttons and the input handle them.
+            onPointerDownCapture: dismissAttention,
+            onFocusCapture: dismissAttention,
+          }
+        : {})}
     >
       {stepButton(-1)}
       <div className="flex flex-1 items-stretch border-2 border-transparent focus-within:border-black">
@@ -160,15 +213,19 @@ export default function VolumeDiscountPanel({
     }
   }, [split])
 
-  // Headline stays black — the red ground already carries the discount
-  // signal, so red type on it read as over-emphasis. Both lines share one
-  // type treatment so the block reads as a single headline.
+  // Icon and headline share one red so the glyph reads as part of the title
+  // rather than a separate mark. Both lines of the title share one type
+  // treatment, so the block reads as a single headline.
   const headline = (
-    // Split gives the title 12px more air below it than the narrow sidebar copy,
-    // which sits directly above its calculator.
-    <div className={cn("font-display text-xl font-bold text-black", split ? "mb-6" : "mb-3")}>
-      <p>Calculate</p>
-      <p>volume discounts</p>
+    // 16px below the title before the calculator starts.
+    <div className={cn(split ? "mb-6" : "mb-8")}>
+      {/* Kit Discount glyph above the title, left aligned. Sized in px rather
+          than a size-* utility because 52px is off the spacing scale. */}
+      <DiscountIcon className="mb-3 h-[52px] w-[52px] text-[var(--sprd-red-800)]" />
+      <div className="font-display text-xl font-bold text-[var(--sprd-red-800)]">
+        <p>Calculate</p>
+        <p>volume discounts</p>
+      </div>
     </div>
   )
 
@@ -182,6 +239,7 @@ export default function VolumeDiscountPanel({
           id={fieldId}
           quantity={quantity}
           onQuantityChange={onQuantityChange}
+          attention
         />
       </div>
       <KitButton
@@ -198,7 +256,17 @@ export default function VolumeDiscountPanel({
           "Update prices"
         )}
       </KitButton>
-      <p className="mt-4 text-xs font-medium">
+      {/* Stacked layout: the panel stretches to the tile row, so mt-auto drops
+          this to the bottom edge instead of leaving a gap under it. pt-4 keeps
+          minimum air above it when the panel is short enough to have none to
+          spare. The split column centres its content, so it keeps a fixed
+          margin — mt-auto would fight justify-center there. */}
+      <p
+        className={cn(
+          "text-xs font-medium text-[var(--sprd-neutral-800)]",
+          split ? "mt-4" : "mt-auto pt-4"
+        )}
+      >
         Prices are per item for an order of {quantity} {quantity === 1 ? "product" : "products"}.
         Excl. printing.
       </p>

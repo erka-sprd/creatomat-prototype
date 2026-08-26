@@ -62,7 +62,17 @@ export default function ProductsDrawer({
   products,
 }: ProductsDrawerProps) {
   const isMobile = useDlgMobile()
-  const filters = useProductFilters(products)
+
+  // Price calculator (production's orderQuantity/appliedQuantity split): the
+  // stepper value is live and auto-applies 1s after it stops changing on
+  // desktop; the "Update prices" button commits instantly.
+  // Declared before useProductFilters because the price filter needs the
+  // discount — it has to measure the same figure the tiles display.
+  const [orderQuantity, setOrderQuantity] = useState(1)
+  const [appliedQuantity, setAppliedQuantity] = useState(1)
+  const discountPct = appliedQuantity > 1 ? volumeDiscountPercentage(appliedQuantity) : 0
+
+  const filters = useProductFilters(products, discountPct)
 
   // Mobile second-level drawers (filter accordion, sort, price calculator).
   const [filterOpen, setFilterOpen] = useState(false)
@@ -83,11 +93,6 @@ export default function ProductsDrawer({
     filters.setSelectedCategoryId(path.length > 1 ? path[path.length - 2] : undefined)
   }
 
-  // Price calculator (production's orderQuantity/appliedQuantity split): the
-  // stepper value is live and auto-applies 1s after it stops changing on
-  // desktop; the "Update prices" button commits instantly.
-  const [orderQuantity, setOrderQuantity] = useState(1)
-  const [appliedQuantity, setAppliedQuantity] = useState(1)
   useEffect(() => {
     if (isMobile) return
     const t = setTimeout(() => setAppliedQuantity(orderQuantity), AUTO_APPLY_DEBOUNCE_MS)
@@ -111,8 +116,6 @@ export default function ProductsDrawer({
     const t = setTimeout(() => setIsPriceUpdating(false), PRICE_UPDATE_SPINNER_MS)
     return () => clearTimeout(t)
   }, [appliedQuantity])
-
-  const discountPct = appliedQuantity > 1 ? volumeDiscountPercentage(appliedQuantity) : 0
 
   // Category + filters narrow the id set; "Most popular" keeps the curated
   // tile order, the price sorts reorder by tile price. Each tile also gets
@@ -400,12 +403,13 @@ export default function ProductsDrawer({
                     emptyState
                   ) : (
                     <div className="grid grid-cols-4 gap-x-4 gap-y-6 pb-6 min-[1920px]:grid-cols-5">
-                      {/* The calculator takes the first two tile slots and
-                          stretches to the row height the tiles define. */}
-                      <div ref={setGridPanelNode} className="col-span-2">
+                      {/* The calculator takes the first tile slot and stretches
+                          to the row height the tiles define. Single column, so
+                          the panel uses its stacked layout — no `split`, and
+                          therefore no illustration column. */}
+                      <div ref={setGridPanelNode}>
                         <VolumeDiscountPanel
                           fieldId="volume-discount-order-quantity-grid"
-                          split
                           className="h-full"
                           quantity={orderQuantity}
                           onQuantityChange={setOrderQuantity}
