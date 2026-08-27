@@ -14,7 +14,7 @@ import {
   type FilterSection,
   type SortId,
 } from "@/lib/assortment"
-import { discountedPrice } from "@/lib/volume-discount"
+import { discountedPrice, volumeDiscountPercentage } from "@/lib/volume-discount"
 
 // Same thresholds as create-omat's product search.
 const SEARCH_MIN_LENGTH = 2
@@ -27,12 +27,14 @@ const SEARCH_DEBOUNCE_MS = 400
 export type ProductFiltersState = ReturnType<typeof useProductFilters>
 
 /**
- * @param discountPct Volume discount in effect, so the price filter measures
- *   what the tiles actually show. Once a discount applies the tile displays the
- *   discounted price in red and strikes the original; filtering on the struck
- *   price would contradict what the user is reading.
+ * @param orderQuantity Quantity the prices are shown for, so the price filter
+ *   measures what the tiles actually show. Once a discount applies the tile
+ *   displays the discounted price in red and strikes the original; filtering on
+ *   the struck price would contradict what the user is reading. The percentage
+ *   that quantity buys is resolved PER PRODUCT — the scales differ per product
+ *   type, so two tiles at the same quantity can be discounted differently.
  */
-export function useProductFilters(products: StaticProduct[], discountPct = 0) {
+export function useProductFilters(products: StaticProduct[], orderQuantity = 1) {
   const faceted = useMemo(() => deriveAllFacets(products), [products])
   const categoryTree = useMemo(() => buildCategoryTree(faceted), [faceted])
   const sections = useMemo(() => buildFilterSections(faceted), [faceted])
@@ -67,9 +69,12 @@ export function useProductFilters(products: StaticProduct[], discountPct = 0) {
   const priceById = useMemo(
     () =>
       new Map(
-        products.map(p => [p.id, discountPct > 0 ? discountedPrice(p.price, discountPct) : p.price])
+        products.map(p => {
+          const pct = orderQuantity > 1 ? volumeDiscountPercentage(orderQuantity, p.id) : 0
+          return [p.id, pct > 0 ? discountedPrice(p.price, pct) : p.price]
+        })
       ),
-    [products, discountPct]
+    [products, orderQuantity]
   )
 
   // One id-set per active section (selections OR-ed within the section).

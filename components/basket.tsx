@@ -38,6 +38,8 @@ export type BasketDesign = {
 
 export type BasketItem = {
   id: string
+  /** Product type id — decides which volume-discount scale prices this line. */
+  productId?: string
   productName: string
   appearanceName: string
   image: string
@@ -143,17 +145,25 @@ export function Basket({ open, onClose, items, onQuantityChange, onRemove }: Bas
 
   if (!shouldRender) return null
 
-  // The volume discount is an ORDER-level thing: the tier comes from the total
-  // quantity in the basket, not per line — same as create-omat, which passes
-  // the order's totalQuantity to useDiscount. So adding a second size can lift
-  // the discount on everything already in the basket.
+  // The QUANTITY is order-level — the tier comes from the total in the basket,
+  // not per line — same as create-omat, which passes the order's totalQuantity
+  // to useDiscount. So adding a second size can lift the discount on everything
+  // already in the basket. The PERCENTAGE that quantity buys, though, is
+  // per product type: at the same total a T-shirt and a tote sit on different
+  // scales, which is exactly what the API's productTypeDiscountScales returns.
   const itemCount = items.reduce((sum, item) => sum + item.qty, 0)
-  const discountPct = volumeDiscountPercentage(itemCount)
+  const itemDiscountPct = (item: BasketItem) =>
+    volumeDiscountPercentage(itemCount, item.productId)
+  // Percentage for the order summary: with a single product type it is that
+  // product's, and with a mixed basket the best one any line reaches (the
+  // per-line prices below stay exact either way).
+  const discountPct = items.reduce((best, item) => Math.max(best, itemDiscountPct(item)), 0)
   // create-omat discounts the UNIT price and multiplies out, so the row's
   // single-item figure and the total stay consistent (20,39 € × 10 = 203,90 €).
   // Discounting the line total instead would round differently.
   const lineOriginal = (item: BasketItem) => item.price * item.qty
-  const lineDiscounted = (item: BasketItem) => discountedPrice(item.price, discountPct) * item.qty
+  const lineDiscounted = (item: BasketItem) =>
+    discountedPrice(item.price, itemDiscountPct(item)) * item.qty
   const originalSubtotal = items.reduce((sum, item) => sum + lineOriginal(item), 0)
   // Summed from the rounded unit prices so the rows always add up to the subtotal.
   const subtotal = items.reduce((sum, item) => sum + lineDiscounted(item), 0)
@@ -205,7 +215,9 @@ export function Basket({ open, onClose, items, onQuantityChange, onRemove }: Bas
                   <BasketItemRow
                     key={group.key}
                     group={group}
-                    discountPct={discountPct}
+                    // Every size in a group is the same product, so the group's
+                    // scale is the first item's.
+                    discountPct={itemDiscountPct(group.items[0])}
                     onQuantityChange={onQuantityChange}
                     onRemove={onRemove}
                   />
@@ -292,7 +304,7 @@ function BasketItemRow({
   onRemove,
 }: {
   group: BasketGroup
-  /** Order-level volume discount, applied to every line. */
+  /** Volume discount for this group's product, at the order's total quantity. */
   discountPct: number
   onQuantityChange: (id: string, qty: number) => void
   onRemove: (id: string) => void

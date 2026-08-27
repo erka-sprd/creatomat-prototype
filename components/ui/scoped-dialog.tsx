@@ -1,11 +1,13 @@
 "use client"
 
 import * as RadixDialog from "@radix-ui/react-dialog"
-import type { ReactNode } from "react"
+import type { ComponentPropsWithoutRef, ReactNode } from "react"
 
 export const ScopedDialogTitle = RadixDialog.Title
 export const ScopedDialogClose = RadixDialog.Close
 
+// Anything else (style, data-* hooks, event handlers) is handed straight to the
+// dialog's content element.
 type ScopedDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -14,7 +16,7 @@ type ScopedDialogProps = {
   container?: HTMLElement | null
   className?: string
   overlayClassName?: string
-}
+} & Omit<ComponentPropsWithoutRef<typeof RadixDialog.Content>, "className" | "children">
 
 export function ScopedDialog({
   open,
@@ -23,6 +25,7 @@ export function ScopedDialog({
   container,
   className,
   overlayClassName,
+  ...contentProps
 }: ScopedDialogProps) {
   const pos = container ? "absolute" : "fixed"
   return (
@@ -38,6 +41,7 @@ export function ScopedDialog({
         />
         <RadixDialog.Content
           aria-describedby={undefined}
+          {...contentProps}
           className={
             `${pos} left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 duration-200 ` +
             "motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:zoom-in-95 " +

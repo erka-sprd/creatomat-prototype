@@ -126,7 +126,10 @@ export default function MobileSizeSheet({
                         </div>
                         <div className="flex items-center justify-between gap-4">
                             <div className="flex flex-col">
-                                {totalSelected >= 5 && discountPercent > 0 && (
+                                {/* The scale itself decides when a discount
+                                    applies — its first tier starts at 5 on most
+                                    products but at 3 on posters. */}
+                                {discountPercent > 0 && (
                                     <span className="text-[12px] font-medium text-[#6A6A6A] line-through">
                                         {formattedOriginalPrice} €
                                     </span>
@@ -134,7 +137,7 @@ export default function MobileSizeSheet({
                                 <span
                                     className={
                                         "text-[22px] leading-7 font-medium " +
-                                        (totalSelected >= 5 && discountPercent > 0
+                                        (discountPercent > 0
                                             ? "text-[#DC2626]"
                                             : "text-black")
                                     }

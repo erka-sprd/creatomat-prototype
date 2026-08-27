@@ -12,6 +12,7 @@ import QuantitySelector from "@/components/quantity-selector"
 import VolumeDiscountDialog from "@/components/volume-discount-dialog"
 import { SHIPPING_OPTIONS, deliveryDateRange, type ShippingId } from "@/lib/shipping"
 import { cn } from "@/lib/utils"
+import { discountedPrice, volumeDiscountPercentage } from "@/lib/volume-discount"
 
 const eur = (n: number) => n.toFixed(2).replace(".", ",") + " €"
 
@@ -41,22 +42,18 @@ export default function PriceCalculator({ tiles }: { tiles: ProductTileData[] })
     .filter((r): r is { tile: ProductTileData; qty: number } => Boolean(r.tile))
   const grandTotal = rows.reduce((sum, r) => sum + r.tile.priceValue * r.qty, 0)
 
-  // Volume discount tiers (mirrors the designer's getDiscountPercentage),
-  // based on the total quantity across all selected products.
+  // Volume discount from the REAL scales (lib/volume-discount.ts): the tier
+  // comes from the total quantity across all selected products, but the
+  // percentage that tier buys is per product type — so a mixed selection is
+  // discounted row by row rather than at one blended rate.
   const totalPieces = rows.reduce((sum, r) => sum + r.qty, 0)
-  const discountPct =
-    totalPieces >= 100
-      ? 0.5
-      : totalPieces >= 60
-        ? 0.4
-        : totalPieces >= 40
-          ? 0.3
-          : totalPieces >= 20
-            ? 0.2
-            : totalPieces >= 5
-              ? 0.1
-              : 0
-  const discountAmount = grandTotal * discountPct
+  const discountAmount = rows.reduce((sum, r) => {
+    const pct = volumeDiscountPercentage(totalPieces, r.tile.id)
+    return sum + (r.tile.priceValue - discountedPrice(r.tile.priceValue, pct)) * r.qty
+  }, 0)
+  // Effective rate across the selection — what the summary line states. With a
+  // single product type it is exactly that product's tier percentage.
+  const discountPct = grandTotal > 0 ? discountAmount / grandTotal : 0
   // Embroidery: 12 € per piece, added on top after the product discount.
   const EMBROIDERY_UNIT_PRICE = 12
   const embroideryCost = totalPieces * EMBROIDERY_UNIT_PRICE
@@ -306,7 +303,14 @@ export default function PriceCalculator({ tiles }: { tiles: ProductTileData[] })
         onSelectedChange={setSelection}
       />
 
-      <VolumeDiscountDialog open={discountInfoOpen} onOpenChange={setDiscountInfoOpen} />
+      {/* With exactly one product selected the tier table can be that product's
+          own scale; a mixed selection has no single scale, so it falls back to
+          the shop default. */}
+      <VolumeDiscountDialog
+        open={discountInfoOpen}
+        onOpenChange={setDiscountInfoOpen}
+        productId={rows.length === 1 ? rows[0].tile.id : undefined}
+      />
     </div>
   )
 }

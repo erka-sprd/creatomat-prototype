@@ -34,9 +34,9 @@ import {
 } from "@/lib/graphics-library"
 import { printAreaCosts, printAreaTotal } from "@/lib/print-area-pricing"
 import {
-  VOLUME_DISCOUNT_MAX_PERCENTAGE,
-  majorVolumeDiscountTiers,
+  majorVolumeDiscountTiersForProduct,
   nextVolumeDiscountTier,
+  volumeDiscountMaxPercentage,
   volumeDiscountPercentage,
 } from "@/lib/volume-discount"
 import {
@@ -56,9 +56,10 @@ import {
 } from "@/lib/quantity-utils"
 import { DiscountIcon } from "@/components/kit-icons"
 import ProductsDrawer, { type SelectedProduct } from "@/components/products-drawer"
-import VolumeDiscountDialog from "@/components/volume-discount-dialog"
+import VolumeDiscountPopoverContent from "@/components/volume-discount-popover-content"
 import MobileActionHeader from "@/components/mobile/mobile-action-header"
 import MobileColorDrawer from "@/components/mobile/mobile-color-drawer"
+import SoldOutStrike from "@/components/sold-out-strike"
 import MobileDock from "@/components/mobile/mobile-dock"
 import MobileEditSheet from "@/components/mobile/mobile-edit-sheet"
 import MobileMoreMenu from "@/components/mobile/mobile-more-menu"
@@ -131,6 +132,22 @@ const uid = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(uidCoun
 // Degrees of tolerance around 0/90/180/270 where rotation snaps to the cardinal
 // angle. Wide enough that vertical/horizontal lock in sharply.
 const ROTATE_SNAP_DEG = 8
+
+// Upper bound for every zoom path — slider, +/- stops, wheel, mobile pinch.
+// 1 = fit-to-canvas.
+const MAX_ZOOM = 15
+
+// True while the keyboard event targets a real text input — there the browser's
+// own copy/cut/paste (and Backspace) must win over the canvas shortcuts.
+const isTypingTarget = (target: EventTarget | null) => {
+  const el = target as HTMLElement | null
+  if (!el || !el.tagName) return false
+  return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable
+}
+
+// How far (in print-area %) a pasted copy is nudged from the original when it
+// lands in the same print area — same offset the duplicate action uses.
+const PASTE_OFFSET_PCT = 5
 
 // Floating delete button above the selected object — port of create-omat's
 // TrashCanPlugin (28px circle, 20px gap from the object's screen bounding box).
@@ -291,7 +308,7 @@ export default function Designer({
     [products, productId]
   )
   const [activeColorIndex, setActiveColorIndex] = useState(0)
-  // Canvas zoom (1 = fit, up to 3x) controlled by the slider at the bottom-left.
+  // Canvas zoom (1 = fit, up to MAX_ZOOM) controlled by the slider at the bottom-left.
   // When zoomed in, the canvas area scrolls so different parts of the product
   // can be reached; the controls stay fixed.
   const [zoom, setZoom] = useState(1)
@@ -396,7 +413,7 @@ export default function Designer({
       setZoomAnimate(false)
       setZoom(z => {
         const next = z * Math.exp(-e.deltaY * 0.01)
-        return Math.min(6, Math.max(1, Math.round(next * 100) / 100))
+        return Math.min(MAX_ZOOM, Math.max(1, Math.round(next * 100) / 100))
       })
     }
     el.addEventListener("wheel", onWheel, { passive: false })
@@ -504,7 +521,10 @@ export default function Designer({
       if (g.mode === "pinch") {
         if (e.touches.length !== 2 || !g.startDist) return
         e.preventDefault()
-        const nextZoom = Math.max(1, Math.min(6, g.startZoom * (dist(e.touches) / g.startDist)))
+        const nextZoom = Math.max(
+          1,
+          Math.min(MAX_ZOOM, g.startZoom * (dist(e.touches) / g.startDist))
+        )
         const c = center(e.touches)
         // Pinch and pan together: the midpoint's travel moves the product.
         const nextPan = clampPan(
@@ -575,12 +595,12 @@ export default function Designer({
       el.removeEventListener("touchcancel", onTouchEnd)
     }
   }, [isDlgMobile])
-  // The zoom +/- buttons jump between fixed stops (1× → 3× → 6×). We ease the
+  // The zoom +/- buttons jump between four fixed stops (1× → 5× → 10× → 15×). We ease the
   // zoom value ourselves with rAF (each frame is instant, no CSS height
   // transition) so it animates smoothly AND the group-centering effect re-centres
   // every frame — a CSS height transition would clamp the scroll mid-animation
   // and drift off the objects / print area.
-  const ZOOM_STOPS = [1, 3, 6] as const
+  const ZOOM_STOPS = [1, 5, 10, MAX_ZOOM] as const
   const animateZoomTo = (target: number) => {
     cancelZoomAnim()
     setZoomAnimate(false)
@@ -1058,7 +1078,7 @@ export default function Designer({
     // the view jump while the canvas is still growing.
     setZoomAnimate(false)
     cancelZoomAnim()
-    setZoom(z => Math.min(6, Math.round((z + 1) * 100) / 100))
+    setZoom(z => Math.min(MAX_ZOOM, Math.round((z + 1) * 100) / 100))
   }
   // Clear the border-hover state whenever editing ends, so borders don't stay
   // thick on the next edit.
@@ -2237,6 +2257,115 @@ export default function Designer({
     ? graphicElements.filter(g => g.printAreaId === currentPrintAreaId)
     : []
 
+  // ── Keyboard copy / cut / paste (⌘/Ctrl + C / X / V) ─────────────────────
+  // The clipboard holds a detached snapshot of the object, so it survives a view
+  // switch: paste always drops the copy into the print area of the view that is
+  // active at paste time — copy on the front, switch to the back, paste there.
+  type ClipboardEntry =
+    | { kind: "text"; el: TextElement }
+    | { kind: "graphic"; el: GraphicElement }
+  const clipboardRef = useRef<ClipboardEntry | null>(null)
+  // Pastes per print area since the copy was taken, so repeated pastes cascade
+  // instead of landing on top of each other. The source area starts at 1 so the
+  // first paste there is already offset from the original.
+  const pasteCountRef = useRef<Record<string, number>>({})
+
+  const copySelectedToClipboard = () => {
+    let printAreaId: string
+    if (selectedGraphicId) {
+      const src = graphicElements.find(g => g.id === selectedGraphicId)
+      if (!src) return false
+      clipboardRef.current = { kind: "graphic", el: { ...src } }
+      printAreaId = src.printAreaId
+    } else if (selectedTextId) {
+      const src = textElements.find(t => t.id === selectedTextId)
+      if (!src) return false
+      clipboardRef.current = { kind: "text", el: { ...src } }
+      printAreaId = src.printAreaId
+    } else {
+      return false
+    }
+    pasteCountRef.current = { [printAreaId]: 1 }
+    return true
+  }
+
+  const pasteFromClipboard = () => {
+    const entry = clipboardRef.current
+    if (!entry || !currentPrintAreaId) return
+    const printAreaId = currentPrintAreaId
+    // First paste into a *different* print area keeps the original coordinates —
+    // the copy shows up on the back exactly where it sat on the front.
+    const step = PASTE_OFFSET_PCT * (pasteCountRef.current[printAreaId] ?? 0)
+    pasteCountRef.current[printAreaId] = (pasteCountRef.current[printAreaId] ?? 0) + 1
+    if (entry.kind === "graphic") {
+      const src = entry.el
+      const id = uid("graphic")
+      setGraphicElements(prev => [
+        ...prev,
+        {
+          ...src,
+          id,
+          printAreaId,
+          x: Math.max(0, Math.min(100 - src.width, src.x + step)),
+          y: Math.max(0, Math.min(100 - src.height, src.y + step)),
+          z: nextZ(),
+        },
+      ])
+      setSelectedTextId(null)
+      setSelectedGraphicId(id)
+    } else {
+      const src = entry.el
+      const id = uid("text")
+      setTextElements(prev => [
+        ...prev,
+        {
+          ...src,
+          id,
+          printAreaId,
+          x: Math.min(100, src.x + step),
+          y: Math.min(100, src.y + step),
+          z: nextZ(),
+        },
+      ])
+      setSelectedGraphicId(null)
+      setSelectedTextId(id)
+    }
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return
+      const key = e.key.toLowerCase()
+      if (key !== "c" && key !== "x" && key !== "v") return
+      // While a text object is being edited (or any input has focus) the
+      // browser's own clipboard handling owns these shortcuts.
+      if (editingTextId || isTypingTarget(e.target)) return
+      if (key === "v") {
+        if (!clipboardRef.current || !currentPrintAreaId) return
+        e.preventDefault()
+        pasteFromClipboard()
+        return
+      }
+      if (!selectedTextId && !selectedGraphicId) return
+      if (!copySelectedToClipboard()) return
+      e.preventDefault()
+      if (key === "x") {
+        if (selectedGraphicId) deleteSelectedGraphic()
+        else deleteSelectedText()
+      }
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedTextId,
+    selectedGraphicId,
+    editingTextId,
+    textElements,
+    graphicElements,
+    currentPrintAreaId,
+  ])
+
   // Per-view object summary for the customer-service modal (Print / Layers tabs).
   // Objects (text + graphics) are grouped by each view's print area, top layer first.
   const csViews = useMemo(() => {
@@ -2863,11 +2992,12 @@ export default function Designer({
     setSizeQuantities(prev => ({ ...prev, [size]: Math.max(0, Math.floor(qty) || 0) }))
   }
 
-  // Tier hint string driven by current totalSelected and the real discount scale.
+  // Tier hint string driven by current totalSelected and the real discount scale
+  // OF THIS PRODUCT — every scale has its own thresholds and ceiling.
   const discountTierHint = (() => {
-    const nextTier = nextVolumeDiscountTier(totalSelected)
+    const nextTier = nextVolumeDiscountTier(totalSelected, productId)
     if (nextTier) return `From ${nextTier.from} items -${nextTier.percentage}% reduction`
-    return `${VOLUME_DISCOUNT_MAX_PERCENTAGE}% reduction applied`
+    return `${volumeDiscountMaxPercentage(productId)}% reduction applied`
   })()
 
   const selectedSizes = sizes
@@ -2926,8 +3056,10 @@ export default function Designer({
       </span>
     )
 
-  // Volume discount as a fraction, from the real scale (lib/volume-discount.ts).
-  const getDiscountPercentage = (qty: number): number => volumeDiscountPercentage(qty) / 100
+  // Volume discount as a fraction, from the real scale of the selected product
+  // (lib/volume-discount.ts — the scales differ per product type).
+  const getDiscountPercentage = (qty: number): number =>
+    volumeDiscountPercentage(qty, productId) / 100
 
   // Print-area pricing follows create-omat's CYO strategy: the first decorated
   // area is billed at the "first" amount and every additional one at the
@@ -2945,62 +3077,6 @@ export default function Designer({
     return seen
   }, [textElements, graphicElements])
   const decoratedPrintAreaCount = decoratedPrintAreaIdList.length
-  // One preview per DECORATED view for the volume-discount calculator, so a
-  // design on the back is visible there too — the quoted price covers it.
-  // Falls back to the plain current view when nothing is placed yet.
-  //
-  // displayWidth/Height come from the current view's measured print area: the
-  // product image occupies the same canvas box in every view, so that box is
-  // the right scale reference for all of them; only the overlay rect differs.
-  const volumeDiscountPreviews = useMemo(() => {
-    const appearance = appearances[activeColorIndex]
-    if (!productData || !appearance) return []
-    const imageFor = (viewId: string) =>
-      appearance.views.find(v => v.id === viewId)?.image ?? appearance.image
-    const canScale = printAreaPxSize.width > 0 && printAreaPxSize.height > 0
-    const decorated = productData.views.filter(view => {
-      const areaId = view.viewMaps[0]?.printAreaId
-      return areaId != null && decoratedPrintAreaIdList.includes(areaId)
-    })
-    if (decorated.length === 0) {
-      return [{ id: activeViewId, image: currentViewImage || appearance.image }]
-    }
-    return decorated.map(view => {
-      const areaId = view.viewMaps[0]?.printAreaId
-      const overlay = getPrintAreaOverlay(productData, view.id)
-      const reference = printAreaOverlay ?? overlay
-      return {
-        id: view.id,
-        name: view.name,
-        image: imageFor(view.id),
-        design:
-          overlay && reference && canScale
-            ? {
-                textElements: textElements
-                  .filter(t => t.printAreaId === areaId)
-                  .map(t => ({ ...t })),
-                graphicElements: graphicElements
-                  .filter(g => g.printAreaId === areaId)
-                  .map(g => ({ ...g })),
-                printAreaOverlay: overlay,
-                displayWidth: (printAreaPxSize.width * 100) / reference.width,
-                displayHeight: (printAreaPxSize.height * 100) / reference.height,
-              }
-            : undefined,
-      }
-    })
-  }, [
-    productData,
-    appearances,
-    activeColorIndex,
-    activeViewId,
-    currentViewImage,
-    decoratedPrintAreaIdList,
-    textElements,
-    graphicElements,
-    printAreaOverlay,
-    printAreaPxSize,
-  ])
   // Named + priced print areas for the price-details breakdown. The catalogue's
   // print areas carry no label of their own, so borrow the name of the view each
   // one belongs to (Front, Back, …), which is what the shop shows.
@@ -3048,7 +3124,7 @@ export default function Designer({
   // H3 — the dropdown's tier line names how far the next threshold is, from the
   // same scale that prices the order, so the promise always matches the figure.
   const hypoTierBannerText = (() => {
-    const next = nextVolumeDiscountTier(totalSelected)
+    const next = nextVolumeDiscountTier(totalSelected, productId)
     if (!next) return `%${Math.round(discountPercent * 100)} off applied`
     return `Add ${next.from - totalSelected} more for %${next.percentage} off`
   })()
@@ -3091,6 +3167,8 @@ export default function Designer({
         .filter(([, qty]) => qty > 0)
         .map(([size, qty]) => ({
           id: `cart-${Date.now()}-${size}`,
+          // Carried so the basket can price each line on ITS product's scale.
+          productId,
           productName: productData.name,
           appearanceName: currentApp.name,
           image: currentViewImage || currentApp.image,
@@ -4417,7 +4495,7 @@ export default function Designer({
                 <div className="-rotate-90">
                   <WedgeSlider
                     min={1}
-                    max={6}
+                    max={MAX_ZOOM}
                     value={zoom}
                     onChange={v => {
                       cancelZoomAnim()
@@ -5399,10 +5477,7 @@ export default function Designer({
                             // open.
                             aria-disabled={soldOut}
                             className={
-                              "shrink-0 w-[50px] h-[50px] p-[6px] box-border rounded-[8px] flex items-center justify-center overflow-hidden select-none border " +
-                              // Not dimmed: the colour still has to be judged
-                              // by eye. The cursor and the hover card carry the
-                              // unavailability instead.
+                              "relative shrink-0 w-[50px] h-[50px] p-[6px] box-border rounded-[8px] flex items-center justify-center overflow-hidden select-none border " +
                               (soldOut ? "cursor-not-allowed " : "cursor-pointer ") +
                               (activeColorIndex === index
                                 ? "bg-white border-black rounded-[8px]"
@@ -5432,13 +5507,20 @@ export default function Designer({
                             <img
                               src={img.src || "/placeholder.svg"}
                               alt={img.alt}
-                              className="max-w-full max-h-full object-contain block"
+                              className={
+                                "max-w-full max-h-full object-contain block " +
+                                // Only the product image is faded, so the frame
+                                // and the strike stay crisp — dimming those too
+                                // would blunt the signal they exist to carry.
+                                (soldOut ? "opacity-60" : "")
+                              }
                               style={
                                 isLightProductColor(img.color)
                                   ? { filter: LIGHT_PRODUCT_IMAGE_SHADOW }
                                   : undefined
                               }
                             />
+                            {soldOut && <SoldOutStrike />}
                           </button>
                         )
                         if (!soldOut) return swatch
@@ -5531,7 +5613,7 @@ export default function Designer({
                         type="button"
                         aria-disabled={soldOut}
                         className={
-                          "aspect-square w-full p-[6px] box-border flex items-center justify-center overflow-hidden select-none border rounded-[8px] " +
+                          "relative aspect-square w-full p-[6px] box-border flex items-center justify-center overflow-hidden select-none border rounded-[8px] " +
                           (soldOut ? "cursor-not-allowed " : "cursor-pointer ") +
                           (activeColorIndex === index
                             ? "bg-white border-black rounded-[8px]"
@@ -5558,13 +5640,17 @@ export default function Designer({
                         <img
                           src={img.src || "/placeholder.svg"}
                           alt={img.alt}
-                          className="max-w-full max-h-full object-contain block"
+                          className={
+                            "max-w-full max-h-full object-contain block " +
+                            (soldOut ? "opacity-60" : "")
+                          }
                           style={
                             isLightProductColor(img.color)
                               ? { filter: LIGHT_PRODUCT_IMAGE_SHADOW }
                               : undefined
                           }
                         />
+                        {soldOut && <SoldOutStrike />}
                       </button>
                       )
                       if (!soldOut) return swatch
@@ -5666,7 +5752,9 @@ export default function Designer({
                     className="mb-[18px] flex items-end justify-between gap-3"
                   >
                     {/* H3 — plain link, no panel: the icon carries the emphasis
-                        the pink ground used to. */}
+                        the pink ground used to. The calculator opens as a modal
+                        over the designer (rendered near the other dialogs,
+                        below). */}
                     <button
                       type="button"
                       data-keeps-sizes-open="true"
@@ -6227,7 +6315,7 @@ export default function Designer({
                                 that is not one of these five — production
                                 behaves the same way. */}
                             <div className="pointer-events-none absolute right-0 bottom-full z-50 mb-2 w-52 overflow-hidden rounded-[12px] bg-white p-2 opacity-0 shadow-lg transition-opacity duration-150 group-hover/tiers:opacity-100">
-                              {majorVolumeDiscountTiers().map(t => (
+                              {majorVolumeDiscountTiersForProduct(productId).map(t => (
                                 <div
                                   key={t.from}
                                   className="flex items-center justify-between gap-3 border-b border-neutral-200 px-3 py-2 text-[13px] last:border-b-0"
@@ -6395,14 +6483,17 @@ export default function Designer({
                 }`}
               >
                 <div className="flex flex-col relative">
-                  {totalSelected >= 5 && discountPercent > 0 ? (
+                  {/* `discountPercent > 0` is the whole test: the first tier
+                      starts at 5 on most scales but at 3 on posters, so a
+                      hardcoded quantity gate would hide the saving there. */}
+                  {discountPercent > 0 ? (
                     <span className="text-[12px] text-[#6A6A6A] line-through mb-1 absolute mt-[-16px] font-medium">
                       {formattedOriginalPrice} €
                     </span>
                   ) : null}
                   <span
                     className={`text-[24px] font-medium leading-7 ${
-                      totalSelected >= 5 && discountPercent > 0 ? "text-[#DC2626]" : "text-black"
+                      discountPercent > 0 ? "text-[#DC2626]" : "text-black"
                     }`}
                   >
                     {formattedDiscountedPrice} €
@@ -6712,19 +6803,39 @@ export default function Designer({
         </div>
       </div>
 
-      {/* H3 — full tier table, openable from the teaser row and the dropdown
-          footer ("All tiers"). basketHypotheses page only. */}
+      {/* H3 — the volume-discount calculator, opened from the red link in the
+          rail. A modal over the designer rather than a popover off the link:
+          the panel is tall enough that the rail cannot hold it. Scoped to the
+          designer frame like the other dialogs, and tagged as the scroll
+          container for the sticky total's shadow. */}
       {basketHypotheses && (
-        <VolumeDiscountDialog
+        <ScopedDialog
           open={tiersDialogOpen}
           onOpenChange={setTiersDialogOpen}
-          unitPrice={unitPrice}
           container={creatomatContainer}
-          productName={productData?.name}
-          productImage={appearances[activeColorIndex]?.image ?? productData?.appearances[0]?.image}
-          printingCost={decoratedPrintAreaTotal}
-          previews={volumeDiscountPreviews}
-        />
+          overlayClassName="rounded-[12px]"
+          data-discount-scroll="true"
+          // Wide enough for a full scale on the slider: the track marks every
+          // tier (a typical one has 9, the deepest 16), and each mark carries a
+          // quantity and a percentage badge under it. 820px rather than 720
+          // buys ~10px more between neighbouring tiers.
+          className="flex max-h-[80%] w-[820px] max-w-[90%] flex-col overflow-y-auto rounded-2xl bg-white p-0 pt-6 shadow-xl"
+          // 500px whatever the scale's row count, so the panel doesn't resize
+          // as products are switched — but never taller than the frame allows,
+          // past which it scrolls inside itself.
+          style={{ minHeight: "min(500px, 80%)" }}
+        >
+          <VolumeDiscountPopoverContent
+            productId={productId}
+            unitPrice={unitPrice}
+            basePrice={BASE_PRICE}
+            printAreas={decoratedPrintAreas}
+            printAreaCostLabel={
+              effectivePrintTechnique === "embroidery" ? "embroidery cost" : "printing cost"
+            }
+            onClose={() => setTiersDialogOpen(false)}
+          />
+        </ScopedDialog>
       )}
       {/* H4 — the same price-details content as the companion panel, shown as a
           modal when the size sheet is closed (nothing to sit beside then). */}
@@ -6789,7 +6900,14 @@ export default function Designer({
       <MobileColorDrawer
         open={mobileColorDrawerOpen}
         onOpenChange={setMobileColorDrawerOpen}
-        options={appearances.map(a => ({ id: a.id, name: a.name, color: a.color }))}
+        options={appearances.map((a, index) => ({
+          id: a.id,
+          name: a.name,
+          color: a.color,
+          // Same source of truth as the desktop swatches: every size in this
+          // colour gone means the colour cannot be ordered at all.
+          soldOut: isColorSoldOut(index),
+        }))}
         activeIndex={activeColorIndex}
         onSelect={setActiveColorIndex}
       />

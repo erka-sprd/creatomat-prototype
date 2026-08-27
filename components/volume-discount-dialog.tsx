@@ -14,13 +14,9 @@ import {
 
 import {
   discountedPrice,
-  majorVolumeDiscountTiers,
+  majorVolumeDiscountTiersForProduct,
   volumeDiscountPercentage,
 } from "@/lib/volume-discount"
-
-// The real scale is 11 tiers deep, so — like create-omat's
-// VolumeDiscountContent — show the five major thresholds rather than all of them.
-const TIERS = majorVolumeDiscountTiers()
 
 const fmt = (n: number) => n.toFixed(2).replace(".", ",")
 
@@ -29,6 +25,7 @@ export default function VolumeDiscountDialog({
   onOpenChange,
   unitPrice,
   container,
+  productId,
   productName,
   productImage,
   printingCost,
@@ -47,6 +44,14 @@ export default function VolumeDiscountDialog({
   unitPrice?: number
   /** Scopes the modal (and its overlay) to this element — the designer frame. */
   container?: HTMLElement | null
+  /**
+   * Product type id of the product being priced. Discount scales are per
+   * product type (a T-shirt reaches 60%, a tote 40%), so both the table and the
+   * calculator resolve against this product's own scale — like create-omat,
+   * which passes selectedProductType.id into useDiscount. Omitted → the shop's
+   * default scale.
+   */
+  productId?: string
   /** Product on the canvas — shown atop the calculator, so the numbers have a subject. */
   productName?: string
   productImage?: string
@@ -84,8 +89,12 @@ export default function VolumeDiscountDialog({
   const multiView = views.length > 1
   const shownPreview = views[Math.min(previewIndex, views.length - 1)]
   const withCalculator = unitPrice != null
+  // A real scale runs up to 11 tiers deep, so — like create-omat's
+  // VolumeDiscountContent — show the five major thresholds of THIS product's
+  // scale rather than all of them.
+  const TIERS = majorVolumeDiscountTiersForProduct(productId)
   // No "Update prices" step here: every stepper click recalculates directly.
-  const pct = volumeDiscountPercentage(quantity)
+  const pct = volumeDiscountPercentage(quantity, productId)
   const effectiveUnit = unitPrice ?? 0
   // Unit is discounted and multiplied out (create-omat/basket rounding), so
   // per-item × quantity always reconciles with the total shown below it.
