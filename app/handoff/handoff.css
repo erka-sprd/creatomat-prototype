@@ -134,6 +134,48 @@
     }
 }
 
+/* Draws attention to the one control a section wants clicked: two rings, 8px
+   clear of the control and 6px apart, 2px then 1px. They alternate, so the
+   highlight reads as layers rather than one box blinking.
+
+   Drawn with stacked box-shadows: a shadow's spread fills solid, so each ring
+   is a teal spread with the RAIL'S OWN GROUND painted over its inside at the
+   next radius in. Shadows paint first-on-top, so listing them smallest-first
+   leaves clean rings — which ties this to #F4F4F4 and to the rail. Fully
+   rounded, so both rings are pills however wide the link. 17px total, inside
+   the rail's 24px padding, so nothing is clipped. */
+@keyframes ho-blink {
+    0%,
+    100% {
+        box-shadow:
+            0 0 0 8px #f4f4f4,
+            0 0 0 10px rgba(13, 148, 136, 0.95),
+            0 0 0 16px #f4f4f4,
+            0 0 0 17px rgba(13, 148, 136, 0.25);
+    }
+    50% {
+        box-shadow:
+            0 0 0 8px #f4f4f4,
+            0 0 0 10px rgba(13, 148, 136, 0.25),
+            0 0 0 16px #f4f4f4,
+            0 0 0 17px rgba(13, 148, 136, 0.95);
+    }
+}
+.ho-blink {
+    border-radius: 9999px;
+    animation: ho-blink 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .ho-blink {
+        animation: none;
+        box-shadow:
+            0 0 0 8px #f4f4f4,
+            0 0 0 10px rgba(13, 148, 136, 0.8),
+            0 0 0 16px #f4f4f4,
+            0 0 0 17px rgba(13, 148, 136, 0.45);
+    }
+}
+
 /* The nav scrolls horizontally under 900px — no bar across it. */
 .ho-noscrollbar {
     scrollbar-width: none;

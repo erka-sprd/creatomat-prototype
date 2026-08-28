@@ -122,6 +122,77 @@ export function DemoNote({ children }: { children: ReactNode }) {
   )
 }
 
+/**
+ * A decision worth not missing. Loud on purpose — yellow is used nowhere else
+ * on these pages, so a note cannot be read as part of the spec around it.
+ */
+export function Note({ children }: { children: ReactNode }) {
+  return (
+    <div className="mt-6 rounded-[12px] border border-[#FCD34D] bg-[#FEF3C7] p-5 text-[15px] leading-[1.5] text-[#78350F]">
+      <b className="font-bold">NOTE:</b> {children}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------- brief */
+
+/** The four cards that open a document: why, what we think, how we will know. */
+const BRIEF_TONES = {
+  problem: { bg: "#F6D8D0", ink: "#7B1D10" },
+  hypothesis: { bg: "#FBEBC6", ink: "#7A5514" },
+  win: { bg: "#DCF4C2", ink: "#2F5A1B" },
+  result: { bg: "#C9E6FC", ink: "#123B66" },
+} as const
+
+const BRIEF_ICONS = {
+  problem: "M16 19v-1a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v1M10 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6M19 8v3M19 14v.5",
+  hypothesis: "M9 18h6M10 21h4M12 3a6 6 0 0 1 4 10.5c-.6.6-1 1.3-1 2.1v.4H9v-.4c0-.8-.4-1.5-1-2.1A6 6 0 0 1 12 3Z",
+  win: "M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18M8.5 12.5l2.5 2.5 4.5-5",
+  result: "M4 20h16M7 20v-6M12 20V8M17 20v-9",
+} as const
+
+export function BriefCard({
+  tone,
+  label,
+  children,
+}: {
+  tone: keyof typeof BRIEF_TONES
+  label: string
+  children: ReactNode
+}) {
+  const { bg, ink } = BRIEF_TONES[tone]
+  return (
+    <div className="rounded-2xl px-7 py-6" style={{ background: bg, color: ink }}>
+      <div className="flex gap-4">
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden
+          className="mt-0.5 size-6 shrink-0 opacity-60"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d={BRIEF_ICONS[tone]} />
+        </svg>
+        <div className="min-w-0 flex-1">
+          <p className="font-[family-name:var(--ho-mono)] text-[15px] font-bold tracking-[0.06em] uppercase">
+            {label}
+          </p>
+          <div className="mt-4 font-[family-name:var(--ho-mono)] text-[15px] leading-[1.6] [&_li]:mb-1 [&_ul]:list-disc [&_ul]:pl-5">
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function Brief({ children }: { children: ReactNode }) {
+  return <div className="flex flex-col gap-2.5">{children}</div>
+}
+
 /* ----------------------------------------------------------------- sections */
 
 export function Section({
@@ -378,7 +449,7 @@ export function HandoffHeader({
       <p className="mb-[18px] font-[family-name:var(--ho-mono)] text-[14px] tracking-[0.12em] text-[var(--ho-thread-ink)] uppercase">
         {eyebrow}
       </p>
-      <h1 className="mb-4 max-w-[18ch] text-[clamp(30px,5.5vw,44px)] leading-[1.05] font-[680] tracking-[-0.02em] text-balance">
+      <h1 className="mb-4 text-[clamp(30px,5.5vw,44px)] leading-[1.05] font-[680] tracking-[-0.02em] text-balance">
         {title}
       </h1>
       {lede && (

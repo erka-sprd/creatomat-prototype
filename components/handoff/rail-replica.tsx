@@ -30,7 +30,9 @@ import {
 import * as Popover from "@radix-ui/react-popover"
 import { DiscountIcon } from "@/components/kit-icons"
 import KitSwitch from "@/components/kit-switch"
+import VolumeDiscountPopoverContent from "@/components/volume-discount-popover-content"
 import QuantityStepper from "@/components/quantity-stepper"
+import { ScopedDialog } from "@/components/ui/scoped-dialog"
 import { IMAGE_SERVER_BASE, loadCatalog } from "@/lib/catalog"
 import { formatDeliveryWindow } from "@/lib/delivery"
 import { printAreaCosts, printAreaTotal } from "@/lib/print-area-pricing"
@@ -149,11 +151,17 @@ export const usePolo = () => useProduct(POLO_ID)
  * a blank product is billed at its base price alone — print areas only cost
  * once something is on them.
  */
-export function useExamplePrice(polo: Polo, quantity: number, decorated = true) {
+export function useExamplePrice(
+  polo: Polo,
+  quantity: number,
+  decorated = true,
+  areaIds?: string[],
+  designCost = 0
+) {
   return useMemo(() => {
-    const ids = decorated ? polo.printAreaIds : []
+    const ids = decorated ? (areaIds ?? polo.printAreaIds) : []
     const areas = printAreaCosts(ids, "standard")
-    const unit = polo.price + printAreaTotal(ids, "standard")
+    const unit = polo.price + printAreaTotal(ids, "standard") + designCost
     const original = unit * Math.max(1, quantity)
     const percent = volumeDiscountPercentage(quantity, POLO_ID)
     return {
@@ -163,9 +171,20 @@ export function useExamplePrice(polo: Polo, quantity: number, decorated = true) 
       original,
       total: discountedPrice(original, percent),
       percent,
+      designCost,
     }
-  }, [polo, quantity, decorated])
+  }, [polo, quantity, decorated, areaIds, designCost])
 }
+
+/** Both print areas, for the demos that price a front-and-back job. */
+export const BOTH_PRINT_AREAS = ["6322", "6323"]
+/**
+ * Illustrative. The prototype prices no designs — this row is the proposal §5
+ * compares against create-omat, not something the code can be asked for.
+ */
+export const EXCLUSIVE_DESIGN_PRICE = 3.99
+/** Stand-in artwork for the paid-design row. */
+export const DESIGN_THUMBNAIL = "/images/example-graphic.png"
 
 /* ------------------------------------------------------------------ glyphs */
 
@@ -479,6 +498,11 @@ export function PriceRow({
   quantity,
   interactive = true,
   decorated = true,
+  areaIds,
+  designCost = 0,
+  detailsOpen,
+  onDiscountClick,
+  highlightDiscount = false,
   boundaryRef,
 }: {
   polo: Polo
@@ -487,23 +511,46 @@ export function PriceRow({
   interactive?: boolean
   /** False for the blank product: base price only, no print area billed. */
   decorated?: boolean
+  areaIds?: string[]
+  designCost?: number
+  /** Hold the breakdown open, for a section that is about the breakdown. */
+  detailsOpen?: boolean
+  /** Makes the red link a working trigger instead of a still. */
+  onDiscountClick?: () => void
+  /** Blink the link, for a section that wants it clicked. */
+  highlightDiscount?: boolean
   /** The rail. Read at open time, when the element exists. */
   boundaryRef?: RefObject<HTMLDivElement | null>
 }) {
-  const [open, setOpen] = useState(false)
-  const money = useExamplePrice(polo, quantity, decorated)
+  const [ownOpen, setOwnOpen] = useState(false)
+  const open = detailsOpen ?? ownOpen
+  const setOpen = detailsOpen === undefined ? setOwnOpen : () => {}
+  const money = useExamplePrice(polo, quantity, decorated, areaIds, designCost)
   const figure = quantity > 0 ? money.total : money.unitDiscounted
 
   return (
     <div className="flex items-end justify-between gap-3">
-      <span className="flex min-w-0 cursor-default items-center gap-2 text-left text-[14px] text-red-600 outline-none">
-        <DiscountIcon className="size-5 shrink-0" />
-        <span className="font-medium underline">Calculate volume discount</span>
-      </span>
+      {onDiscountClick ? (
+        <button
+          type="button"
+          onClick={onDiscountClick}
+          className={`flex min-w-0 cursor-pointer items-center gap-2 text-left text-[14px] text-red-600 outline-none ${
+            highlightDiscount ? "ho-blink" : ""
+          }`}
+        >
+          <DiscountIcon className="size-5 shrink-0" />
+          <span className="font-medium underline">Calculate volume discount</span>
+        </button>
+      ) : (
+        <span className="flex min-w-0 cursor-default items-center gap-2 text-left text-[14px] text-red-600 outline-none">
+          <DiscountIcon className="size-5 shrink-0" />
+          <span className="font-medium underline">Calculate volume discount</span>
+        </span>
+      )}
 
       <Popover.Root open={open} onOpenChange={setOpen}>
         <Popover.Anchor asChild>
-          <div className="flex shrink-0 flex-col items-end gap-0.5">
+          <div className="relative flex shrink-0 flex-col items-end gap-0.5">
             {quantity > 0 && (
               <span className="text-[12px] leading-none font-semibold text-[var(--sprd-neutral-700)] uppercase">
                 Total
@@ -511,15 +558,20 @@ export function PriceRow({
             )}
             <div className="flex items-center gap-2">
               {interactive && (
-                <Popover.Trigger asChild>
-                  <button
-                    type="button"
-                    aria-label="See price details"
-                    className="flex cursor-pointer items-center justify-center rounded-full bg-neutral-200 p-1 text-black outline-none"
-                  >
-                    <ChevronIcon open={open} />
-                  </button>
-                </Popover.Trigger>
+                <span className="relative flex">
+                  <Popover.Trigger asChild>
+                    <button
+                      type="button"
+                      aria-label="See price details"
+                      className="flex cursor-pointer items-center justify-center rounded-full bg-neutral-200 p-1 text-black outline-none"
+                    >
+                      <ChevronIcon open={open} />
+                    </button>
+                  </Popover.Trigger>
+                  {/* Held open for a spec, so the click that opened it is drawn
+                      in. The chip is a button at cursor:pointer — the hand. */}
+                  {detailsOpen && <ParkedCursor hand className="top-1/2 left-1/2" />}
+                </span>
               )}
               <span
                 className={`text-[24px] leading-7 font-medium ${
@@ -529,20 +581,48 @@ export function PriceRow({
                 {formatEUR(figure)} €
               </span>
             </div>
+            {/* Pinned open for a spec, the breakdown is drawn in place rather
+                than portalled. Radix positions a popper with JS on every scroll
+                frame, which reads as the panel juddering against the page as it
+                moves; a panel positioned inside the rail scrolls with it
+                natively and cannot drift. Width mirrors the popover's own cap —
+                452px, capped again by the rail's 422px content box, which
+                clips. */}
+            {detailsOpen !== undefined ? (
+              <div className="absolute right-0 bottom-full z-40 mb-2 flex max-h-[460px] w-[452px] max-w-[422px] flex-col overflow-hidden rounded-2xl bg-white pt-6 shadow-lg">
+                <PriceDetails
+                  polo={polo}
+                  quantity={quantity}
+                  decorated={decorated}
+                  areaIds={areaIds}
+                  designCost={designCost}
+                />
+              </div>
+            ) : null}
           </div>
         </Popover.Anchor>
-        <Popover.Portal>
-          <Popover.Content
-            side="top"
-            align="end"
-            sideOffset={8}
-            collisionPadding={12}
-            collisionBoundary={boundaryRef?.current ? [boundaryRef.current] : undefined}
-            className="z-[9999] flex max-h-[460px] w-[452px] max-w-[var(--radix-popper-available-width)] flex-col overflow-hidden rounded-2xl border-0 bg-white p-0 pt-6 shadow-lg outline-none"
-          >
-            <PriceDetails polo={polo} quantity={quantity} decorated={decorated} />
-          </Popover.Content>
-        </Popover.Portal>
+        {/* Only when it is not already drawn in place above — otherwise both
+            panels mount, and the portalled one chases the scroll. */}
+        {detailsOpen === undefined && (
+          <Popover.Portal>
+            <Popover.Content
+              side="top"
+              align="end"
+              sideOffset={8}
+              collisionPadding={12}
+              collisionBoundary={boundaryRef?.current ? [boundaryRef.current] : undefined}
+              className="z-[9999] flex max-h-[460px] w-[452px] max-w-[var(--radix-popper-available-width)] flex-col overflow-hidden rounded-2xl border-0 bg-white p-0 pt-6 shadow-lg outline-none"
+            >
+              <PriceDetails
+                polo={polo}
+                quantity={quantity}
+                decorated={decorated}
+                areaIds={areaIds}
+                designCost={designCost}
+              />
+            </Popover.Content>
+          </Popover.Portal>
+        )}
       </Popover.Root>
     </div>
   )
@@ -553,12 +633,18 @@ export function PriceDetails({
   polo,
   quantity,
   decorated = true,
+  areaIds,
+  designCost = 0,
 }: {
   polo: Polo
   quantity: number
   decorated?: boolean
+  /** Override which print areas are billed — both, for a front-and-back job. */
+  areaIds?: string[]
+  /** A paid design earns a row; free ones no longer do. 0 renders nothing. */
+  designCost?: number
 }) {
-  const money = useExamplePrice(polo, quantity, decorated)
+  const money = useExamplePrice(polo, quantity, decorated, areaIds, designCost)
   const thumb = polo.latte?.image
   return (
     <>
@@ -582,16 +668,18 @@ export function PriceDetails({
             A blank product has none, and the block goes with them. */}
         {money.areas.length > 0 && (
           <div className="border-b border-neutral-200 px-6 py-4">
-            <div className="mb-2 flex items-center gap-2">
-              <p className="text-sm font-semibold">Printing Costs</p>
-              <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-[var(--sprd-neutral-100)] text-[12px] leading-none font-semibold text-[var(--sprd-neutral-700)]">
-                ?
-              </span>
-            </div>
+            {/* One self-explaining row per area — "Front printing cost" —
+                rather than a heading with the view names under it. Every area
+                is priced the same way, so every row carries the help "?". */}
             <div className="space-y-1">
               {money.areas.map((area, i) => (
                 <div key={area.id} className="flex items-center justify-between gap-3">
-                  <span className="text-sm">{i === 0 ? "Front" : "Back"}</span>
+                  <span className="flex min-w-0 items-center gap-2 text-sm">
+                    {i === 0 ? "Front" : "Back"} printing cost
+                    <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-[var(--sprd-neutral-100)] text-[12px] leading-none font-semibold text-[var(--sprd-neutral-700)]">
+                      ?
+                    </span>
+                  </span>
                   <span className="text-sm">
                     {area.price === 0 ? "Free" : `${formatEUR(area.price)} €`}
                   </span>
@@ -600,28 +688,54 @@ export function PriceDetails({
             </div>
           </div>
         )}
+        {designCost > 0 && (
+          <div className="border-b border-neutral-200 px-6 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex min-w-0 items-center gap-3 text-sm">
+                {/* The design itself, as create-omat's Design Prices rows carry
+                    it — on the same neutral chip the product thumbnail above it
+                    uses, rather than create-omat's blue one. */}
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-[var(--sprd-neutral-100)] p-0.5">
+                  <img
+                    src={DESIGN_THUMBNAIL}
+                    alt=""
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </span>
+                Exclusive design cost
+              </span>
+              <span className="text-sm">{formatEUR(designCost)} €</span>
+            </div>
+          </div>
+        )}
       </div>
       <div className="flex flex-shrink-0 flex-col gap-2.5 px-6 py-6">
         {quantity > 1 && (
           <div className="flex items-center justify-between gap-3 text-sm">
-            <p>Single item</p>
+            <p className="text-[14px] font-medium text-[var(--sprd-neutral-600)]">Per item</p>
             <div className="flex items-center gap-2">
               {money.percent > 0 && (
-                <span className="text-neutral-700 line-through">{formatEUR(money.unit)} €</span>
+                <span className="text-[14px] leading-none text-[#6A6A6A] line-through">{formatEUR(money.unit)} €</span>
               )}
-              <span className="pr-1">{formatEUR(money.unitDiscounted)} €</span>
+              {/* Red exactly while the struck original is beside it. */}
+              <span
+                className={`pr-1 ${money.percent > 0 ? "font-semibold text-red-600" : ""}`}
+              >
+                {formatEUR(money.unitDiscounted)} €
+              </span>
             </div>
           </div>
         )}
         <div className="flex items-start justify-between gap-3">
-          <p className="text-sm font-semibold text-black">
-            {quantity > 1 ? `Total price (${quantity} items)` : "Single item total"}
+          <p className="text-[14px] font-medium text-[var(--sprd-neutral-600)]">
+            {quantity > 1 ? `TOTAL (${quantity} items)` : "Per item"}
           </p>
           <span className="flex flex-col items-end gap-1">
             {money.percent > 0 && quantity > 0 ? (
               <>
                 <span className="flex items-center gap-2">
-                  <span className="text-lg leading-none text-neutral-700 line-through">
+                  {/* Matched to the per-item row's struck price above it. */}
+                  <span className="text-[14px] leading-none text-[#6A6A6A] line-through">
                     {formatEUR(money.original)} €
                   </span>
                   <span className="pr-1 text-lg font-semibold text-red-600">
@@ -1067,7 +1181,7 @@ function SizeSheetBody({
           </span>
           <span className="flex items-baseline gap-2">
             {percent > 0 && total > 0 && (
-              <span className="text-[16px] leading-none text-[#6A6A6A] line-through">
+              <span className="text-[14px] leading-none text-[#6A6A6A] line-through">
                 {formatEUR(unit * total)}
               </span>
             )}
@@ -1208,12 +1322,32 @@ export const RAIL_HEIGHT_PX = 600
  * viewport: the column is `h-full` in the designer, and the two halves are held
  * apart by the same `mt-auto` on the bottom one.
  */
-export function LiveRail() {
+export function LiveRail({
+  onDiscountClick,
+  highlightDiscount = false,
+  decorated = false,
+  areaIds,
+  designCost = 0,
+  detailsOpen,
+  initialQuantities,
+}: {
+  /** §8 uses the rail as the way in to the calculator. */
+  onDiscountClick?: () => void
+  highlightDiscount?: boolean
+  /** Front print area in play, so the price carries a printing cost. */
+  decorated?: boolean
+  areaIds?: string[]
+  designCost?: number
+  /** Hold the breakdown open, for a section that is about the breakdown. */
+  detailsOpen?: boolean
+  /** Start with an order already chosen, so a discount is in play. */
+  initialQuantities?: Record<string, number>
+} = {}) {
   const polo = usePolo()
   const railRef = useRef<HTMLDivElement>(null)
   const [selectedId, setSelectedId] = useState(LATTE_ID)
   const [sheetOpen, setSheetOpen] = useState(false)
-  const [quantities, setQuantities] = useState<Record<string, number>>({})
+  const [quantities, setQuantities] = useState<Record<string, number>>(initialQuantities ?? {})
   const selected = polo.appearances.find(a => a.id === selectedId) ?? polo.appearances[0]
   // Only latte has published stock; every other colour reads as fully stocked.
   const gone = selectedId === LATTE_ID ? LATTE_OUT_OF_STOCK : []
@@ -1267,15 +1401,19 @@ export function LiveRail() {
         </div>
         <div className="mt-auto flex-shrink-0 pt-6">
           <div className="mb-[18px]">
-            {/* Blank product, so the figure is the base price until sizes are
-                chosen. The breakdown is offered only once there is something to
-                break down — with no decorated print area, that means more than
-                one item. */}
+            {/* The breakdown is offered once there is something to break down:
+                a decorated print area, or more than one item. On a blank single
+                item the price IS the base price. */}
             <PriceRow
               polo={polo}
               quantity={total}
-              interactive={total > 1}
-              decorated={false}
+              interactive={decorated || total > 1}
+              decorated={decorated}
+              areaIds={areaIds}
+              designCost={designCost}
+              detailsOpen={detailsOpen}
+              onDiscountClick={onDiscountClick}
+              highlightDiscount={highlightDiscount}
               boundaryRef={railRef}
             />
           </div>
@@ -1386,6 +1524,7 @@ function StagedRail({
   sheetHeight = 430,
   railHeight = RAIL_HEIGHT_PX,
   sheetNote,
+  listAtEnd = false,
   gone = LATTE_OUT_OF_STOCK,
   appearanceId = LATTE_ID,
   pinTiers = false,
@@ -1405,6 +1544,12 @@ function StagedRail({
   railHeight?: number
   /** Dimension label drawn against the sheet's right edge, e.g. "620px min". */
   sheetNote?: string
+  /**
+   * True when the size list has nothing left to scroll to — a one-size product,
+   * say. The footer's top rule stands in for the scroll shadow there, so a
+   * still that does not scroll must state it or the boundary goes missing.
+   */
+  listAtEnd?: boolean
   /** Sold-out sizes and the selected colour — latte on the polo by default. */
   gone?: string[]
   appearanceId?: string
@@ -1460,7 +1605,7 @@ function StagedRail({
                 quantities={quantities}
                 setQuantity={() => {}}
                 onClose={() => {}}
-                atEnd={false}
+                atEnd={listAtEnd}
                 pinTiers={pinTiers}
                 guideOpen={guideOpen}
               />
@@ -1751,8 +1896,65 @@ export function MinHeightDemo() {
       sheetHeight={SHEET_MIN_HEIGHT}
       railHeight={SHEET_MIN_HEIGHT + 140}
       sheetNote={`${SHEET_MIN_HEIGHT}px min`}
+      // One row in a 620px panel — there is nothing below to scroll to.
+      listAtEnd
       gone={[]}
       appearanceId={product.appearances[0]?.id ?? ""}
     />
+  )
+}
+
+/* ------------------------------------------------- §8, the calculator modal */
+
+/**
+ * §8 — the calculator, reached the way a shopper reaches it: the whole right
+ * column, with the red link blinking, and the modal opening over the page on
+ * its own overlay. Radix's modal mode is left on, so it behaves as the real
+ * dialog does — Escape and the overlay close it.
+ */
+export function VolumeDiscountDemo() {
+  const polo = usePolo()
+  const [open, setOpen] = useState(false)
+
+  // Front print area decorated plus one paid design, so the modal's list and
+  // the rail behind it quote the same figure.
+  const money = useExamplePrice(polo, 1, true, undefined, EXCLUSIVE_DESIGN_PRICE)
+  const printAreas = money.areas.map((area, i) => ({
+    id: area.id,
+    name: i === 0 ? "Front" : "Back",
+    price: area.price,
+  }))
+
+  return (
+    <>
+      <LiveRail
+        onDiscountClick={() => setOpen(true)}
+        highlightDiscount={!open}
+        decorated
+        designCost={EXCLUSIVE_DESIGN_PRICE}
+      />
+      <ScopedDialog
+        open={open}
+        onOpenChange={setOpen}
+        overlayClassName=""
+        data-discount-scroll="true"
+        // Wide enough for a full scale on the track: a typical one marks 9
+        // tiers, the deepest 16, each with a quantity and a percentage under it.
+        className="flex max-h-[80%] w-[820px] max-w-[90%] flex-col overflow-y-auto rounded-2xl bg-white p-0 pt-6 shadow-xl"
+        // 500px whatever the scale's row count, so the panel does not resize as
+        // products are switched.
+        style={{ minHeight: "min(500px, 80%)" }}
+      >
+        <VolumeDiscountPopoverContent
+          productId={polo.id}
+          unitPrice={money.unit}
+          basePrice={polo.price}
+          printAreas={printAreas}
+          printAreaCostLabel="printing cost"
+          designCost={EXCLUSIVE_DESIGN_PRICE}
+          onClose={() => setOpen(false)}
+        />
+      </ScopedDialog>
+    </>
   )
 }

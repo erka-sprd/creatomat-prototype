@@ -16,6 +16,12 @@ type ScopedDialogProps = {
   container?: HTMLElement | null
   className?: string
   overlayClassName?: string
+  /**
+   * Off for a dialog that is only being displayed, not operated — a handoff
+   * demo, say. Radix's modal mode locks body scroll and aria-hides the rest of
+   * the document, which an always-open dialog would impose on the whole page.
+   */
+  modal?: boolean
 } & Omit<ComponentPropsWithoutRef<typeof RadixDialog.Content>, "className" | "children">
 
 export function ScopedDialog({
@@ -25,11 +31,12 @@ export function ScopedDialog({
   container,
   className,
   overlayClassName,
+  modal = true,
   ...contentProps
 }: ScopedDialogProps) {
   const pos = container ? "absolute" : "fixed"
   return (
-    <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
+    <RadixDialog.Root open={open} onOpenChange={onOpenChange} modal={modal}>
       <RadixDialog.Portal container={container}>
         <RadixDialog.Overlay
           className={

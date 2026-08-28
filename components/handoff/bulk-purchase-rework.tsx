@@ -2,23 +2,25 @@
 
 /**
  * /handoff/bulk-purchase-rework — the designer's right rail, reworked for the
- * bulk buyer. Each section shows one change on a piece of the real rail.
- *
- * Out of scope: the volume-discount calculator behind the red link. It gets its
- * own document.
+ * bulk buyer. Each section shows one change on a piece of the real rail: live,
+ * as a scripted walkthrough, or held in one frame.
  */
 
 import { Fragment } from "react"
 import {
+  Brief,
+  BriefCard,
   Demo,
   HandoffFooter,
   HandoffHeader,
   HandoffShell,
   Kicker,
+  Note,
   Section,
   SectionHead,
   type NavItem,
 } from "@/components/handoff/handoff-ui"
+import { PriceDetailsDemo } from "@/components/handoff/price-details-demo"
 import {
   ColorRow,
   DetailsLink,
@@ -33,13 +35,14 @@ import {
   TierHint,
   TierListDemo,
   TitleSlideDemo,
+  VolumeDiscountDemo,
   usePolo,
 } from "@/components/handoff/rail-replica"
 
 const PROTOTYPE = "https://creatomat-prototype.vercel.app/add-to-basket-new-1"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
 
-const LAST_UPDATED = "August 28, 2026 · 2:40 PM"
+const LAST_UPDATED = "August 28, 2026 · 4:40 PM"
 
 /** The quantities §6 shows the hint at — every state it has. */
 const TIER_STATES = [
@@ -50,6 +53,7 @@ const TIER_STATES = [
 ]
 
 const NAV: NavItem[] = [
+  { id: "brief", mark: "◆", label: "Problem & Hypotheses" },
   { id: "live", mark: "◉", label: "Layout shift" },
   { id: "s1", mark: "§1", label: "Product title" },
   { id: "s2", mark: "§2", label: "Details link" },
@@ -58,6 +62,7 @@ const NAV: NavItem[] = [
   { id: "s5", mark: "§5", label: "Price & discount" },
   { id: "s6", mark: "§6", label: "Discount tiers" },
   { id: "s7", mark: "§7", label: "Size guide" },
+  { id: "s8", mark: "§8", label: "Calculator" },
 ]
 
 export default function BulkPurchaseRework() {
@@ -81,8 +86,35 @@ export default function BulkPurchaseRework() {
         ]}
       />
 
+      {/* ----------------------------------------------------------- brief */}
+      <Section id="brief" first>
+        <Brief>
+          <BriefCard tone="problem" label="Problem">
+            Volume discount information is hard to find, and there is no easy way to work a price
+            out. Bulk buyers want to compare and decide before they open the size and quantity
+            selector — not after.
+          </BriefCard>
+          <BriefCard tone="hypothesis" label="Hypothesis">
+            We believe bulk buyers reach the size and quantity step without knowing enough about
+            volume discounts. Making the discount visible in the designer — and easy to calculate
+            before committing — should move that decision in our favour.
+          </BriefCard>
+          <BriefCard tone="win" label="What win looks like">
+            <ul>
+              <li>
+                A larger average basket in an A/B test: today&rsquo;s create-omat designer against
+                everything this page specifies.
+              </li>
+            </ul>
+          </BriefCard>
+          <BriefCard tone="result" label="Result">
+            Will follow.
+          </BriefCard>
+        </Brief>
+      </Section>
+
       {/* ------------------------------------------------------------ live */}
-      <Section id="live" first>
+      <Section id="live">
         <SectionHead title="Layout shift" />
         {/* The rail is 470px wide whatever the page is; on a narrow screen the
             demo scrolls sideways rather than squeezing it out of spec. */}
@@ -170,6 +202,14 @@ export default function BulkPurchaseRework() {
             <PriceStateDemo quantities={{ M: 5, L: 8 }} />
           </div>
         </Demo>
+        <p className="ho-caption">Price details</p>
+        {/* Even padding here, unlike the other demos: this one holds a note as
+            well as a replica, and the note should sit the same distance from
+            every edge of the frame. */}
+        <Demo padding="p-[46px]" className="overflow-x-auto">
+          <PriceDetailsDemo />
+          <Note>Don&rsquo;t show the free text or free designs for simplicity</Note>
+        </Demo>
       </Section>
 
       {/* -------------------------------------------------------------- §6 */}
@@ -216,6 +256,18 @@ export default function BulkPurchaseRework() {
         <Demo padding="px-3.5 py-[46px]" className="overflow-visible">
           <div className="flex justify-center">
             <SizeGuideDemo />
+          </div>
+        </Demo>
+      </Section>
+
+      {/* -------------------------------------------------------------- §8 */}
+      <Section id="s8">
+        <Kicker>§8 · Discount calculator</Kicker>
+        <SectionHead title="Volume discount calculator" />
+        <p>Click the red link to open it, then drag the slider</p>
+        <Demo padding="px-3.5 py-[46px]" className="overflow-x-auto">
+          <div className="flex justify-center">
+            <VolumeDiscountDemo />
           </div>
         </Demo>
       </Section>

@@ -18,28 +18,23 @@ type Entry = {
 const ENTRIES: Entry[] = [
   {
     slug: "bulk-purchase-rework",
-    title: "The purchase rail, reworked",
+    title: "Bulk purchase rail, reworked",
     summary:
-      "The designer's right column for the bulk buyer — one-line title, stock signals, the size-and-basket row, and the money band.",
+      "The designer's right column for the bulk buyer — title, stock signals, the size-and-basket row, the money band and the volume-discount calculator.",
     covers: [
-      "One-line title",
+      "Product title",
       "Details link",
       "Stock signals",
       "Size & basket",
       "Price & discount",
+      "Discount tiers",
+      "Size guide",
+      "Discount calculator",
     ],
     updated: "August 28, 2026",
     status: "live",
-  },
-  {
-    slug: "volume-discount-calculator",
-    title: "The volume-discount calculator",
-    summary:
-      "The modal behind the red link: the tier slider, the per-print-area price list, and the product-aware scales.",
-    covers: ["Tier slider", "Price list", "Product-aware scales"],
-    updated: "not written yet",
-    status: "planned",
-  },
+  }
+
 ]
 
 export default function HandoffIndex() {
