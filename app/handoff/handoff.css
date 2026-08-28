@@ -1,0 +1,169 @@
+/* ---------------------------------------------------------------------------
+   Handoff documents — /handoff/*
+   ---------------------------------------------------------------------------
+   A reading surface, deliberately apart from the product UI it specifies: warm
+   paper ground, a single thread-red accent, mono kickers. The product replicas
+   inside it use the app's own tokens and classes, so the two never blur into
+   each other.
+
+   Tokens only. Everything else is Tailwind, so the replicas can be pasted
+   straight out of components/designer.tsx and keep working.
+--------------------------------------------------------------------------- */
+
+/* On :root, not on .handoff: the code-tip drawer and any other Radix content is
+   portalled to <body>, outside the page wrapper, and would otherwise resolve
+   none of these. */
+:root {
+    --ho-ground: #f7f6f2;
+    --ho-paper: #ffffff;
+    --ho-ink: #1a1813;
+    --ho-muted: #5c5a52;
+    --ho-line: #e0ded6;
+    --ho-line-strong: #d3d0c5;
+    --ho-thread: #c4462a;
+    --ho-thread-ink: #a63a1f;
+    --ho-thread-soft: #f7e6e0;
+    --ho-slate: #33384a;
+    --ho-hit-ink: #35509e;
+    --ho-hit-soft: #e6ecf8;
+    --ho-hit-line: #ccd7ef;
+    --ho-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --ho-measure: 62ch;
+}
+
+.handoff {
+    background: var(--ho-ground);
+    color: var(--ho-ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+    .handoff {
+        scroll-behavior: auto;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   §1 — the title slide, played back rather than hovered.
+   One loop: the pointer arrives, the name slides to its end, holds, the pointer
+   leaves, the name returns. The distance comes from the measured overflow
+   (--ho-title-shift), so the playback ends exactly where a real hover would.
+--------------------------------------------------------------------------- */
+@keyframes ho-title-slide {
+    0%,
+    12% {
+        translate: 0 0;
+    }
+    44%,
+    68% {
+        translate: var(--ho-title-shift, 0) 0;
+    }
+    92%,
+    100% {
+        translate: 0 0;
+    }
+}
+@keyframes ho-title-fade-right {
+    0%,
+    12% {
+        opacity: 1;
+    }
+    44%,
+    68% {
+        opacity: 0;
+    }
+    92%,
+    100% {
+        opacity: 1;
+    }
+}
+@keyframes ho-title-fade-left {
+    0%,
+    12% {
+        opacity: 0;
+    }
+    44%,
+    68% {
+        opacity: 1;
+    }
+    92%,
+    100% {
+        opacity: 0;
+    }
+}
+@keyframes ho-title-cursor {
+    0% {
+        translate: 54px 42px;
+        opacity: 0;
+    }
+    5% {
+        opacity: 1;
+    }
+    10%,
+    68% {
+        translate: 0 0;
+        opacity: 1;
+    }
+    80%,
+    100% {
+        translate: 54px 42px;
+        opacity: 0;
+    }
+}
+
+.ho-title-demo .ho-slide {
+    animation: ho-title-slide 7s ease-in-out infinite;
+}
+.ho-title-demo .ho-fade-r {
+    animation: ho-title-fade-right 7s ease-in-out infinite;
+}
+.ho-title-demo .ho-fade-l {
+    animation: ho-title-fade-left 7s ease-in-out infinite;
+}
+.ho-title-cursor {
+    animation: ho-title-cursor 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ho-title-demo .ho-slide,
+    .ho-title-demo .ho-fade-r,
+    .ho-title-demo .ho-fade-l,
+    .ho-title-cursor {
+        animation: none;
+    }
+}
+
+/* The nav scrolls horizontally under 900px — no bar across it. */
+.ho-noscrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.ho-noscrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+/* Body copy inside a section: one measure, one rhythm, so each block of prose
+   does not need its own max-width and margin.
+   Direct children only. The product replicas live deeper inside a section and
+   carry the app's own type scale — this file is not in a Tailwind layer, so it
+   outranks utility classes wherever it reaches, and reaching into a replica
+   would silently resize its text. */
+.ho-prose > :where(p) {
+    margin: 0 0 14px;
+    font-size: 16px;
+    max-width: var(--ho-measure);
+}
+.ho-prose > :where(p:last-child) {
+    margin-bottom: 0;
+}
+.ho-prose > :where(p) b {
+    font-weight: 640;
+}
+
+/* A second line of copy inside a section, introducing a further demo. Carries
+   its own class rather than a utility because the rules above are unlayered and
+   would outrank one. */
+.ho-prose > p.ho-caption {
+    margin-top: 36px;
+}
