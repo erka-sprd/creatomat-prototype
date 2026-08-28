@@ -46,6 +46,8 @@ type Props = {
   printAreas?: PrintAreaCost[]
   /** Noun for a print-area row, matching the chosen technique. */
   printAreaCostLabel?: string
+  /** A paid design earns its own row; free ones are not listed. 0 hides it. */
+  designCost?: number
   /** Closes the popover from the X in its top-right corner. */
   onClose?: () => void
 }
@@ -75,6 +77,7 @@ export default function VolumeDiscountPopoverContent({
   basePrice,
   printAreas = [],
   printAreaCostLabel = "printing cost",
+  designCost = 0,
   onClose,
 }: Props) {
   const [quantity, setQuantity] = useState(1)
@@ -322,6 +325,13 @@ export default function VolumeDiscountPopoverContent({
                 <span>{area.price === 0 ? "Free" : `${fmt(area.price)} €`}</span>
               </div>
             ))}
+            {/* Only what carries a price — a free upload or text is not listed. */}
+            {designCost > 0 && (
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span>Exclusive design cost</span>
+                <span>{fmt(designCost)} €</span>
+              </div>
+            )}
           </>
         )}
         {/* Always shown, at every quantity — the panel's height then never
@@ -336,7 +346,7 @@ export default function VolumeDiscountPopoverContent({
           <span>Per item</span>
           <span className="flex items-baseline gap-2 whitespace-nowrap">
             {pct > 0 && (
-              <span className="text-[14px] leading-none line-through">{fmt(unitPrice)}</span>
+              <span className="text-[14px] leading-none text-[#6A6A6A] line-through">{fmt(unitPrice)}</span>
             )}
             <span className={`font-semibold ${pct > 0 ? "text-red-600" : "text-black"}`}>
               {fmt(discountedUnit)} €
@@ -381,7 +391,7 @@ export default function VolumeDiscountPopoverContent({
         {/* nowrap: a five-figure total must not break across lines. */}
         <span className="flex items-baseline gap-2 whitespace-nowrap">
           {pct > 0 && (
-            <span className="text-[16px] leading-none text-[#6A6A6A] line-through">
+            <span className="text-[14px] leading-none text-[#6A6A6A] line-through">
               {fmt(unitPrice * quantity)}
             </span>
           )}

@@ -782,6 +782,9 @@ export default function Designer({
   // from priceBreakdownOpen, which is the companion panel beside the open size
   // sheet — these two are different surfaces for the same content.
   const [priceDetailsOpen, setPriceDetailsOpen] = useState(false)
+  // Controlled rather than left to hover: with the breakdown open the tooltip
+  // only names what is already on screen, and it opens on top of it.
+  const [priceDetailsTipOpen, setPriceDetailsTipOpen] = useState(false)
   const [tiersDialogOpen, setTiersDialogOpen] = useState(false)
   // The two companion panels occupy the same slot beside the sheet, so opening
   // one closes the other.
@@ -3310,37 +3313,39 @@ export default function Designer({
           named after the view it sits on. */}
       {decoratedPrintAreas.length > 0 && (
         <div className="border-b border-neutral-200 px-6 py-4">
-          {/* Heading with the help link folded into a "?" beside it. The kit
-              has no question-mark glyph (InfoCircle/InformationCircle are both
-              an "i"), so it is drawn as a circled character. */}
-          <div className="mb-2 flex items-center gap-2">
-            <p className="text-sm font-semibold">
-              {effectivePrintTechnique === "embroidery"
-                ? "Embroidery Costs"
-                : "Printing Costs"}
-            </p>
-            <a
-              href="https://help.spreadshirt.com/hc/en-gb/articles/207153579"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={
-                effectivePrintTechnique === "embroidery"
-                  ? "Learn more about embroidery costs"
-                  : "Learn more about printing costs"
-              }
-              title="Learn more"
-              className="flex size-[18px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-[var(--sprd-neutral-100)] text-[12px] leading-none font-semibold text-[var(--sprd-neutral-700)] hover:bg-[var(--sprd-neutral-200)] hover:text-black"
-            >
-              ?
-            </a>
-          </div>
+          {/* One self-explaining row per area — "Front printing cost" — rather
+              than a heading with the view names indented under it, matching the
+              volume-discount calculator's list. The help link rides on the
+              first row as a "?": the kit has no question-mark glyph
+              (InfoCircle/InformationCircle are both an "i"), so it is drawn as
+              a circled character, and repeated per row — every area is priced
+              the same way, so every row can ask why. */}
           <div className="space-y-1">
             {decoratedPrintAreas.map(area => (
               <div
                 key={area.id}
                 className="flex items-center justify-between gap-3"
               >
-                <span className="text-sm">{area.name}</span>
+                <span className="flex min-w-0 items-center gap-2 text-sm">
+                  {area.name}{" "}
+                  {effectivePrintTechnique === "embroidery"
+                    ? "embroidery cost"
+                    : "printing cost"}
+                  <a
+                    href="https://help.spreadshirt.com/hc/en-gb/articles/207153579"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={
+                      effectivePrintTechnique === "embroidery"
+                        ? "Learn more about embroidery costs"
+                        : "Learn more about printing costs"
+                    }
+                    title="Learn more"
+                    className="flex size-[18px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-[var(--sprd-neutral-100)] text-[12px] leading-none font-semibold text-[var(--sprd-neutral-700)] hover:bg-[var(--sprd-neutral-200)] hover:text-black"
+                  >
+                    ?
+                  </a>
+                </span>
                 {/* Production prints "Free" for a zero-cost
                     area (PriceDetailRow). */}
                 <span className="text-sm">
@@ -3364,22 +3369,30 @@ export default function Designer({
           below already states the same figure. Discount or not. */}
       {totalSelected > 1 && (
         <div className="flex items-center justify-between gap-3 text-sm">
-          <p>Single item</p>
+          <p className="text-[14px] font-medium text-[var(--sprd-neutral-600)]">Per item</p>
           <div className="flex items-center gap-2">
             {discountPercent > 0 && (
-              <span className="text-neutral-700 line-through">
+              <span className="text-[14px] leading-none text-[#6A6A6A] line-through">
                 {formatEUR(unitPrice)} €
               </span>
             )}
-            <span className="pr-1">{formatEUR(hypoDiscountedUnit)} €</span>
+            {/* Red exactly while the struck original is beside it, as in the
+                size sheet's "Per item" row. */}
+            <span
+              className={`pr-1 ${
+                discountPercent > 0 ? "font-semibold text-red-600" : ""
+              }`}
+            >
+              {formatEUR(hypoDiscountedUnit)} €
+            </span>
           </div>
         </div>
       )}
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-semibold text-black">
+        <p className="text-[14px] font-medium text-[var(--sprd-neutral-600)]">
           {totalSelected > 1
-            ? `Total price (${totalSelected} items)`
-            : "Single item total"}
+            ? `TOTAL (${totalSelected} items)`
+            : "Per item"}
         </p>
         {/* The percentage sits under the figures rather than between them —
             wedged in the middle it broke the struck-through/actual pairing. */}
@@ -3387,7 +3400,9 @@ export default function Designer({
           {discountPercent > 0 && totalSelected > 0 ? (
             <>
               <span className="flex items-center gap-2">
-                <span className="text-lg leading-none text-neutral-700 line-through">
+                {/* Matched to the per-item row's struck price above it —
+                    the two greys are the same kind of figure. */}
+                <span className="text-[14px] leading-none text-[#6A6A6A] line-through">
                   {formatEUR(originalPrice)} €
                 </span>
                 <span className="pr-1 text-lg font-semibold text-red-600">
@@ -5815,7 +5830,10 @@ export default function Designer({
                             blank single item the price IS the base price. */}
                         {(graphicElements.length + textElements.length > 0 ||
                           totalSelected > 1) && (
-                        <Tooltip>
+                        <Tooltip
+                          open={priceDetailsTipOpen && !priceDetailsOpen}
+                          onOpenChange={setPriceDetailsTipOpen}
+                        >
                           <TooltipTrigger asChild>
                             <Popover.Trigger asChild>
                             <button
@@ -6384,7 +6402,7 @@ export default function Designer({
                             </span>
                             <span className="flex items-baseline gap-2">
                               {discountPercent > 0 && totalSelected > 0 && (
-                                <span className="text-[16px] leading-none text-[#6A6A6A] line-through">
+                                <span className="text-[14px] leading-none text-[#6A6A6A] line-through">
                                   {formatEUR(originalPrice)}
                                 </span>
                               )}
