@@ -5420,9 +5420,9 @@ export default function Designer({
                           : "invisible"
                       }`}
                     >
-                      {/* 10px either side (4 + 6), one step larger than the
-                          text it separates. */}
-                      <span aria-hidden className="mx-[10px] shrink-0 text-[16px]">
+                      {/* 16px either side, one step larger than the text it
+                          separates. */}
+                      <span aria-hidden className="mx-4 shrink-0 text-[16px]">
                         ·
                       </span>
                       {/* Comma-separated, each size struck through (the commas
@@ -5444,14 +5444,33 @@ export default function Designer({
                             )}
                       </span>
                       {/* Same tooltip as the undo/redo buttons — neutral-900,
-                          p-3, 14px, with the little arrow. Opens upward so it
-                          does not cover the swatches below. */}
-                      <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 rounded-md bg-neutral-900 p-3 text-sm whitespace-nowrap text-neutral-100 opacity-0 shadow-sm transition-opacity group-hover/oos:opacity-100 after:absolute after:top-full after:left-1/2 after:h-0 after:w-0 after:-translate-x-1/2 after:border-x-[4px] after:border-x-transparent after:border-t-[4px] after:border-t-neutral-900 after:content-['']">
-                        {sizes.length <= 1
-                          ? "This colour is currently out of stock"
-                          : `${(outOfStockMap[appearances[activeColorIndex]?.id] ?? []).join(
-                              ", "
-                            )} currently out of stock`}
+                          p-3, 14px, with the little arrow — but two lines: what
+                          this colour still has, in green, above what it has run
+                          out of. Opens upward so it does not cover the swatches
+                          below. */}
+                      <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 flex -translate-x-1/2 flex-col gap-1 rounded-md bg-neutral-900 p-3 text-sm whitespace-nowrap text-neutral-100 opacity-0 shadow-sm transition-opacity group-hover/oos:opacity-100 after:absolute after:top-full after:left-1/2 after:h-0 after:w-0 after:-translate-x-1/2 after:border-x-[4px] after:border-x-transparent after:border-t-[4px] after:border-t-neutral-900 after:content-['']">
+                        {sizes.length <= 1 ? (
+                          <span>This colour is currently out of stock</span>
+                        ) : (
+                          (() => {
+                            // Everything not in the out-of-stock list, in the
+                            // product's own size order.
+                            const gone = outOfStockMap[appearances[activeColorIndex]?.id] ?? []
+                            const available = sizes.filter(size => !gone.includes(size))
+                            return (
+                              <>
+                                <span>{gone.join(", ")} out of stock</span>
+                                {available.length > 0 && (
+                                  // Light enough to read on the near-black
+                                  // ground — the tooltip keeps its own colour.
+                                  <span className="text-[12px] text-[var(--sprd-green-300)]">
+                                    {available.join(", ")} available
+                                  </span>
+                                )}
+                              </>
+                            )
+                          })()
+                        )}
                       </span>
                     </span>
                   )}
