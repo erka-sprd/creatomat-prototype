@@ -42,7 +42,7 @@ import {
 const PROTOTYPE = "https://creatomat-prototype.vercel.app/add-to-basket-new-1"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
 
-const LAST_UPDATED = "August 28, 2026 · 4:40 PM"
+const LAST_UPDATED = "August 28, 2026 · 4:50 PM"
 
 /** The quantities §6 shows the hint at — every state it has. */
 const TIER_STATES = [
@@ -90,14 +90,22 @@ export default function BulkPurchaseRework() {
       <Section id="brief" first>
         <Brief>
           <BriefCard tone="problem" label="Problem">
-            Volume discount information is hard to find, and there is no easy way to work a price
-            out. Bulk buyers want to compare and decide before they open the size and quantity
-            selector — not after.
+            <ul>
+              <li>
+                Volume discounts are hard to find and hard to work out. Bulk buyers want to compare
+                and decide before they open the size and quantity selector — not after.
+              </li>
+              <li>
+                The per-item price is buried, and it is the figure a bulk buyer judges an order by.
+              </li>
+              <li>Once they are choosing sizes and quantities, the size guide is out of reach.</li>
+            </ul>
           </BriefCard>
           <BriefCard tone="hypothesis" label="Hypothesis">
-            We believe bulk buyers reach the size and quantity step without knowing enough about
-            volume discounts. Making the discount visible in the designer — and easy to calculate
-            before committing — should move that decision in our favour.
+            We believe the rail answers these questions too late, or not where they are asked.
+            Putting a discount calculator ahead of the selector, keeping the per-item price beside
+            the total, and moving the size guide inside the selector itself should let bulk buyers
+            decide with the numbers in front of them — and order more.
           </BriefCard>
           <BriefCard tone="win" label="What win looks like">
             <ul>
