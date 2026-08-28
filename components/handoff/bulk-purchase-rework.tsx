@@ -39,7 +39,7 @@ import {
 const PROTOTYPE = "https://creatomat-prototype.vercel.app/add-to-basket-new-1"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
 
-const LAST_UPDATED = "August 28, 2026 · 12:40 PM"
+const LAST_UPDATED = "August 28, 2026 · 2:40 PM"
 
 /** The quantities §6 shows the hint at — every state it has. */
 const TIER_STATES = [
@@ -65,7 +65,7 @@ export default function BulkPurchaseRework() {
 
   return (
     <HandoffShell
-      navTitle="Purchase rail"
+      navTitle="NAVIGATION"
       items={NAV}
       links={[
         { label: "Prototype", href: PROTOTYPE },
@@ -74,7 +74,7 @@ export default function BulkPurchaseRework() {
     >
       <HandoffHeader
         eyebrow="handoff"
-        title="The purchase rail, reworked"
+        title="Bulk purchase rail, reworked"
         actions={[
           { label: "See prototype", href: PROTOTYPE },
           { label: "See repo", href: REPO, ghost: true },
