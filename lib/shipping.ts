@@ -1,5 +1,10 @@
 export type ShippingId = "standard" | "premium" | "express"
 
+// Order value from which shipping is free. create-omat keeps one of these per
+// domain (FREE_SHIPPING_THRESHOLDS in src/lib/Constants.ts); the prototype only
+// ever renders the German storefront, so the DE figure stands alone.
+export const FREE_SHIPPING_THRESHOLD = 80
+
 export const SHIPPING_OPTIONS: {
   id: ShippingId
   label: string

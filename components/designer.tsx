@@ -33,6 +33,7 @@ import {
   isAiImage,
 } from "@/lib/graphics-library"
 import { printAreaCosts, printAreaTotal } from "@/lib/print-area-pricing"
+import { FREE_SHIPPING_THRESHOLD } from "@/lib/shipping"
 import {
   majorVolumeDiscountTiersForProduct,
   nextVolumeDiscountTier,
@@ -6618,7 +6619,22 @@ export default function Designer({
                 </span>
               </div>
 
+              {/* Free-shipping promise. create-omat squeezes this badge onto the
+                  delivery row, where it fights the estimate for width and drops
+                  the row to two lines on narrow rails; here it is a full-bleed
+                  strip closing the column instead.
 
+                  The negative margins cancel #right-section's own padding
+                  (p-[24px] pb-3), so the strip runs edge to edge and sits flush
+                  on the rail's floor, with the text centred across the full
+                  width. No radius of its own — the rail clips to its
+                  rounded-[12px] corners, so the strip picks them up.
+
+                  Palette borrowed from the basket's free-shipping bar: brand
+                  blue on a pale tint of itself. */}
+              <div className="mt-3 -mx-[24px] -mb-3 flex items-center justify-center bg-[var(--free-shipping-ground)] px-[24px] py-2 text-[14px] font-semibold leading-6 text-[var(--free-shipping-ink)] whitespace-nowrap">
+                Free shipping from {formatEUR(FREE_SHIPPING_THRESHOLD)} €
+              </div>
 
             </div>
           </div>
