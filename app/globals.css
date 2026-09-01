@@ -91,12 +91,10 @@
 
   --sprd-focus: #4f82b0;
 
-  /* Not from the kit. The basket's free-shipping strip on spreadshirt.de
-     ("Noch X € bis zum kostenlosen Versand!") — brand blue on a pale tint of
-     itself. Reused by the designer rail's free-shipping bar so the promise
-     looks the same in both places. */
-  --free-shipping-ink: var(--sprd-brand-blue-main);
-  --free-shipping-ground: #e6e6fd;
+  /* Not from the kit. The designer rail's free-shipping strip: black on the
+     pale green that already carries this promise elsewhere in the shop. */
+  --free-shipping-ink: #000000;
+  --free-shipping-ground: var(--sprd-green-100);
 }
 
 @theme {

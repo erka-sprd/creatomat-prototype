@@ -6630,9 +6630,9 @@ export default function Designer({
                   width. No radius of its own — the rail clips to its
                   rounded-[12px] corners, so the strip picks them up.
 
-                  Palette borrowed from the basket's free-shipping bar: brand
-                  blue on a pale tint of itself. */}
-              <div className="mt-3 -mx-[24px] -mb-3 flex items-center justify-center bg-[var(--free-shipping-ground)] px-[24px] py-2 text-[14px] font-medium leading-6 text-[var(--free-shipping-ink)] whitespace-nowrap">
+                  Black on pale green, the colours this promise already carries
+                  elsewhere in the shop. */}
+              <div className="mt-3 -mx-[24px] -mb-3 flex items-center justify-center bg-[var(--free-shipping-ground)] px-[24px] py-2 text-[14px] font-semibold leading-6 text-[var(--free-shipping-ink)] whitespace-nowrap">
                 Free shipping from {formatEUR(FREE_SHIPPING_THRESHOLD)} €
               </div>
 

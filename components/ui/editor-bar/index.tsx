@@ -1,5 +1,6 @@
 "use client"
 
+import { EditorBarTooltip } from "./EditorBarTooltip"
 import { WedgeSlider } from "./WedgeSlider"
 
 type TextAlign = "left" | "center" | "right"
@@ -139,73 +140,77 @@ export function EditorBar({
     >
       <div className="flex h-full min-w-0 items-center gap-2 px-1.5 py-1.5">
         {/* Font family (fixed label; hover shows current font) */}
-        <button
-          type="button"
-          aria-label="Font"
-          title={fontFamily}
-          onClick={onFontFamilyClick}
-          className="flex h-9 cursor-pointer items-center justify-start rounded-md rounded-l-[24px] px-3 text-left text-[12px] font-semibold hover:bg-neutral-100"
-        >
-          Font
-        </button>
+        <EditorBarTooltip content={fontFamily}>
+          <button
+            type="button"
+            aria-label="Font"
+            onClick={onFontFamilyClick}
+            className="flex h-9 cursor-pointer items-center justify-start rounded-md rounded-l-[24px] px-3 text-left text-[12px] font-semibold hover:bg-neutral-100"
+          >
+            Font
+          </button>
+        </EditorBarTooltip>
 
         {/* divider */}
         <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
         {/* Bold / Italic / Underline / Alignment */}
         <div className="flex items-center gap-[2px]">
-        <button
-          type="button"
-          aria-label="Bold"
-          title="Bold"
-          disabled={!canBold}
-          onClick={onToggleBold}
-          className={iconBtn(bold, !canBold)}
-        >
-          <BoldIcon />
-        </button>
-        <button
-          type="button"
-          aria-label="Italic"
-          title="Italic"
-          disabled={!canItalic}
-          onClick={onToggleItalic}
-          className={iconBtn(italic, !canItalic)}
-        >
-          <ItalicIcon />
-        </button>
-        <button
-          type="button"
-          aria-label="Underline"
-          title="Underline"
-          onClick={onToggleUnderline}
-          className={iconBtn(underline, false)}
-        >
-          <UnderlineIcon />
-        </button>
-        <button
-          type="button"
-          aria-label={`Text alignment: ${textAlign}`}
-          title="Alignment"
-          onClick={() => onTextAlignChange?.(nextAlign)}
-          className={iconBtn(false, false)}
-        >
-          <AlignIcon align={textAlign} />
-        </button>
+        <EditorBarTooltip content="Bold">
+          <button
+            type="button"
+            aria-label="Bold"
+            disabled={!canBold}
+            onClick={onToggleBold}
+            className={iconBtn(bold, !canBold)}
+          >
+            <BoldIcon />
+          </button>
+        </EditorBarTooltip>
+        <EditorBarTooltip content="Italic">
+          <button
+            type="button"
+            aria-label="Italic"
+            disabled={!canItalic}
+            onClick={onToggleItalic}
+            className={iconBtn(italic, !canItalic)}
+          >
+            <ItalicIcon />
+          </button>
+        </EditorBarTooltip>
+        <EditorBarTooltip content="Underline">
+          <button
+            type="button"
+            aria-label="Underline"
+            onClick={onToggleUnderline}
+            className={iconBtn(underline, false)}
+          >
+            <UnderlineIcon />
+          </button>
+        </EditorBarTooltip>
+        <EditorBarTooltip content="Text align">
+          <button
+            type="button"
+            aria-label={`Text alignment: ${textAlign}`}
+            onClick={() => onTextAlignChange?.(nextAlign)}
+            className={iconBtn(false, false)}
+          >
+            <AlignIcon align={textAlign} />
+          </button>
+        </EditorBarTooltip>
         </div>
 
         {/* divider */}
         <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
         {/* Font size: decrease */}
-        <button
-          type="button"
-          aria-label="Decrease font size"
-          onClick={() => onFontSizeChange(clamp(fontSize - 1))}
-          className="group/dec relative flex h-9 cursor-pointer items-center rounded-md px-2 hover:bg-neutral-100"
-        >
-          <span className="text-[10px] font-semibold group-hover/dec:opacity-0">Small</span>
-          <span className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 group-hover/dec:opacity-100">
+        <EditorBarTooltip content="Decrease text size">
+          <button
+            type="button"
+            aria-label="Decrease font size"
+            onClick={() => onFontSizeChange(clamp(fontSize - 1))}
+            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md hover:bg-neutral-100"
+          >
             <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
               <path
                 fillRule="evenodd"
@@ -213,8 +218,8 @@ export function EditorBar({
                 d="M15.8333 9.16663C16.2935 9.16663 16.6666 9.53972 16.6666 9.99996C16.6666 10.4273 16.3449 10.7795 15.9305 10.8277L15.8333 10.8333H4.16665C3.70641 10.8333 3.33331 10.4602 3.33331 9.99996C3.33331 9.5726 3.65501 9.22037 4.06946 9.17223L4.16665 9.16663H15.8333Z"
               />
             </svg>
-          </span>
-        </button>
+          </button>
+        </EditorBarTooltip>
 
         {/* Font size slider */}
         <WedgeSlider
@@ -225,14 +230,13 @@ export function EditorBar({
         />
 
         {/* Font size: increase */}
-        <button
-          type="button"
-          aria-label="Increase font size"
-          onClick={() => onFontSizeChange(clamp(fontSize + 1))}
-          className="group/inc relative flex h-9 cursor-pointer items-center rounded-md px-2 hover:bg-neutral-100"
-        >
-          <span className="text-sm font-semibold group-hover/inc:opacity-0">Large</span>
-          <span className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 group-hover/inc:opacity-100">
+        <EditorBarTooltip content="Increase text size">
+          <button
+            type="button"
+            aria-label="Increase font size"
+            onClick={() => onFontSizeChange(clamp(fontSize + 1))}
+            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md hover:bg-neutral-100"
+          >
             <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
               <path
                 fillRule="evenodd"
@@ -240,13 +244,14 @@ export function EditorBar({
                 d="M10.8277 4.06952C10.7796 3.65507 10.4273 3.33337 9.99998 3.33337C9.53974 3.33337 9.16665 3.70647 9.16665 4.16671V9.16671H4.16665L4.06946 9.17231C3.65501 9.22045 3.33331 9.57268 3.33331 10C3.33331 10.4603 3.70641 10.8334 4.16665 10.8334H9.16665V15.8334L9.17225 15.9306C9.22039 16.345 9.57262 16.6667 9.99998 16.6667C10.4602 16.6667 10.8333 16.2936 10.8333 15.8334V10.8334H15.8333L15.9305 10.8278C16.3449 10.7796 16.6666 10.4274 16.6666 10C16.6666 9.5398 16.2935 9.16671 15.8333 9.16671H10.8333V4.16671L10.8277 4.06952Z"
               />
             </svg>
-          </span>
-        </button>
+          </button>
+        </EditorBarTooltip>
 
         {/* divider */}
         <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
         {/* Color */}
+        <EditorBarTooltip content="Select text color">
         <button
           type="button"
           aria-label="Text color"
@@ -274,11 +279,13 @@ export function EditorBar({
           )}
           <span className="text-[12px] font-semibold">Color</span>
         </button>
+        </EditorBarTooltip>
 
         {/* divider */}
         <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
         {/* Duplicate */}
+        <EditorBarTooltip content="Duplicate text">
         <button
           type="button"
           aria-label="Duplicate text"
@@ -292,8 +299,10 @@ export function EditorBar({
             />
           </svg>
         </button>
+        </EditorBarTooltip>
 
         {/* Delete */}
+        <EditorBarTooltip content="Delete text">
         <button
           type="button"
           aria-label="Delete text"
@@ -309,6 +318,7 @@ export function EditorBar({
             />
           </svg>
         </button>
+        </EditorBarTooltip>
       </div>
     </div>
   )
