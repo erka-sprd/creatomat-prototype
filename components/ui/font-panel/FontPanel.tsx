@@ -28,12 +28,16 @@ export function FontPanel({ open, onClose, currentFontFamily, onChange }: FontPa
   return (
     <div
       data-font-panel="true"
-      className={`absolute z-10 inset-y-[4px] left-[4px] w-[275px] rounded-[12px] bg-white shadow-[32px_0px_50px_0px_rgba(0,0,0,0.05)] flex flex-col transition-transform duration-300 ease-out ${
+      className={`absolute z-40 inset-y-[4px] left-[4px] w-[275px] rounded-[12px] bg-white shadow-[32px_0px_50px_0px_rgba(0,0,0,0.05)] flex flex-col transition-transform duration-300 ease-out ${
         open ? "translate-x-0" : "-translate-x-[calc(100%+100px)]"
       }`}
     >
       <div className="px-7 pt-6 flex-shrink-0">
-        <h3 className="mb-6 text-lg font-medium">Font</h3>
+        {/* Panel headings are MADE Outer Sans, as everywhere create-omat
+            reaches for the kit's `font-made` token; this project registers the
+            same face as --font-display. Size/leading/weight follow create-omat's
+            own text panels (src/components/ui/color-panel/ColorPanel.tsx). */}
+        <h3 className="font-display mb-6 text-lg leading-[26px] font-medium">Font</h3>
       </div>
       <div className="flex-1 overflow-y-auto px-6 pb-6">
         <div className="flex flex-col gap-3">

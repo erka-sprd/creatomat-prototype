@@ -1,7 +1,8 @@
 "use client"
 
+import { useId } from "react"
 import { EditorBarTooltip } from "./EditorBarTooltip"
-import { WedgeSlider } from "./WedgeSlider"
+import { FontSizeSlider } from "./FontSizeSlider"
 
 type TextAlign = "left" | "center" | "right"
 
@@ -17,10 +18,14 @@ type EditorBarProps = {
   underline?: boolean
   canBold?: boolean
   canItalic?: boolean
+  // False while the text sits on a curve: curved text is always centre-aligned
+  // here, so the control shows that state and stops responding.
+  canAlign?: boolean
   maxFontSize?: number
   onFontSizeChange: (next: number) => void
   onFontFamilyClick: () => void
   onColorClick: () => void
+  onCurveClick?: () => void
   onTextAlignChange?: (next: TextAlign) => void
   onToggleBold?: () => void
   onToggleItalic?: () => void
@@ -99,6 +104,57 @@ export function AlignIcon({ align }: { align: TextAlign }) {
   )
 }
 
+/**
+ * The word "Curve" set on an upward arc, so the button is its own preview of
+ * what it does. SVG text-on-path rather than a picture of type, so it keeps the
+ * bar's own face at the same 12px semibold as the Font and Color labels beside
+ * it — fontFamily="inherit" pulls the face down from the button.
+ *
+ * Geometry: a 40px chord lifted 5px at its middle, so R = (40²/4 + 5²) / (2·5)
+ * = 42.5. That arc is ~41.6px long, enough for the word at this size, and the
+ * lift stays gentle enough to read as type rather than as a logo.
+ *
+ * The rule beneath is drawn, not a text-decoration: Chrome ignores
+ * text-underline-offset on SVG text-on-path (Firefox honours it), so the gap
+ * was uncontrollable that way. Drawing it costs a second arc but renders the
+ * same everywhere.
+ *
+ * That arc is concentric with the baseline — same centre (23, 56.5), radius 4px
+ * shorter — so it holds an even 4px gap along the whole word instead of
+ * pinching at the ends. Its endpoints keep the baseline's angular extent
+ * (half-angle asin(20/42.5) = 0.4899 rad), which lands it at ~36px wide: the
+ * width of the word, not of the arc it sits on.
+ */
+function CurvedLabel({ text = "Curve" }: { text?: string }) {
+  // useId yields ":r1:"-style values; colons are not valid in an XML id.
+  const pathId = `curve-${useId().replace(/:/g, "")}`
+  return (
+    <svg width="46" height="25" viewBox="0 0 46 25" aria-hidden="true">
+      <defs>
+        <path id={pathId} d="M 3 19 A 42.5 42.5 0 0 1 43 19" fill="none" />
+      </defs>
+      <text
+        fill="currentColor"
+        fontSize="12"
+        fontWeight="600"
+        fontFamily="inherit"
+        textAnchor="middle"
+      >
+        <textPath href={`#${pathId}`} startOffset="50%">
+          {text}
+        </textPath>
+      </text>
+      <path
+        d="M 4.88 22.91 A 38.5 38.5 0 0 1 41.12 22.91"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 export function EditorBar({
   show,
   fontSize,
@@ -111,10 +167,12 @@ export function EditorBar({
   underline = false,
   canBold = true,
   canItalic = true,
+  canAlign = true,
   maxFontSize = ABS_MAX_FONT_SIZE,
   onFontSizeChange,
   onFontFamilyClick,
   onColorClick,
+  onCurveClick,
   onTextAlignChange,
   onToggleBold,
   onToggleItalic,
@@ -188,14 +246,17 @@ export function EditorBar({
             <UnderlineIcon />
           </button>
         </EditorBarTooltip>
-        <EditorBarTooltip content="Text align">
+        <EditorBarTooltip
+          content={canAlign ? "Text align" : "Curved text is always centred"}
+        >
           <button
             type="button"
             aria-label={`Text alignment: ${textAlign}`}
+            disabled={!canAlign}
             onClick={() => onTextAlignChange?.(nextAlign)}
-            className={iconBtn(false, false)}
+            className={iconBtn(false, !canAlign)}
           >
-            <AlignIcon align={textAlign} />
+            <AlignIcon align={canAlign ? textAlign : "center"} />
           </button>
         </EditorBarTooltip>
         </div>
@@ -221,8 +282,9 @@ export function EditorBar({
           </button>
         </EditorBarTooltip>
 
-        {/* Font size slider */}
-        <WedgeSlider
+        {/* Font size slider — same infrastructure as the canvas zoom dock:
+            drag-relative, with a press on bare track easing to that point. */}
+        <FontSizeSlider
           min={MIN_FONT_SIZE}
           max={max}
           value={Math.min(fontSize, max)}
@@ -244,6 +306,21 @@ export function EditorBar({
                 d="M10.8277 4.06952C10.7796 3.65507 10.4273 3.33337 9.99998 3.33337C9.53974 3.33337 9.16665 3.70647 9.16665 4.16671V9.16671H4.16665L4.06946 9.17231C3.65501 9.22045 3.33331 9.57268 3.33331 10C3.33331 10.4603 3.70641 10.8334 4.16665 10.8334H9.16665V15.8334L9.17225 15.9306C9.22039 16.345 9.57262 16.6667 9.99998 16.6667C10.4602 16.6667 10.8333 16.2936 10.8333 15.8334V10.8334H15.8333L15.9305 10.8278C16.3449 10.7796 16.6666 10.4274 16.6666 10C16.6666 9.5398 16.2935 9.16671 15.8333 9.16671H10.8333V4.16671L10.8277 4.06952Z"
               />
             </svg>
+          </button>
+        </EditorBarTooltip>
+
+        {/* divider */}
+        <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
+
+        {/* Curve */}
+        <EditorBarTooltip content="Curve text">
+          <button
+            type="button"
+            aria-label="Curve text"
+            onClick={onCurveClick}
+            className="flex h-9 cursor-pointer items-center justify-center rounded-md px-2 text-[12px] font-semibold hover:bg-neutral-100"
+          >
+            <CurvedLabel />
           </button>
         </EditorBarTooltip>
 

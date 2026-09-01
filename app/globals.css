@@ -598,3 +598,28 @@
 .sizes-scroll::-webkit-scrollbar-thumb:hover {
   background-color: var(--sprd-neutral-400);
 }
+
+/* Caret drawn on a curved text's baseline path while editing (the native
+   textarea caret is hidden — it cannot follow the curve). steps(1) gives the
+   hard on/off of a real caret rather than a fade. */
+@keyframes curve-caret-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* While editing curved text the textarea is an invisible key sink — its flat
+   glyphs and caret are hidden inline, and this hides the last native trace,
+   the ::selection band those invisible glyphs would still paint. */
+.curve-editing::selection {
+  /* Not `transparent`: Chrome treats a fully transparent ::selection
+     background as unset and falls back to its default highlight. Near-zero
+     alpha is the standard workaround. */
+  background: rgba(0, 0, 0, 0.01);
+  color: transparent;
+}

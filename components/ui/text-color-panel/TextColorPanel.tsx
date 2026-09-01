@@ -28,12 +28,12 @@ export function TextColorPanel({ open, onClose, currentColor, onChange }: TextCo
   return (
     <div
       data-text-color-panel="true"
-      className={`absolute z-10 inset-y-[4px] left-[4px] w-[275px] rounded-[12px] bg-white shadow-[32px_0px_50px_0px_rgba(0,0,0,0.05)] flex flex-col transition-transform duration-300 ease-out ${
+      className={`absolute z-40 inset-y-[4px] left-[4px] w-[275px] rounded-[12px] bg-white shadow-[32px_0px_50px_0px_rgba(0,0,0,0.05)] flex flex-col transition-transform duration-300 ease-out ${
         open ? "translate-x-0" : "-translate-x-[calc(100%+100px)]"
       }`}
     >
       <div className="px-6 pt-6 flex-shrink-0">
-        <h3 className="text-lg leading-[26px] font-medium">Text color</h3>
+        <h3 className="font-display text-lg leading-[26px] font-medium">Text color</h3>
         <span className="text-sm leading-5 font-medium text-neutral-700">
           {currentColor.toUpperCase()}
         </span>

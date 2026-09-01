@@ -86,6 +86,16 @@ import {
   ScopedDialogTitle,
 } from "@/components/ui/scoped-dialog"
 import { FontPanel } from "@/components/ui/font-panel/FontPanel"
+import { CurvedText } from "@/components/ui/text-path/CurvedText"
+import { TextPathPanel } from "@/components/ui/text-path/TextPathPanel"
+import {
+  DEFAULT_TEXT_CURVE,
+  curveIdForPath,
+  curvedLayout,
+  pointAtLength,
+  textBoundaryWidths,
+  textCurve,
+} from "@/lib/text-path"
 import { useFonts, getFontVariants } from "@/hooks/useFonts"
 import LottieLoader from "@/components/ui/lottie/LottieLoader"
 import CustomerServiceMode from "@/components/cs-mode/CustomerServiceMode"
@@ -923,6 +933,11 @@ export default function Designer({
     // False/undefined until the user explicitly picks a colour — while default we
     // show a rainbow swatch in the editor bar (matches create-omat).
     colorSet?: boolean
+    // Text on a path, modelled on CE.SDK's `text/path` + `text/pathOffset`
+    // (see lib/text-path.ts): the baseline as an SVG path string, null/absent
+    // for ordinary straight layout, and a start offset in [-1, 1].
+    textPath?: string | null
+    textPathOffset?: number
   }
   const DEFAULT_FONT_FAMILY = "Inter"
   const [textElements, setTextElements] = useState<TextElement[]>([])
@@ -930,6 +945,16 @@ export default function Designer({
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null)
   const [textColorPanelOpen, setTextColorPanelOpen] = useState(false)
   const [fontPanelOpen, setFontPanelOpen] = useState(false)
+  const [curvePanelOpen, setCurvePanelOpen] = useState(false)
+  // Selection range while a CURVED text is being edited. The textarea still
+  // owns the real caret and selection; this mirrors its selectionStart/End so
+  // both can be re-drawn on the path (the native ones are laid out flat and
+  // cannot follow the curve, so they are hidden and re-drawn: a collapsed
+  // range draws a caret, a spread one draws a band of per-glyph quads).
+  const [curveSel, setCurveSel] = useState({ start: 0, end: 0 })
+  // Where a curved-text selection drag started (grapheme index), so pointermove
+  // can spread the range in either direction from it. Null = not dragging.
+  const curveDragAnchorRef = useRef<number | null>(null)
   const [snapGuides, setSnapGuides] = useState<{ h: boolean; v: boolean }>({
     h: false,
     v: false,
@@ -1263,6 +1288,7 @@ export default function Designer({
     setSelectedTextId(null)
     setTextColorPanelOpen(false)
     setFontPanelOpen(false)
+    setCurvePanelOpen(false)
   }
 
   // Trash button above the selected object — same behaviour as create-omat's
@@ -1674,7 +1700,8 @@ export default function Designer({
         target.closest("[data-graphic-element]") ||
         target.closest("[data-editor-bar]") ||
         target.closest("[data-text-color-panel]") ||
-        target.closest("[data-font-panel]")
+        target.closest("[data-font-panel]") ||
+        target.closest("[data-text-path-panel]")
       ) {
         return
       }
@@ -1685,6 +1712,7 @@ export default function Designer({
       setEditingTextId(null)
       setTextColorPanelOpen(false)
       setFontPanelOpen(false)
+      setCurvePanelOpen(false)
     }
     document.addEventListener("click", onDocClick)
     return () => document.removeEventListener("click", onDocClick)
@@ -2884,6 +2912,7 @@ export default function Designer({
       setEditingTextId(null)
       setTextColorPanelOpen(false)
       setFontPanelOpen(false)
+      setCurvePanelOpen(false)
     }
   }, [currentPrintAreaId, selectedTextId, textElements])
 
@@ -3881,6 +3910,7 @@ export default function Designer({
                 setSelectedTextId(null)
                 setTextColorPanelOpen(false)
                 setFontPanelOpen(false)
+                setCurvePanelOpen(false)
               }}
             >
             <div
@@ -3961,6 +3991,62 @@ export default function Designer({
                     editingTextId === el.id ? (
                       (() => {
                         const box = measureTextBox(el.content, el.fontSize * zoom, el.fontFamily)
+                        // Editing a curved text keeps the glyphs on their path:
+                        // the CurvedText render stays underneath (as in CE.SDK,
+                        // where the layout never straightens for editing) and
+                        // the textarea turns invisible on top, purely catching
+                        // keys. The box then wraps the curve's rendered size.
+                        const curved = el.textPath
+                          ? curvedLayout(
+                              el.content,
+                              el.textPath,
+                              el.textPathOffset ?? 0,
+                              el.fontSize * zoom,
+                              el.fontFamily
+                            )
+                          : null
+                        // Prefix width per caret boundary — memoized in the
+                        // lib, so quads, caret and hit-testing share one
+                        // measurement pass per text state.
+                        const widths = curved
+                          ? textBoundaryWidths(el.content, el.fontSize * zoom, el.fontFamily)
+                          : null
+                        // Client point → caret boundary, ON THE CURVE: the
+                        // click is mapped into path user units through the
+                        // rendered svg's screen CTM (absorbing zoom and the
+                        // wrapper's rotation), then the nearest boundary point
+                        // along the path wins — clicks between two glyphs land
+                        // between them, exactly as on flat text.
+                        const curveIndexAt = (
+                          clientX: number,
+                          clientY: number,
+                          container: HTMLElement | null
+                        ): number | null => {
+                          if (!curved || !widths || !container) return null
+                          const svg = container.querySelector(
+                            "svg[data-curved-text]"
+                          ) as SVGSVGElement | null
+                          const ctm = svg?.getScreenCTM()
+                          if (!ctm) return null
+                          const p = new DOMPoint(clientX, clientY).matrixTransform(
+                            ctm.inverse()
+                          )
+                          let best = 0
+                          let bestD = Infinity
+                          for (let i = 0; i < widths.length; i++) {
+                            const bp = pointAtLength(
+                              curved.renderPath,
+                              (curved.runStartPx + widths[i]) / curved.scale
+                            )
+                            if (!bp) continue
+                            const d = (bp.x - p.x) ** 2 + (bp.y - p.y) ** 2
+                            if (d < bestD) {
+                              bestD = d
+                              best = i
+                            }
+                          }
+                          return best
+                        }
                         return (
                           <div
                             key={el.id}
@@ -3972,37 +4058,276 @@ export default function Designer({
                             style={{
                               position: "absolute",
                               zIndex: el.z,
-                              left: `${el.x}%`,
-                              top: `${el.y}%`,
-                              width: `${box.width + 4}px`,
-                              height: `${box.height}px`,
+                              // Curved: shifted so the PATH stays put while the
+                              // offset slides the text along it — the box moves
+                              // with the glyphs, and this cancels that out.
+                              left: curved
+                                ? `calc(${el.x}% + ${curved.anchorDX}px)`
+                                : `${el.x}%`,
+                              top: curved
+                                ? `calc(${el.y}% + ${curved.anchorDY}px)`
+                                : `${el.y}%`,
+                              width: `${(curved ? curved.width : box.width) + 4}px`,
+                              height: `${curved ? curved.height : box.height}px`,
                               transform: `rotate(${el.rotation ?? 0}deg)`,
                               transformOrigin: "center",
                             }}
                             className="pointer-events-auto"
                           >
+                            {curved &&
+                              widths &&
+                              curveSel.start !== curveSel.end &&
+                              (() => {
+                                // The selection band: one quad per selected
+                                // glyph, each centred on the path at its own
+                                // tangent. Rendered BEFORE the glyphs so the
+                                // text paints on top, as over a native
+                                // selection; a 1px bleed on each quad closes
+                                // the hairline gaps between neighbours.
+                                const fs = el.fontSize * zoom
+                                const from = Math.max(
+                                  0,
+                                  Math.min(curveSel.start, curveSel.end)
+                                )
+                                const to = Math.min(
+                                  el.content.length,
+                                  Math.max(curveSel.start, curveSel.end)
+                                )
+                                const quads = []
+                                for (let i = from; i < to; i++) {
+                                  const beforePx = widths[i]
+                                  const afterPx = widths[i + 1]
+                                  const w = afterPx - beforePx
+                                  const pt = pointAtLength(
+                                    curved.renderPath,
+                                    (curved.runStartPx + (beforePx + afterPx) / 2) /
+                                      curved.scale
+                                  )
+                                  if (!pt || w <= 0) continue
+                                  quads.push(
+                                    <span
+                                      key={i}
+                                      aria-hidden
+                                      style={{
+                                        position: "absolute",
+                                        left: (pt.x - curved.viewX) * curved.scale,
+                                        top: (pt.y - curved.viewY) * curved.scale,
+                                        width: 0,
+                                        height: 0,
+                                        transform: `rotate(${pt.angle}deg)`,
+                                        pointerEvents: "none",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          position: "absolute",
+                                          left: -w / 2 - 0.5,
+                                          top: -fs * 1.02,
+                                          width: w + 1,
+                                          height: fs * 1.25,
+                                          background: "rgba(99, 125, 255, 0.55)",
+                                        }}
+                                      />
+                                    </span>
+                                  )
+                                }
+                                return <>{quads}</>
+                              })()}
+                            {curved && (
+                              <span
+                                aria-hidden
+                                style={{
+                                  position: "absolute",
+                                  inset: 0,
+                                  display: "block",
+                                  pointerEvents: "none",
+                                  clipPath: contentClipPath("text", el),
+                                }}
+                              >
+                                <CurvedText
+                                  text={el.content}
+                                  path={el.textPath!}
+                                  offset={el.textPathOffset ?? 0}
+                                  fontSize={el.fontSize * zoom}
+                                  fontFamily={el.fontFamily}
+                                  color={el.color}
+                                  bold={el.bold}
+                                  italic={el.italic}
+                                  underline={el.underline}
+                                  // The baseline is a guide, not artwork: drawn
+                                  // while editing, and whenever the Curve panel
+                                  // is open so the path being adjusted is
+                                  // visible.
+                                  showPath
+                                />
+                              </span>
+                            )}
+                            {curved &&
+                              curveSel.start === curveSel.end &&
+                              (() => {
+                                // The drawn caret: distance along the path =
+                                // where the run starts + the width of the text
+                                // before the caret, both in CSS px, converted
+                                // to user units for getPointAtLength and back
+                                // to px inside the box. Rotated to the path's
+                                // tangent, so it stands square on the baseline.
+                                const before =
+                                  widths?.[
+                                    Math.min(curveSel.end, (widths?.length ?? 1) - 1)
+                                  ] ?? 0
+                                const pt = pointAtLength(
+                                  curved.renderPath,
+                                  (curved.runStartPx + before) / curved.scale
+                                )
+                                if (!pt) return null
+                                const fs = el.fontSize * zoom
+                                return (
+                                  <span
+                                    aria-hidden
+                                    style={{
+                                      position: "absolute",
+                                      left: (pt.x - curved.viewX) * curved.scale,
+                                      top: (pt.y - curved.viewY) * curved.scale,
+                                      width: 0,
+                                      height: 0,
+                                      transform: `rotate(${pt.angle}deg)`,
+                                      pointerEvents: "none",
+                                      zIndex: 10,
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        position: "absolute",
+                                        left: -0.75,
+                                        top: -fs * 1.02,
+                                        width: 1.5,
+                                        height: fs * 1.25,
+                                        background: el.color,
+                                        animation: "curve-caret-blink 1.1s steps(1) infinite",
+                                      }}
+                                    />
+                                  </span>
+                                )
+                              })()}
                             <textarea
                               autoFocus
                               value={el.content}
                               rows={1}
                               onChange={e => {
                                 const v = e.target.value
+                                setCurveSel({
+                                  start: e.target.selectionStart ?? v.length,
+                                  end: e.target.selectionEnd ?? v.length,
+                                })
                                 setTextElements(prev =>
                                   prev.map(t => (t.id === el.id ? { ...t, content: v } : t))
                                 )
+                              }}
+                              // Fires on every caret move and selection change
+                              // (arrows, shift+arrows, clicks, Home/End) — the
+                              // drawn caret and band track it.
+                              onSelect={e => {
+                                const ta = e.target as HTMLTextAreaElement
+                                setCurveSel({
+                                  start: ta.selectionStart ?? 0,
+                                  end: ta.selectionEnd ?? 0,
+                                })
                               }}
                               onBlur={() => setEditingTextId(null)}
                               onKeyDown={e => {
                                 if (e.key === "Escape")
                                   (e.target as HTMLTextAreaElement).blur()
                               }}
-                              onPointerDown={e => e.stopPropagation()}
+                              // On a curve, the pointer is taken over entirely:
+                              // native hit-testing would place the caret by the
+                              // textarea's invisible FLAT layout, nowhere near
+                              // the glyph that was clicked. preventDefault stops
+                              // that, then the caret/selection are set from the
+                              // on-curve index and mirrored back into the
+                              // textarea, so keyboard editing continues from
+                              // exactly where the click landed.
+                              onPointerDown={e => {
+                                e.stopPropagation()
+                                if (!curved) return
+                                e.preventDefault()
+                                const ta = e.currentTarget
+                                const idx = curveIndexAt(
+                                  e.clientX,
+                                  e.clientY,
+                                  ta.parentElement
+                                )
+                                if (idx == null) return
+                                ta.focus()
+                                ta.setSelectionRange(idx, idx)
+                                setCurveSel({ start: idx, end: idx })
+                                curveDragAnchorRef.current = idx
+                                ta.setPointerCapture(e.pointerId)
+                              }}
+                              onPointerMove={e => {
+                                if (!curved) return
+                                const anchor = curveDragAnchorRef.current
+                                if (anchor == null) return
+                                const ta = e.currentTarget
+                                const idx = curveIndexAt(
+                                  e.clientX,
+                                  e.clientY,
+                                  ta.parentElement
+                                )
+                                if (idx == null) return
+                                const s = Math.min(anchor, idx)
+                                const en = Math.max(anchor, idx)
+                                ta.setSelectionRange(
+                                  s,
+                                  en,
+                                  idx < anchor ? "backward" : "forward"
+                                )
+                                setCurveSel({ start: s, end: en })
+                              }}
+                              onPointerUp={e => {
+                                curveDragAnchorRef.current = null
+                                if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                                  e.currentTarget.releasePointerCapture(e.pointerId)
+                                }
+                              }}
+                              onPointerCancel={() => {
+                                curveDragAnchorRef.current = null
+                              }}
+                              // Double-click selects the word under the pointer,
+                              // found on the curve — matching flat text editing.
+                              onDoubleClick={e => {
+                                if (!curved) return
+                                const ta = e.currentTarget
+                                const idx = curveIndexAt(
+                                  e.clientX,
+                                  e.clientY,
+                                  ta.parentElement
+                                )
+                                if (idx == null) return
+                                const t = el.content
+                                let s = Math.min(idx, t.length)
+                                let en = s
+                                while (s > 0 && /\S/.test(t[s - 1])) s--
+                                while (en < t.length && /\S/.test(t[en])) en++
+                                if (s === en) {
+                                  // Clicked whitespace: select the space run,
+                                  // as native word-selection does.
+                                  while (s > 0 && /\s/.test(t[s - 1])) s--
+                                  while (en < t.length && /\s/.test(t[en])) en++
+                                }
+                                ta.setSelectionRange(s, en)
+                                setCurveSel({ start: s, end: en })
+                              }}
                               style={{
                                 position: "absolute",
                                 inset: 0,
                                 width: "100%",
                                 height: "100%",
-                                color: el.color,
+                                // While curved, the textarea is only a key sink:
+                                // the glyphs underneath are the CurvedText and
+                                // the caret is drawn on the path, so both of the
+                                // textarea's own are hidden.
+                                color: curved ? "transparent" : el.color,
+                                caretColor: curved ? "transparent" : el.color,
                                 fontSize: `${el.fontSize * zoom}px`,
                                 fontFamily: `"${el.fontFamily}"`,
                                 textAlign: el.textAlign ?? "left",
@@ -4026,8 +4351,11 @@ export default function Designer({
                                 if (node.dataset.initialSelectDone === "1") return
                                 node.setSelectionRange(0, node.value.length)
                                 node.dataset.initialSelectDone = "1"
+                                setCurveSel({ start: 0, end: node.value.length })
                               }}
-                              className="pointer-events-auto bg-transparent outline-none leading-none"
+                              className={`pointer-events-auto bg-transparent outline-none leading-none ${
+                                curved ? "curve-editing" : ""
+                              }`}
                             />
                             {/* Border strips: grab the box edge to move the text while
                                 editing (the centre stays a text caret). Hovering any
@@ -4110,6 +4438,19 @@ export default function Designer({
                         )
                       })()
                     ) : (
+                      (() => {
+                      // Same layout the CurvedText below renders with — read
+                      // here so the wrapper can anchor to the path.
+                      const shownCurve = el.textPath
+                        ? curvedLayout(
+                            el.content,
+                            el.textPath,
+                            el.textPathOffset ?? 0,
+                            el.fontSize * zoom,
+                            el.fontFamily
+                          )
+                        : null
+                      return (
                       <div
                         key={el.id}
                         data-text-element="true"
@@ -4123,8 +4464,15 @@ export default function Designer({
                           position: "absolute",
                           touchAction: "none",
                           zIndex: el.z,
-                          left: `${el.x}%`,
-                          top: `${el.y}%`,
+                          // Same path anchoring as the editing branch: the box
+                          // follows the glyphs, this keeps the curve itself
+                          // still as the offset moves them along it.
+                          left: shownCurve
+                            ? `calc(${el.x}% + ${shownCurve.anchorDX}px)`
+                            : `${el.x}%`,
+                          top: shownCurve
+                            ? `calc(${el.y}% + ${shownCurve.anchorDY}px)`
+                            : `${el.y}%`,
                           // Hide the flat glyphs while the stitched overlay is
                           // shown (avoids the flat/render double-image); keep the
                           // selection outline + handles visible.
@@ -4153,7 +4501,28 @@ export default function Designer({
                         {/* Block wrapper so the glyphs clip to the print area
                             without clipping the handle children. */}
                         <span style={{ display: "block", clipPath: contentClipPath("text", el) }}>
-                          {el.content}
+                          {el.textPath ? (
+                            /* On a baseline path, so the glyphs are drawn as SVG
+                               text rather than laid out by the block's own CSS —
+                               the size/weight/style above still describe it, and
+                               the selection box wraps whatever this renders. */
+                            <CurvedText
+                              text={el.content}
+                              path={el.textPath}
+                              offset={el.textPathOffset ?? 0}
+                              fontSize={el.fontSize * zoom}
+                              fontFamily={el.fontFamily}
+                              color={embroideryShown ? "transparent" : el.color}
+                              bold={el.bold}
+                              italic={el.italic}
+                              underline={el.underline}
+                              // The guide follows the Curve panel: while it is
+                              // open on this text, the path it edits is drawn.
+                              showPath={curvePanelOpen && selectedTextId === el.id}
+                            />
+                          ) : (
+                            el.content
+                          )}
                         </span>
                         {selectedTextId === el.id &&
                           draggingElId !== el.id &&
@@ -4188,6 +4557,8 @@ export default function Designer({
                           />
                         )}
                       </div>
+                      )
+                      })()
                     )
                   )}
                   {visibleGraphicElements.map(el => (
@@ -4887,8 +5258,14 @@ export default function Designer({
               underline={!!selectedText?.underline}
               canBold={fontCaps.canBold}
               canItalic={fontCaps.canItalic}
+              canAlign={!selectedText?.textPath}
               maxFontSize={maxFontSize}
-              onTextAlignChange={align => updateSelectedText({ textAlign: align })}
+              // Curved text is always centre-aligned (the renderer anchors the
+              // run's middle to the path), so the align toggle pins to center
+              // while a path is set instead of cycling.
+              onTextAlignChange={align =>
+                updateSelectedText({ textAlign: selectedText?.textPath ? "center" : align })
+              }
               onToggleBold={() => updateSelectedText({ bold: !selectedText?.bold })}
               onToggleItalic={() => updateSelectedText({ italic: !selectedText?.italic })}
               onToggleUnderline={() => updateSelectedText({ underline: !selectedText?.underline })}
@@ -4903,7 +5280,32 @@ export default function Designer({
               onColorClick={() =>
                 setTextColorPanelOpen(o => {
                   const next = !o
-                  if (next) setFontPanelOpen(false)
+                  if (next) {
+                    setFontPanelOpen(false)
+                    setCurvePanelOpen(false)
+                  }
+                  return next
+                })
+              }
+              onCurveClick={() =>
+                setCurvePanelOpen(o => {
+                  const next = !o
+                  if (next) {
+                    setFontPanelOpen(false)
+                    setTextColorPanelOpen(false)
+                    // Opening the panel applies the default curve straight away,
+                    // so the canvas shows what the panel is describing. CE.SDK
+                    // likewise has no "curve selected but not applied" state —
+                    // the path IS the state.
+                    if (!selectedText?.textPath) {
+                      updateSelectedText({
+                        textPath: textCurve(DEFAULT_TEXT_CURVE).path,
+                        textPathOffset: selectedText?.textPathOffset ?? 0,
+                        // Curved text is always centre-aligned.
+                        textAlign: "center",
+                      })
+                    }
+                  }
                   return next
                 })
               }
@@ -4923,6 +5325,17 @@ export default function Designer({
               onClose={() => setFontPanelOpen(false)}
               currentFontFamily={selectedText?.fontFamily ?? DEFAULT_FONT_FAMILY}
               onChange={family => updateSelectedText({ fontFamily: family })}
+            />
+
+            <TextPathPanel
+              open={curvePanelOpen && !!selectedText}
+              onClose={() => setCurvePanelOpen(false)}
+              curveId={curveIdForPath(selectedText?.textPath)}
+              offset={selectedText?.textPathOffset ?? 0}
+              onCurveChange={id =>
+                updateSelectedText({ textPath: textCurve(id).path, textAlign: "center" })
+              }
+              onOffsetChange={offset => updateSelectedText({ textPathOffset: offset })}
             />
             </div>
           </div>
@@ -7027,7 +7440,10 @@ export default function Designer({
         onFontFamilyChange={family => updateSelectedText({ fontFamily: family })}
         onFontSizeChange={size => updateSelectedText({ fontSize: size })}
         onColorChange={color => updateSelectedText({ color, colorSet: true })}
-        onTextAlignChange={align => updateSelectedText({ textAlign: align })}
+        // Same rule as the desktop bar: on a path, alignment pins to center.
+        onTextAlignChange={align =>
+          updateSelectedText({ textAlign: selectedText?.textPath ? "center" : align })
+        }
         onToggleBold={() => updateSelectedText({ bold: !selectedText?.bold })}
         onToggleItalic={() => updateSelectedText({ italic: !selectedText?.italic })}
         onToggleUnderline={() => updateSelectedText({ underline: !selectedText?.underline })}
