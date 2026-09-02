@@ -1827,9 +1827,28 @@ export default function Designer({
   }
 
   // Drag/rotate release (and text resize release): fit back into the area.
-  const fitElementAfterRelease = (kind: "text" | "graphic", id: string) => {
+  // create-omat's fitBlockToRect scales the block, AWAITS A FRAME, re-reads the
+  // visual bbox and only then repositions — because the size a block actually
+  // ends up is not the size the scale predicted. The same is true here: the
+  // font size is rounded and floored at MIN_TEXT_FONT_SIZE, a curved text's box
+  // is not a linear function of it, and glyph metrics do not scale perfectly.
+  // Positioning from the predicted box is what left an over-sized text hanging
+  // outside after it had supposedly been pushed back in.
+  //
+  // So this re-measures and goes again until nothing moves (computePrintAreaFit
+  // returns null once the element is inside), capped so a pathological case
+  // cannot loop.
+  const FIT_PASSES = 4
+  const fitElementAfterRelease = (
+    kind: "text" | "graphic",
+    id: string,
+    pass = 0
+  ) => {
     const fit = computePrintAreaFit(kind, id)
     if (!fit) return
+    if (pass < FIT_PASSES) {
+      requestAnimationFrame(() => fitElementAfterRelease(kind, id, pass + 1))
+    }
     if (kind === "graphic") {
       setGraphicElements(prev =>
         prev.map(g =>
@@ -2467,12 +2486,15 @@ export default function Designer({
         : {},
     [productData]
   )
-  // A colour with every one of its sizes sold out cannot be ordered at all —
-  // on the hypotheses page its swatch is not selectable, and hovering it shows
-  // the garment large with the reason. (For a one-size product that is simply
-  // "the single size is gone".)
+  // A colour with every one of its sizes sold out cannot be ordered at all: its
+  // swatch is struck through and not selectable, and hovering it shows the
+  // garment large with the reason.
+  //
+  // This used to be limited to the hypotheses page. It matters most on the
+  // one-size products (caps, mugs), where "the single size is gone" IS "this
+  // colour is gone" — there is no size list for the strike to appear in, so
+  // without it on the swatch the shopper has nowhere to read it at all.
   const isColorSoldOut = (index: number) => {
-    if (!basketHypotheses) return false
     const id = appearances[index]?.id
     if (!id || sizes.length === 0) return false
     return (outOfStockMap[id] ?? []).length >= sizes.length
@@ -3258,18 +3280,42 @@ export default function Designer({
     // It's a stable string (unlike printAreaOverlay, a fresh object each render).
   }, [productId, activeViewId, currentPrintAreaId])
   // Computes the largest font size at which `text` fits in `areaWidth × areaHeight`.
-  const computeMaxFontSize = (text: string, areaWidth: number, areaHeight: number) => {
-    if (areaWidth <= 0 || areaHeight <= 0) return 14
-    const safeText = text || "A"
-    if (typeof document === "undefined") return Math.floor(areaHeight)
-    const canvas = document.createElement("canvas")
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return Math.floor(areaHeight)
-    ctx.font = '100px "Inter", sans-serif'
-    const widthAt100 = ctx.measureText(safeText).width
-    if (widthAt100 <= 0) return Math.floor(areaHeight)
-    const maxByWidth = (areaWidth / widthAt100) * 100
-    return Math.max(14, Math.floor(Math.min(maxByWidth, areaHeight)))
+  // The largest font size at which a run still fits the print area.
+  //
+  // Measured in the element's OWN face and weight. It used to measure
+  // everything in Inter, which made the cap wrong for every other font — and
+  // wrong in the dangerous direction for a wider face like the Lobster Two
+  // default, where the text stayed over-sized and hung outside the area.
+  //
+  // Lines are measured separately (the widest one decides the width) and the
+  // height is shared between them, since leading-none makes N lines exactly N
+  // font sizes tall. Measuring the whole string as one run, newlines included,
+  // both over-counted the width and under-counted the height.
+  const computeMaxFontSize = (
+    text: string,
+    areaWidth: number,
+    areaHeight: number,
+    fontFamily: string,
+    bold?: boolean,
+    italic?: boolean
+  ) => {
+    if (areaWidth <= 0 || areaHeight <= 0) return MIN_TEXT_FONT_SIZE
+    const lines = (text || "A").split("\n")
+    const byHeight = areaHeight / lines.length
+    if (typeof document === "undefined") return Math.floor(byHeight)
+    const ctx = document.createElement("canvas").getContext("2d")
+    if (!ctx) return Math.floor(byHeight)
+    ctx.font = `${italic ? "italic " : ""}${bold ? "700" : "400"} 100px "${fontFamily}", sans-serif`
+    let widthAt100 = 0
+    for (const line of lines) {
+      widthAt100 = Math.max(widthAt100, ctx.measureText(line || "A").width)
+    }
+    if (widthAt100 <= 0) return Math.floor(byHeight)
+    const byWidth = (areaWidth / widthAt100) * 100
+    // Floored at the shared minimum rather than 14: a long line on a small
+    // print area genuinely needs to go below that, and the old floor was one
+    // of the reasons such a text would not come back inside.
+    return Math.max(MIN_TEXT_FONT_SIZE, Math.floor(Math.min(byWidth, byHeight)))
   }
   // Measures a text run's pixel width at the given fontSize/fontFamily.
   const measureTextWidth = (text: string, fontSize: number, fontFamily: string) => {
@@ -3298,9 +3344,20 @@ export default function Designer({
       computeMaxFontSize(
         selectedText?.content ?? "",
         printAreaPxSize.width,
-        printAreaPxSize.height
+        printAreaPxSize.height,
+        selectedText?.fontFamily ?? DEFAULT_FONT_FAMILY,
+        selectedText?.bold,
+        selectedText?.italic
       ) / zoom,
-    [selectedText?.content, printAreaPxSize.width, printAreaPxSize.height, zoom]
+    [
+      selectedText?.content,
+      selectedText?.fontFamily,
+      selectedText?.bold,
+      selectedText?.italic,
+      printAreaPxSize.width,
+      printAreaPxSize.height,
+      zoom,
+    ]
   )
 
   // Auto-clamp the selected text's fontSize if its content makes the current size overflow.
@@ -3314,6 +3371,20 @@ export default function Designer({
       )
     })
   }, [maxFontSize, selectedTextId])
+
+  // Typing changes an element's size, and nothing else fits it back: the cap
+  // above only limits the FONT, so a run that grew past the edge stayed there,
+  // correctly sized but hanging outside. create-omat fits on every block update
+  // for the same reason. Deferred to the frame after editing ends so the final
+  // content has laid out before the box is measured.
+  const wasEditingRef = useRef<string | null>(null)
+  useEffect(() => {
+    const was = wasEditingRef.current
+    wasEditingRef.current = editingTextId
+    if (was && !editingTextId) {
+      requestAnimationFrame(() => fitElementAfterRelease("text", was))
+    }
+  }, [editingTextId])
 
   // Per-size selected quantities; total derived from the sum.
   const [sizeQuantities, setSizeQuantities] = useState<Record<string, number>>({})
