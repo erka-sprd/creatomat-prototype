@@ -130,7 +130,7 @@ importers:
         version: 0.4.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       product-catalog-client:
         specifier: github:erka-sprd/product-catalog-client
-        version: https://codeload.github.com/erka-sprd/product-catalog-client/tar.gz/0deb108fc7ba4c5d78cb56c42fb0c018ad3560e7(react@19.2.0)
+        version: https://codeload.github.com/erka-sprd/product-catalog-client/tar.gz/a4013b6db61d1c778577b723c9c6274f46b6c509(react@19.2.0)
       react:
         specifier: 19.2.0
         version: 19.2.0
@@ -1705,8 +1705,8 @@ packages:
     resolution: {integrity: sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg==}
     engines: {node: ^10 || ^12 || >=14}
 
-  product-catalog-client@https://codeload.github.com/erka-sprd/product-catalog-client/tar.gz/0deb108fc7ba4c5d78cb56c42fb0c018ad3560e7:
-    resolution: {gitHosted: true, integrity: sha512-jcfQKrDsC9xt9gggIcNNmBdIfzsCbAJThIYfp6OphUuMaasBwioWk4Boh7H1Z9zjVehLypHV0G+zELffcV66dg==, tarball: https://codeload.github.com/erka-sprd/product-catalog-client/tar.gz/0deb108fc7ba4c5d78cb56c42fb0c018ad3560e7}
+  product-catalog-client@https://codeload.github.com/erka-sprd/product-catalog-client/tar.gz/a4013b6db61d1c778577b723c9c6274f46b6c509:
+    resolution: {gitHosted: true, integrity: sha512-Xr4hEC+TYySi/r23UtWB+MB9/lIXv+ijDzT+cpByu0hj2lkN4P8YJAj2Mn/M7AVdUbdXszEpZiYLckyaIUKJVw==, tarball: https://codeload.github.com/erka-sprd/product-catalog-client/tar.gz/a4013b6db61d1c778577b723c9c6274f46b6c509}
     version: 0.1.0
     peerDependencies:
       react: '>=18'
@@ -3284,7 +3284,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  product-catalog-client@https://codeload.github.com/erka-sprd/product-catalog-client/tar.gz/0deb108fc7ba4c5d78cb56c42fb0c018ad3560e7(react@19.2.0):
+  product-catalog-client@https://codeload.github.com/erka-sprd/product-catalog-client/tar.gz/a4013b6db61d1c778577b723c9c6274f46b6c509(react@19.2.0):
     dependencies:
       react: 19.2.0
 
