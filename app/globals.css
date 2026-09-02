@@ -623,3 +623,66 @@
   background: rgba(0, 0, 0, 0.01);
   color: transparent;
 }
+
+/* Mobile custom colour picker — create-omat's react-colorful restyle
+   (src/app/globals.scss .custom-picker-wrapper), flattened to plain CSS. */
+.custom-picker-wrapper {
+  width: 100%;
+  padding: 16px 16px 0;
+  border-radius: 8px;
+}
+.custom-picker-wrapper .react-colorful {
+  width: 100% !important;
+  height: auto;
+  gap: 8px;
+  align-self: stretch;
+}
+.custom-picker-wrapper .react-colorful__saturation {
+  height: 119px;
+  border-radius: 8px;
+  margin-bottom: 0;
+  border-bottom: none;
+}
+.custom-picker-wrapper .react-colorful__hue {
+  height: 17px;
+  border-radius: 52px;
+}
+.custom-picker-wrapper .react-colorful__saturation-pointer,
+.custom-picker-wrapper .react-colorful__hue-pointer {
+  width: 28px;
+  height: 28px;
+  border: 1px solid black;
+  background: transparent;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  border-radius: 50%;
+}
+.custom-picker-wrapper .react-colorful__saturation-pointer::after,
+.custom-picker-wrapper .react-colorful__hue-pointer::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(45deg);
+  width: 26px;
+  height: 26px;
+  background: inherit;
+  background-clip: content-box;
+  clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px #e9e9e9;
+  border: 2px solid white;
+  box-sizing: border-box;
+}
+
+/* The component kit's `no-scrollbar` (@sprd/sprd-component-kit preset), which
+   this project does not load. Used by every horizontally-scrolling strip —
+   the mobile edit sheet's tab row and font list, the font panel's grid. The
+   kit only sets scrollbar-width; WebKit needs its own pseudo-element hidden
+   too, or the bar still overlays the strip on macOS and iOS. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

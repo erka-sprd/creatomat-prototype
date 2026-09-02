@@ -1796,7 +1796,12 @@ export default function Designer({
         target.closest("[data-editor-bar]") ||
         target.closest("[data-text-color-panel]") ||
         target.closest("[data-font-panel]") ||
-        target.closest("[data-text-path-panel]")
+        target.closest("[data-text-path-panel]") ||
+        // Any bottom sheet. The mobile edit sheet is portalled to <body>, so
+        // without this every tap on one of its tabs read as a click outside
+        // the selection: the text got deselected and the sheet closed under
+        // the finger the moment you tried to switch panel.
+        target.closest("[data-vaul-drawer]")
       ) {
         return
       }

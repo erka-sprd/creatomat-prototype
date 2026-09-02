@@ -1,20 +1,31 @@
 "use client"
 
 import MobileDrawer from "@/components/mobile/mobile-drawer"
-import { FontButton } from "@/components/ui/font-panel/FontButton"
-import { MASTER_COLOR_PALETTE } from "@/components/ui/text-color-panel/TextColorPanel"
-import { FONTS } from "@/lib/fonts"
-import { DeleteIcon, DuplicateIcon, MinusIcon, PlusIcon } from "@/components/mobile/icons"
+import {
+    COLOR_PALETTE,
+    ColorBubble,
+    RainbowBubble,
+} from "@/components/mobile/color-bubbles"
+import CustomColorPanel from "@/components/mobile/custom-color-panel"
+import { DeleteIcon, DuplicateIcon } from "@/components/mobile/icons"
 import { AlignIcon, BoldIcon, ItalicIcon, UnderlineIcon } from "@/components/ui/editor-bar"
-import { Keyboard } from "lucide-react"
+import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
+import { FontButton } from "@/components/ui/font-panel/FontButton"
+import { FONTS } from "@/lib/fonts"
+import { ArrowLeft, Keyboard } from "lucide-react"
 import { useEffect, useState } from "react"
 
-// Mobile edit bottom sheet — replica of create-omat's MobileEditDrawer:
-// opens when a canvas element is selected, pill tabs across the top
-// (text: Font / Size / Color / Format), a fixed-height panel area under them
-// (184px, like create-omat's drawer panels) and no dim overlay / non-modal so
-// the canvas stays visible and interactive while editing. A selected graphic
-// gets the same sheet with its two actions (duplicate / delete).
+// Mobile edit bottom sheet — replica of create-omat's MobileEditDrawer
+// (src/components/ui/mobile-edit/): pill tabs across the top (Write / Font /
+// Size / Color / Format) with duplicate/delete at the row's end, a fixed
+// 184px panel area under them, and no dim overlay / non-modal so the canvas
+// stays visible while editing. Each panel mirrors its create-omat counterpart:
+//   Font    a horizontal strip of 96px tiles (FontGrid mobile), not a grid
+//   Size    the WedgeSlider with clickable Small / Large labels stepping ±2
+//   Color   the 8-column COLOR_PALETTE bubble grid + rainbow bubble that swaps
+//           the sheet to the custom picker (back arrow in the title)
+//   Format  bordered B / I / U buttons over the labelled alignment box
+// A selected graphic gets the same sheet with its two actions.
 
 type TextValues = {
     fontFamily: string
@@ -73,17 +84,45 @@ export default function MobileEditSheet({
     onWrite,
 }: MobileEditSheetProps) {
     const [activeTab, setActiveTab] = useState<TextTab>("Font")
+    // The custom colour view replaces the whole sheet body, create-omat style;
+    // the last colour picked there becomes the rainbow bubble's centre dot.
+    const [showCustomPicker, setShowCustomPicker] = useState(false)
+    const [lastCustomColor, setLastCustomColor] = useState<string | null>(null)
 
     // Reset to the first tab whenever a new element is selected.
     useEffect(() => {
         if (open) setActiveTab("Font")
     }, [open, blockType])
 
-    const stepFontSize = (delta: number) => {
-        if (!text) return
-        const next = Math.min(maxFontSize, Math.max(MIN_FONT_SIZE, text.fontSize + delta))
-        onFontSizeChange(next)
-    }
+    // Leaving the tab (or the sheet) drops the picker view, as create-omat does
+    // when activeMobilePanel changes.
+    useEffect(() => {
+        setShowCustomPicker(false)
+    }, [activeTab, open])
+
+    const clampSize = (v: number) =>
+        Math.min(maxFontSize, Math.max(MIN_FONT_SIZE, Math.round(v)))
+
+    const title =
+        blockType === "text" ? (
+            showCustomPicker ? (
+                <span className="flex h-full items-center gap-2 pt-1">
+                    <button
+                        type="button"
+                        aria-label="Back"
+                        onClick={() => setShowCustomPicker(false)}
+                        className="-ml-1 cursor-pointer p-1"
+                    >
+                        <ArrowLeft className="size-6" strokeWidth={1.8} />
+                    </button>
+                    Custom color
+                </span>
+            ) : (
+                "Text style"
+            )
+        ) : (
+            "Edit image"
+        )
 
     return (
         <MobileDrawer
@@ -93,16 +132,26 @@ export default function MobileEditSheet({
             }}
             overlay={false}
             modal={false}
-            title={blockType === "text" ? "Text style" : "Edit image"}
+            title={title}
         >
-            {blockType === "text" && text && (
+            {blockType === "text" && text && showCustomPicker ? (
+                <div className="pb-[calc(8px+env(safe-area-inset-bottom))]">
+                    <CustomColorPanel
+                        currentColor={text.colorSet ? text.color : "#000000"}
+                        onColorChange={color => {
+                            onColorChange(color)
+                            setLastCustomColor(color)
+                        }}
+                    />
+                </div>
+            ) : blockType === "text" && text ? (
                 <div className="flex flex-col pb-[calc(8px+env(safe-area-inset-bottom))]">
-                    {/* Pill tabs + duplicate/delete on the right */}
-                    <div className="flex items-center gap-1 overflow-x-auto px-4 pb-1">
+                    {/* Pill tabs + duplicate/delete at the row's end, one scroller. */}
+                    <div className="no-scrollbar flex items-center gap-2 overflow-x-auto px-4 whitespace-nowrap">
                         <button
                             type="button"
                             onClick={onWrite}
-                            className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-full py-2 pr-4 text-sm font-semibold"
+                            className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-full py-2 pr-4 pl-0 text-sm font-semibold transition"
                         >
                             <Keyboard className="size-5" strokeWidth={1.7} />
                             Write
@@ -120,138 +169,121 @@ export default function MobileEditSheet({
                                 {tab}
                             </button>
                         ))}
-                        <div className="mx-1 h-6 w-px shrink-0 bg-neutral-200" aria-hidden />
-                        <button
-                            type="button"
-                            aria-label="Duplicate text"
-                            onClick={onDuplicate}
-                            className="shrink-0 cursor-pointer rounded-full p-2 active:bg-neutral-100"
-                        >
-                            <DuplicateIcon className="size-5" />
-                        </button>
-                        <button
-                            type="button"
-                            aria-label="Delete text"
-                            onClick={() => {
-                                onDelete()
-                                onClose()
-                            }}
-                            className="shrink-0 cursor-pointer rounded-full p-2 text-[#DC2626] active:bg-neutral-100"
-                        >
-                            <DeleteIcon className="size-5" />
-                        </button>
+                        <div className="flex items-center gap-1 bg-white pl-2">
+                            <button
+                                type="button"
+                                aria-label="Duplicate text"
+                                onClick={onDuplicate}
+                                className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors active:bg-neutral-100"
+                            >
+                                <DuplicateIcon className="size-5" />
+                            </button>
+                            <button
+                                type="button"
+                                aria-label="Delete text"
+                                onClick={() => {
+                                    onDelete()
+                                    onClose()
+                                }}
+                                className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-red-600 transition-colors active:bg-neutral-50"
+                            >
+                                <DeleteIcon className="size-5" />
+                            </button>
+                        </div>
                     </div>
 
-                    {/* Panel area — fixed height like create-omat's drawer panels */}
-                    <div className="h-[184px] px-4 pt-2">
+                    {/* Panel area — the fixed height create-omat's drawer keeps
+                        (184px), panels centred inside it. */}
+                    <div className="flex h-[184px] items-center justify-center">
                         {activeTab === "Font" && (
-                            <div className="no-scrollbar grid h-full grid-cols-2 content-start gap-2 overflow-y-auto">
-                                {FONTS.map(font => (
-                                    <FontButton
-                                        key={font.family}
-                                        font={font}
-                                        isSelected={font.family === text.fontFamily}
-                                        onClick={f => onFontFamilyChange(f.family)}
-                                    />
-                                ))}
+                            /* create-omat's FontGrid mobile: one horizontal
+                               strip of 96px-wide tiles. */
+                            <div className="no-scrollbar flex w-full items-center overflow-x-auto">
+                                <div className="flex items-center gap-2 pr-4 pl-4">
+                                    {FONTS.map(font => (
+                                        <FontButton
+                                            key={font.family}
+                                            font={font}
+                                            isSelected={font.family === text.fontFamily}
+                                            onClick={f => onFontFamilyChange(f.family)}
+                                            className="h-[100px] w-24 shrink-0"
+                                        />
+                                    ))}
+                                </div>
                             </div>
                         )}
 
                         {activeTab === "Size" && (
-                            <div className="flex h-full flex-col items-center justify-center gap-4">
-                                <div className="flex items-center gap-6">
-                                    <button
-                                        type="button"
-                                        aria-label="Decrease font size"
-                                        disabled={text.fontSize <= MIN_FONT_SIZE}
-                                        onClick={() => stepFontSize(-2)}
-                                        className="flex size-12 cursor-pointer items-center justify-center rounded-full bg-neutral-100 active:bg-neutral-200 disabled:opacity-30"
-                                    >
-                                        <MinusIcon className="size-6" />
-                                    </button>
-                                    <span className="w-20 text-center text-2xl font-semibold text-black tabular-nums">
-                                        {Math.round(text.fontSize)}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        aria-label="Increase font size"
-                                        disabled={text.fontSize >= maxFontSize}
-                                        onClick={() => stepFontSize(2)}
-                                        className="flex size-12 cursor-pointer items-center justify-center rounded-full bg-neutral-100 active:bg-neutral-200 disabled:opacity-30"
-                                    >
-                                        <PlusIcon className="size-6" />
-                                    </button>
+                            /* create-omat's SizePanel: the wedge slider with
+                               clickable Small / Large labels stepping ±2. */
+                            <div className="flex w-full flex-col items-center px-4">
+                                <div className="relative flex w-full flex-col items-center">
+                                    <div className="flex w-full justify-center py-2 pr-5">
+                                        <WedgeSlider
+                                            min={MIN_FONT_SIZE}
+                                            max={Math.max(MIN_FONT_SIZE + 1, Math.floor(maxFontSize))}
+                                            value={Math.min(text.fontSize, maxFontSize)}
+                                            onChange={v => onFontSizeChange(clampSize(v))}
+                                        />
+                                    </div>
+                                    <div className="flex w-full items-center justify-between px-4">
+                                        <span
+                                            className="cursor-pointer text-xs font-normal"
+                                            onClick={() =>
+                                                onFontSizeChange(clampSize(text.fontSize - 2))
+                                            }
+                                        >
+                                            Small
+                                        </span>
+                                        <span
+                                            className="cursor-pointer text-base text-black"
+                                            onClick={() =>
+                                                onFontSizeChange(clampSize(text.fontSize + 2))
+                                            }
+                                        >
+                                            Large
+                                        </span>
+                                    </div>
                                 </div>
-                                <input
-                                    type="range"
-                                    min={MIN_FONT_SIZE}
-                                    max={Math.max(MIN_FONT_SIZE + 1, Math.floor(maxFontSize))}
-                                    value={Math.min(text.fontSize, maxFontSize)}
-                                    onChange={e => onFontSizeChange(Number(e.target.value))}
-                                    className="w-64 accent-black"
-                                    aria-label="Font size"
-                                />
                             </div>
                         )}
 
                         {activeTab === "Color" && (
-                            <div className="no-scrollbar flex h-full flex-col gap-2 overflow-y-auto py-1">
-                                {MASTER_COLOR_PALETTE.map((row, i) => (
-                                    <div key={i} className="flex shrink-0 gap-2">
-                                        {row.map(color => {
-                                            const active =
-                                                text.colorSet &&
-                                                text.color.toLowerCase() === color.toLowerCase()
-                                            return (
-                                                <button
-                                                    key={color}
-                                                    type="button"
-                                                    aria-label={`Text color ${color}`}
-                                                    onClick={() => onColorChange(color)}
-                                                    className={
-                                                        "size-9 shrink-0 cursor-pointer rounded-full border border-black/10 " +
-                                                        (active
-                                                            ? "ring-2 ring-black ring-offset-2"
-                                                            : "")
-                                                    }
-                                                    style={{ backgroundColor: color }}
-                                                />
-                                            )
-                                        })}
-                                    </div>
+                            /* create-omat's text ColorPanel: COLOR_PALETTE in
+                               an 8-column bubble grid, rainbow bubble last. */
+                            <div className="grid w-full grid-cols-8 justify-items-center gap-y-2 px-4">
+                                {COLOR_PALETTE.map(color => (
+                                    <ColorBubble
+                                        key={color}
+                                        color={color}
+                                        isActive={
+                                            text.colorSet &&
+                                            text.color.toLowerCase() === color.toLowerCase()
+                                        }
+                                        onClick={() => onColorChange(color)}
+                                    />
                                 ))}
+                                <RainbowBubble
+                                    lastCustomColor={lastCustomColor}
+                                    onClick={() => setShowCustomPicker(true)}
+                                />
                             </div>
                         )}
 
                         {activeTab === "Format" && (
-                            <div className="flex h-full flex-col items-center justify-center gap-5">
-                                <div className="flex items-center gap-2">
-                                    {(["left", "center", "right"] as const).map(align => (
-                                        <button
-                                            key={align}
-                                            type="button"
-                                            aria-label={`Align ${align}`}
-                                            onClick={() => onTextAlignChange(align)}
-                                            className={
-                                                "flex size-11 cursor-pointer items-center justify-center rounded-lg " +
-                                                (text.textAlign === align
-                                                    ? "bg-neutral-100"
-                                                    : "active:bg-neutral-100")
-                                            }
-                                        >
-                                            <AlignIcon align={align} />
-                                        </button>
-                                    ))}
-                                </div>
+                            /* create-omat's FormatPanel: bordered B / I / U
+                               buttons, then the labelled alignment box. */
+                            <div className="animate-in fade-in slide-in-from-bottom-2 flex w-full flex-col gap-4 px-4">
                                 <div className="flex items-center gap-2">
                                     <button
                                         type="button"
                                         aria-label="Bold"
-                                        disabled={!canBold}
                                         onClick={onToggleBold}
+                                        disabled={!canBold}
                                         className={
-                                            "flex size-11 cursor-pointer items-center justify-center rounded-lg disabled:opacity-30 " +
-                                            (text.bold ? "bg-neutral-100" : "active:bg-neutral-100")
+                                            "flex h-[52px] max-w-[62px] flex-1 cursor-pointer items-center justify-center rounded-lg border border-neutral-200 transition-colors " +
+                                            (text.bold && canBold ? "bg-neutral-100" : "bg-white") +
+                                            (!canBold ? " cursor-not-allowed opacity-30" : "")
                                         }
                                     >
                                         <BoldIcon />
@@ -259,13 +291,14 @@ export default function MobileEditSheet({
                                     <button
                                         type="button"
                                         aria-label="Italic"
-                                        disabled={!canItalic}
                                         onClick={onToggleItalic}
+                                        disabled={!canItalic}
                                         className={
-                                            "flex size-11 cursor-pointer items-center justify-center rounded-lg disabled:opacity-30 " +
-                                            (text.italic
+                                            "flex h-[52px] max-w-[62px] flex-1 cursor-pointer items-center justify-center rounded-lg border border-neutral-200 transition-colors " +
+                                            (text.italic && canItalic
                                                 ? "bg-neutral-100"
-                                                : "active:bg-neutral-100")
+                                                : "bg-white") +
+                                            (!canItalic ? " cursor-not-allowed opacity-30" : "")
                                         }
                                     >
                                         <ItalicIcon />
@@ -275,20 +308,40 @@ export default function MobileEditSheet({
                                         aria-label="Underline"
                                         onClick={onToggleUnderline}
                                         className={
-                                            "flex size-11 cursor-pointer items-center justify-center rounded-lg " +
-                                            (text.underline
-                                                ? "bg-neutral-100"
-                                                : "active:bg-neutral-100")
+                                            "flex h-[52px] max-w-[62px] flex-1 cursor-pointer items-center justify-center rounded-lg border border-neutral-200 transition-colors " +
+                                            (text.underline ? "bg-neutral-100" : "bg-white")
                                         }
                                     >
                                         <UnderlineIcon />
                                     </button>
                                 </div>
+
+                                <div className="flex min-h-[81px] max-w-[342px] items-center overflow-hidden rounded-lg border border-neutral-200 bg-white px-1">
+                                    {(["left", "center", "right"] as const).map(align => (
+                                        <button
+                                            key={align}
+                                            type="button"
+                                            aria-label={`Align ${align}`}
+                                            onClick={() => onTextAlignChange(align)}
+                                            className={
+                                                "relative flex min-h-[69px] flex-1 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg py-2 transition-all duration-300 " +
+                                                (text.textAlign === align
+                                                    ? "bg-neutral-100"
+                                                    : "active:bg-neutral-50")
+                                            }
+                                        >
+                                            <AlignIcon align={align} />
+                                            <span className="text-[11px] leading-tight font-normal text-black capitalize">
+                                                {align}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>
                 </div>
-            )}
+            ) : null}
 
             {blockType === "graphic" && (
                 <div className="flex items-center justify-center gap-3 px-4 pt-2 pb-[calc(24px+env(safe-area-inset-bottom))]">
