@@ -18,6 +18,10 @@ export type FontDef = {
 }
 
 export const FONTS: FontDef[] = [
+  // create-omat's DEFAULT_FONT (Constants.ts), so a new text arrives in the
+  // same face there and here. First in the list because it is the default —
+  // the panel preloads the opening rows.
+  { family: "Lobster Two", category: "handwriting" },
   { family: "Anton", category: "display" },
   { family: "Archivo Black", category: "display" },
   { family: "Alfa Slab One", category: "display" },

@@ -1,3 +1,5 @@
+import { EditorBarShell } from "./EditorBarShell"
+
 type GraphicEditorBarProps = {
   show: boolean
   // Mirrors create-omat's isAiEditable: the "Modify with AI" item only appears
@@ -98,13 +100,10 @@ export function GraphicEditorBar({ show, isAi = false, onDuplicate, onDelete }: 
   if (!show) return null
 
   return (
-    <div
-      data-editor-bar="true"
-      // Shared between desktop and mobile like create-omat's EditorBar — on
-      // small screens the row scrolls horizontally inside the pill.
-      className="shadow-xs absolute top-8 left-1/2 z-[5] flex h-[48px] max-w-[calc(100%-16px)] -translate-x-1/2 items-center overflow-hidden rounded-full bg-white"
-    >
-      <div className="flex h-full min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden px-1.5 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    // Shared between desktop and mobile like create-omat's EditorBar — the
+    // shell scrolls the row and shows its chevrons once it stops fitting.
+    <EditorBarShell data-editor-bar="true">
+      <>
         {/* Remove Background — label only, like create-omat. Not wired yet. */}
         <button type="button" className={`${ITEM_CLASS} rounded-l-[24px] px-3`}>
           Remove Background
@@ -169,7 +168,7 @@ export function GraphicEditorBar({ show, isAi = false, onDuplicate, onDelete }: 
             <TrashIcon />
           </button>
         </div>
-      </div>
-    </div>
+      </>
+    </EditorBarShell>
   )
 }

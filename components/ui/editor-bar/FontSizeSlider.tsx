@@ -20,11 +20,14 @@ export function FontSizeSlider({
   max,
   value,
   onChange,
+  width,
 }: {
   min: number
   max: number
   value: number
   onChange: (value: number) => void
+  /** Track length in px; the slider draws an SVG track so it needs a number. */
+  width?: number
 }) {
   const rafRef = useRef<number | null>(null)
   // Read at the start of a tween, so a glide eases from wherever the size
@@ -65,6 +68,7 @@ export function FontSizeSlider({
       min={min}
       max={max}
       value={value}
+      width={width}
       // Any real drag movement cancels a glide in progress — the same guard the
       // zoom dock puts in its own onChange.
       onChange={v => {

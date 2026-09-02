@@ -22,7 +22,7 @@ type MobilePanelsDrawerProps = {
 const PANEL_TITLES: Record<MobilePanel, string> = {
     graphics: "Graphics",
     uploads: "Uploads",
-    ai: "AI Image",
+    ai: "AI design",
 }
 
 export default function MobilePanelsDrawer({

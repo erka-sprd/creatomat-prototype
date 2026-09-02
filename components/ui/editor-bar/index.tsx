@@ -1,6 +1,7 @@
 "use client"
 
 import { useId } from "react"
+import { EditorBarShell } from "./EditorBarShell"
 import { EditorBarTooltip } from "./EditorBarTooltip"
 import { FontSizeSlider } from "./FontSizeSlider"
 
@@ -201,11 +202,8 @@ export function EditorBar({
     }`
 
   return (
-    <div
-      data-editor-bar="true"
-      className="shadow-xs absolute top-8 left-1/2 z-[5] flex h-[48px] -translate-x-1/2 items-center overflow-hidden rounded-full bg-white"
-    >
-      <div className="flex h-full min-w-0 items-center gap-2 px-1.5 py-1.5">
+    <EditorBarShell data-editor-bar="true">
+      <>
         {/* Font family (fixed label; hover shows current font) */}
         <EditorBarTooltip content={fontFamily}>
           <button
@@ -273,6 +271,40 @@ export function EditorBar({
         {/* divider */}
         <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
+        {/* Color */}
+        <EditorBarTooltip content="Select text color">
+        <button
+          type="button"
+          aria-label="Text color"
+          onClick={onColorClick}
+          className="flex h-9 items-center gap-2 cursor-pointer rounded-md px-2 hover:bg-neutral-100"
+        >
+          {isDefaultColor ? (
+            // Rainbow swatch while the colour is still the default (unchanged).
+            <span
+              aria-hidden="true"
+              className="flex h-5 w-5 items-center justify-center rounded-full"
+              style={{
+                background:
+                  "conic-gradient(from 90deg, rgba(43, 113, 247, 1) 0deg, rgba(254, 48, 195, 1) 83.07deg, rgba(254, 28, 31, 1) 157.5deg, rgba(244, 245, 71, 1) 240.57deg, rgba(1, 241, 87, 1) 294.23deg, rgba(102, 102, 102, 1) 360deg)",
+              }}
+            >
+              <span className="h-3 w-3 rounded-full bg-white" />
+            </span>
+          ) : (
+            <span
+              aria-hidden="true"
+              className="inline-block h-5 w-5 rounded-full border border-neutral-300"
+              style={{ backgroundColor: color }}
+            />
+          )}
+          <span className="text-[12px] font-semibold">Color</span>
+        </button>
+        </EditorBarTooltip>
+
+        {/* divider */}
+        <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
+
         {/* Font size: decrease */}
         <EditorBarTooltip content="Decrease text size">
           <button
@@ -298,6 +330,7 @@ export function EditorBar({
           max={max}
           value={Math.min(fontSize, max)}
           onChange={v => onFontSizeChange(clamp(v))}
+          width={120}
         />
 
         {/* Font size: increase */}
@@ -331,40 +364,6 @@ export function EditorBar({
           >
             <CurvedLabel />
           </button>
-        </EditorBarTooltip>
-
-        {/* divider */}
-        <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
-
-        {/* Color */}
-        <EditorBarTooltip content="Select text color">
-        <button
-          type="button"
-          aria-label="Text color"
-          onClick={onColorClick}
-          className="flex h-9 items-center gap-2 cursor-pointer rounded-md px-2 hover:bg-neutral-100"
-        >
-          {isDefaultColor ? (
-            // Rainbow swatch while the colour is still the default (unchanged).
-            <span
-              aria-hidden="true"
-              className="flex h-5 w-5 items-center justify-center rounded-full"
-              style={{
-                background:
-                  "conic-gradient(from 90deg, rgba(43, 113, 247, 1) 0deg, rgba(254, 48, 195, 1) 83.07deg, rgba(254, 28, 31, 1) 157.5deg, rgba(244, 245, 71, 1) 240.57deg, rgba(1, 241, 87, 1) 294.23deg, rgba(102, 102, 102, 1) 360deg)",
-              }}
-            >
-              <span className="h-3 w-3 rounded-full bg-white" />
-            </span>
-          ) : (
-            <span
-              aria-hidden="true"
-              className="inline-block h-5 w-5 rounded-full border border-neutral-300"
-              style={{ backgroundColor: color }}
-            />
-          )}
-          <span className="text-[12px] font-semibold">Color</span>
-        </button>
         </EditorBarTooltip>
 
         {/* divider */}
@@ -405,7 +404,7 @@ export function EditorBar({
           </svg>
         </button>
         </EditorBarTooltip>
-      </div>
-    </div>
+      </>
+    </EditorBarShell>
   )
 }

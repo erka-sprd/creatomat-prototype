@@ -251,7 +251,7 @@ export default function MobileDock({
                                 />
                                 <DockItem
                                     icon={<img src="/icons/icon-sparkles-ai.svg" alt="" className="h-6 w-6" />}
-                                    label="AI"
+                                    label="AI design"
                                     onClick={runAndClose(onAIClick)}
                                     disabled={actionDisabled}
                                 />

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 
 import QuantityStepper from "@/components/quantity-stepper"
 import { discountedPrice, volumeDiscountPercentage } from "@/lib/volume-discount"
+import { FREE_SHIPPING_THRESHOLD } from "@/lib/shipping"
 
 export type BasketDesignText = {
   id: string
@@ -168,7 +169,13 @@ export function Basket({ open, onClose, items, onQuantityChange, onRemove }: Bas
   // Summed from the rounded unit prices so the rows always add up to the subtotal.
   const subtotal = items.reduce((sum, item) => sum + lineDiscounted(item), 0)
   const savings = originalSubtotal - subtotal
-  const shipping = items.length > 0 ? 7.99 : 0
+  // Free over the threshold, measured on what is actually being paid — so the
+  // volume discount is applied first and a basket only crosses the line on its
+  // discounted total. Same figure the designer's rail promises
+  // (FREE_SHIPPING_THRESHOLD).
+  const shippingCost = 7.99
+  const shipping =
+    items.length === 0 || subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : shippingCost
   const total = subtotal + shipping
 
   return (

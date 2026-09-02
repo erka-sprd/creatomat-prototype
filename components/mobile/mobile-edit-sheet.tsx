@@ -29,11 +29,12 @@ import { useCallback, useEffect, useRef, useState } from "react"
 // 184px panel area under them, and no dim overlay / non-modal so the canvas
 // stays visible while editing. Each panel mirrors its create-omat counterpart:
 //   Font    a horizontal strip of 96px tiles (FontGrid mobile), not a grid
-//   Size    minus / WedgeSlider / plus across the full width, the slider
-//           reading out its percentage above the handle as create-omat does
+//   Format  bordered B / I / U buttons over the labelled alignment box
 //   Color   the 8-column COLOR_PALETTE bubble grid + rainbow bubble that swaps
 //           the sheet to the custom picker (back arrow in the title)
-//   Format  bordered B / I / U buttons over the labelled alignment box
+//   Size    minus / WedgeSlider / plus across the full width, the slider
+//           reading out its percentage above the handle as create-omat does
+//   Curve   the desktop panel's presets in one horizontal strip
 // A selected graphic gets the same sheet with its two actions.
 
 type TextValues = {
@@ -74,7 +75,7 @@ type MobileEditSheetProps = {
     onCurveChange: (id: TextCurveId | null) => void
 }
 
-const TEXT_TABS = ["Font", "Size", "Curve", "Color", "Format"] as const
+const TEXT_TABS = ["Font", "Format", "Color", "Size", "Curve"] as const
 export type TextTab = (typeof TEXT_TABS)[number]
 
 const MIN_FONT_SIZE = 8

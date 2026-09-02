@@ -946,7 +946,9 @@ export default function Designer({
     // for ordinary straight layout, and a start offset in [-1, 1].
     textPath?: string | null
   }
-  const DEFAULT_FONT_FAMILY = "Inter"
+  // Matches create-omat's DEFAULT_FONT ("lobster Two" in its Constants.ts);
+  // spelled as the Google Fonts family, which is what lib/fonts.ts loads by.
+  const DEFAULT_FONT_FAMILY = "Lobster Two"
   // What a new text arrives with. Entering the editor compares against it, so
   // an untouched placeholder can be selected whole and typed straight over.
   const DEFAULT_TEXT_CONTENT = "Text"
@@ -3847,7 +3849,7 @@ export default function Designer({
 
             {/* Middle Section - Action Buttons */}
             <div id="left-section-middle-side" className="flex-1 flex flex-col justify-center gap-[8px]">
-              {/* AI Image Button */}
+              {/* AI design button */}
               <button
                 type="button"
                 disabled={!canDesignOnCurrentView}
@@ -3885,11 +3887,11 @@ export default function Designer({
                   />
                 )}
                 {!isDockCompact && (
-                  <div className="text-[12px] font-[600] text-black text-center">AI Image</div>
+                  <div className="text-[12px] font-[600] text-black text-center">AI design</div>
                 )}
                 {isDockCompact && hoveredButton === "ai" && (
                   <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded-md bg-neutral-900 p-3 text-sm text-neutral-100 shadow-sm z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-neutral-900">
-                    AI Image
+                    AI design
                   </span>
                 )}
               </button>
@@ -5509,7 +5511,7 @@ export default function Designer({
                 }`}
               >
                 <h2 className="font-display text-[18px] font-medium text-black px-6 pt-6 pb-4 capitalize flex-shrink-0">
-                  {panel === "ai" ? "AI Image" : panel}
+                  {panel === "ai" ? "AI design" : panel}
                 </h2>
                 {panel === "uploads" && (
                   <UploadPanel
@@ -7459,7 +7461,7 @@ export default function Designer({
                     { id: "graphics", label: "Graphics", icon: "/icons/icon-graphics.svg", panel: "graphics" as const },
                     { id: "upload", label: "Upload", icon: "/icons/icon-upload.svg", panel: "uploads" as const },
                     { id: "text", label: "Text", icon: "/icons/icon-text.svg" },
-                    { id: "ai", label: "AI Image", icon: "/icons/icon-sparkles-ai.svg", panel: "ai" as const },
+                    { id: "ai", label: "AI design", icon: "/icons/icon-sparkles-ai.svg", panel: "ai" as const },
                   ] as const
                 ).map(a => (
                   <button
