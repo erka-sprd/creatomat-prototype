@@ -7,8 +7,6 @@ type CurvedTextProps = {
   text: string
   /** The baseline, as CE.SDK's `text/path` would carry it. */
   path: string
-  /** CE.SDK's `text/pathOffset`: a proportion of path length in [-1, 1]. */
-  offset: number
   fontSize: number
   fontFamily: string
   color: string
@@ -44,7 +42,6 @@ type CurvedTextProps = {
 export function CurvedText({
   text,
   path,
-  offset,
   fontSize,
   fontFamily,
   color,
@@ -59,7 +56,7 @@ export function CurvedText({
   // Shared with the edit caret (curvedLayout), so caret and glyphs can never
   // disagree about where the run sits. Null on the server's first paint or a
   // degenerate path: fall back to flat text rather than dividing by zero.
-  const layout = curvedLayout(text, path, offset, fontSize, fontFamily)
+  const layout = curvedLayout(text, path, fontSize, fontFamily)
   if (!layout) {
     return <>{text}</>
   }
@@ -67,13 +64,10 @@ export function CurvedText({
   const viewW = layout.width / scale
   const viewH = layout.height / scale
 
-  // renderPath, not `path`: on the closed circle the offset rotates the
-  // baseline rather than sliding the run along it, so what gets drawn and
-  // measured is that rotated circle. startOffset is the fraction of it where
-  // the middle of the run sits (textAnchor="middle") — a constant 50% for the
-  // circle, and CE.SDK's [-1, 1] → [0%, 100%] remap for the open curves.
-  const drawPath = layout.renderPath
-  const startOffset = `${layout.startOffset * 100}%`
+  // The run always sits at the middle of its baseline (textAnchor="middle" at
+  // 50%). Where that lands is decided by which preset's path this is — each
+  // arch position starts the circle half a turn from where its text should be.
+  const drawPath = path
 
   return (
     <svg
@@ -94,9 +88,9 @@ export function CurvedText({
       </defs>
       {showPath && (
         // The WHOLE path, not just the stretch under the run: it is the track
-        // the text rides on, so it has to stay put while the offset slides the
-        // text along it (CE.SDK draws it the same way). The element is anchored
-        // to the path for exactly this reason — see anchorDX in curvedLayout.
+        // the text rides on, and CE.SDK draws it the same way. The element is
+        // anchored to it rather than to its own box — see anchorDX in
+        // curvedLayout — so the track holds still whatever the text does.
         //
         // Stroke width in user units (1/scale = 1px on screen) rather than
         // vector-effect: non-scaling-stroke, which behaves inconsistently once
@@ -112,7 +106,7 @@ export function CurvedText({
         textDecoration={underline ? "underline" : "none"}
         textAnchor="middle"
       >
-        <textPath href={`#${pathId}`} startOffset={startOffset}>
+        <textPath href={`#${pathId}`} startOffset="50%">
           {text}
         </textPath>
       </text>

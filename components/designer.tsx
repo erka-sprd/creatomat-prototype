@@ -89,7 +89,7 @@ import { FontPanel } from "@/components/ui/font-panel/FontPanel"
 import { CurvedText } from "@/components/ui/text-path/CurvedText"
 import { TextPathPanel } from "@/components/ui/text-path/TextPathPanel"
 import {
-  DEFAULT_TEXT_CURVE,
+  type TextCurveId,
   curveIdForPath,
   curvedLayout,
   pointAtLength,
@@ -937,7 +937,6 @@ export default function Designer({
     // (see lib/text-path.ts): the baseline as an SVG path string, null/absent
     // for ordinary straight layout, and a start offset in [-1, 1].
     textPath?: string | null
-    textPathOffset?: number
   }
   const DEFAULT_FONT_FAMILY = "Inter"
   const [textElements, setTextElements] = useState<TextElement[]>([])
@@ -955,9 +954,12 @@ export default function Designer({
   // Where a curved-text selection drag started (grapheme index), so pointermove
   // can spread the range in either direction from it. Null = not dragging.
   const curveDragAnchorRef = useRef<number | null>(null)
-  const [snapGuides, setSnapGuides] = useState<{ h: boolean; v: boolean }>({
-    h: false,
-    v: false,
+  // Alignment guides while dragging: the position (in print-area %) of the
+  // vertical/horizontal line currently snapped to, or null. 50 is the area's
+  // centre; anything else is another element's centre.
+  const [snapGuides, setSnapGuides] = useState<{ h: number | null; v: number | null }>({
+    h: null,
+    v: null,
   })
   const selectedText = textElements.find(t => t.id === selectedTextId) ?? null
   const { loadFont } = useFonts()
@@ -1131,6 +1133,13 @@ export default function Designer({
     anchorOffY: number
     anchorScreenX: number
     anchorScreenY: number
+    // Where the model's x/y sits relative to the box at drag start, screen px:
+    // zero for straight text and graphics; a curved text renders shifted by its
+    // path anchor, which scales with the font size (both the circle's radius
+    // and the open curves' length are linear in it), so the move handler
+    // subtracts pathAnchorX0 * sizeScale.
+    pathAnchorX0: number
+    pathAnchorY0: number
     paLeft: number
     paTop: number
     paWidth: number
@@ -1234,6 +1243,61 @@ export default function Designer({
     if (!selectedTextId) return
     setTextElements(prev =>
       prev.map(t => (t.id === selectedTextId ? { ...t, ...patch } : t))
+    )
+  }
+
+  /**
+   * Where a text's glyphs land under a given baseline, as an offset from the
+   * element's stored x/y plus the size of that box — all in layout px.
+   * A curved element is offset from its own box by anchorDX/anchorDY (what
+   * pins the path while the box tracks the glyphs); a straight one is not.
+   */
+  const textGlyphBox = (el: TextElement, path: string | null) => {
+    const fs = el.fontSize * zoom
+    if (path) {
+      const l = curvedLayout(el.content, path, fs, el.fontFamily)
+      if (l) return { dx: l.anchorDX, dy: l.anchorDY, w: l.width, h: l.height }
+    }
+    const b = measureTextBox(el.content, fs, el.fontFamily)
+    return { dx: 0, dy: 0, w: b.width, h: b.height }
+  }
+
+  /**
+   * Switch the selected text to a curve — or off one — keeping the GLYPHS where
+   * they are.
+   *
+   * The presets are anchored to their own paths, and those differ enormously:
+   * the circle behind the four arch positions is sized from the font, while
+   * Wave and Elevate are sized to the run. Writing the new path alone would
+   * leave the stored x/y meaning something quite different and throw the text
+   * across the canvas — so the anchor is rebased on the glyph box's centre,
+   * which is the part the shopper is actually looking at.
+   */
+  const changeTextCurve = (id: TextCurveId | null) => {
+    const el = selectedText
+    if (!el) return
+    const nextPath = id ? textCurve(id).path : null
+    const patch: Partial<TextElement> = { textPath: nextPath }
+    // Curved text is always centre-aligned; un-curving leaves alignment be.
+    if (id) patch.textAlign = "center"
+
+    const paRect = printAreaBoxRef.current?.getBoundingClientRect()
+    if (paRect && paRect.width > 0 && paRect.height > 0) {
+      const vs = canvasScaleRef.current
+      const from = textGlyphBox(el, el.textPath ?? null)
+      const to = textGlyphBox(el, nextPath)
+      const dxPx = (from.dx + from.w / 2 - (to.dx + to.w / 2)) * vs
+      const dyPx = (from.dy + from.h / 2 - (to.dy + to.h / 2)) * vs
+      patch.x = el.x + (dxPx / paRect.width) * 100
+      patch.y = el.y + (dyPx / paRect.height) * 100
+    }
+    updateSelectedText(patch)
+
+    // A different curve can also be a different SIZE, so re-run the print-area
+    // fit once the new geometry has actually laid out.
+    const id2 = el.id
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => fitElementAfterRelease("text", id2))
     )
   }
 
@@ -1512,6 +1576,10 @@ export default function Designer({
   useEffect(() => {
     graphicElementsRef.current = graphicElements
   }, [graphicElements])
+  const textElementsRef = useRef<TextElement[]>([])
+  useEffect(() => {
+    textElementsRef.current = textElements
+  }, [textElements])
 
   // Port of create-omat's print-area restriction (PrintAreaRestriction.ts →
   // fitBlockToRect, hard boundary): once an edit completes, anything whose
@@ -1541,17 +1609,22 @@ export default function Designer({
     if (s === 1 && Math.abs(bx - (cx - bw / 2)) < 0.5 && Math.abs(by - (cy - bh / 2)) < 0.5) {
       return null
     }
-    // Recover the unrotated top-left the model stores (CSS lays out the
-    // unrotated box, then rotates it about its centre — so model x/y is the
-    // new centre minus half the unrotated size). offsetWidth/Height ignore
-    // transforms; scale by the canvas' visual scale to get screen px.
-    const vs = canvasScaleRef.current
-    const w = node.offsetWidth * vs * s
-    const h = node.offsetHeight * vs * s
+    // Move the model by the SAME delta the box needs, rather than deriving the
+    // model position from the box. The two are not interchangeable: curved text
+    // is offset from its own box by anchorDX/anchorDY (which is what pins the
+    // path while the box tracks the glyphs), so reading a position off the box
+    // would drop it by that much and leave the element outside the area it was
+    // meant to be pulled into. A delta is immune to any such constant offset,
+    // and stays exact for rotated elements, whose box is wider than they are.
+    const el =
+      kind === "graphic"
+        ? graphicElementsRef.current.find(g => g.id === id)
+        : textElementsRef.current.find(t => t.id === id)
+    if (!el) return null
     return {
       s,
-      xPct: ((bx + bw / 2 - w / 2) / paRect.width) * 100,
-      yPct: ((by + bh / 2 - h / 2) / paRect.height) * 100,
+      xPct: el.x + ((bx - (cx - bw / 2)) / paRect.width) * 100,
+      yPct: el.y + ((by - (cy - bh / 2)) / paRect.height) * 100,
     }
   }
 
@@ -1566,15 +1639,37 @@ export default function Designer({
   // fine stand-in).
   const contentClipPath = (
     kind: "text" | "graphic",
-    el: { id: string; x: number; y: number; rotation?: number }
+    el: {
+      id: string
+      x: number
+      y: number
+      rotation?: number
+      textPath?: string | null
+      content?: string
+      fontSize?: number
+      fontFamily?: string
+    }
   ): string | undefined => {
     const pa = printAreaBoxRef.current
     if (!pa) return undefined
     const paW = pa.offsetWidth
     const paH = pa.offsetHeight
     if (paW <= 0 || paH <= 0) return undefined
-    const ex = (el.x / 100) * paW
-    const ey = (el.y / 100) * paH
+    let ex = (el.x / 100) * paW
+    let ey = (el.y / 100) * paH
+    // A curved text's box renders shifted from its stored x/y by the path
+    // anchor (curvedLayout's anchorDX/DY — what pins the path while the box
+    // tracks the glyphs). The clip polygon lives in the BOX's space, so it has
+    // to shift with it: computed from x/y alone it cuts a window offset by the
+    // anchor — visibly slicing the guide, and on the bottom arch (anchor ≈ the
+    // circle's whole height) missing the glyphs entirely.
+    if (kind === "text" && el.textPath && el.content != null && el.fontSize && el.fontFamily) {
+      const l = curvedLayout(el.content, el.textPath, el.fontSize * zoom, el.fontFamily)
+      if (l) {
+        ex += l.anchorDX
+        ey += l.anchorDY
+      }
+    }
     let corners: [number, number][] = [
       [-ex, -ey],
       [paW - ex, -ey],
@@ -1817,8 +1912,12 @@ export default function Designer({
           // via left/top and then rotates it about its centre.
           const topLeftX = centerX - (rs.w0 * sizeScale) / 2
           const topLeftY = centerY - (rs.h0 * sizeScale) / 2
-          const newX = ((topLeftX - rs.paLeft) / rs.paWidth) * 100
-          const newY = ((topLeftY - rs.paTop) / rs.paHeight) * 100
+          // Model position = box corner minus the path anchor (zero for
+          // straight text and graphics), which scales with the font.
+          const newX =
+            ((topLeftX - rs.pathAnchorX0 * sizeScale - rs.paLeft) / rs.paWidth) * 100
+          const newY =
+            ((topLeftY - rs.pathAnchorY0 * sizeScale - rs.paTop) / rs.paHeight) * 100
           if (rs.kind === "graphic") {
             setGraphicElements(prev =>
               prev.map(g =>
@@ -1877,19 +1976,70 @@ export default function Designer({
       // No clamp while dragging — like create-omat, the element follows the
       // pointer freely (even outside the print area) and the release handler
       // fits it back inside (fitElementAfterRelease).
-      let centerXpct = newXPct + unrotWPct / 2
-      let centerYpct = newYPct + unrotHPct / 2
+
+      // Visual centre, not model centre: a curved text's box renders shifted
+      // from its stored x/y by the path anchor, so snapping on the model would
+      // light a guide while the glyphs sit an anchor's width away from it.
+      let anchorXpct = 0
+      let anchorYpct = 0
+      if (ds.kind === "text") {
+        const tEl = textElementsRef.current.find(t => t.id === ds.id)
+        if (tEl?.textPath) {
+          const l = curvedLayout(
+            tEl.content,
+            tEl.textPath,
+            tEl.fontSize * zoomRef.current,
+            tEl.fontFamily
+          )
+          if (l) {
+            anchorXpct = ((l.anchorDX * vs) / paRect.width) * 100
+            anchorYpct = ((l.anchorDY * vs) / paRect.height) * 100
+          }
+        }
+      }
+      let centerXpct = newXPct + anchorXpct + unrotWPct / 2
+      let centerYpct = newYPct + anchorYpct + unrotHPct / 2
+
+      // Alignment targets: the print-area centre plus every other element's
+      // visual centre, measured off its rendered box — which makes rotation and
+      // curve anchors free, since a bounding rect's centre is the true centre
+      // for both. Nearest target inside the threshold wins its axis, and the
+      // guide line is drawn through it.
+      const targetsX: number[] = [50]
+      const targetsY: number[] = [50]
+      for (const [otherId, node] of [
+        ...Object.entries(textElementRefs.current),
+        ...Object.entries(graphicElementRefs.current),
+      ]) {
+        if (otherId === ds.id || !node) continue
+        const r = node.getBoundingClientRect()
+        if (!r.width && !r.height) continue
+        targetsX.push(((r.left + r.width / 2 - paRect.left) / paRect.width) * 100)
+        targetsY.push(((r.top + r.height / 2 - paRect.top) / paRect.height) * 100)
+      }
       const snapVThresholdPct = (SNAP_THRESHOLD_PX / paRect.width) * 100
       const snapHThresholdPct = (SNAP_THRESHOLD_PX / paRect.height) * 100
-      const snapV = Math.abs(centerXpct - 50) < snapVThresholdPct
-      const snapH = Math.abs(centerYpct - 50) < snapHThresholdPct
+      const nearest = (value: number, targets: number[], limit: number) => {
+        let best: number | null = null
+        let bestD = limit
+        for (const t of targets) {
+          const d = Math.abs(value - t)
+          if (d < bestD) {
+            bestD = d
+            best = t
+          }
+        }
+        return best
+      }
+      const snapV = nearest(centerXpct, targetsX, snapVThresholdPct)
+      const snapH = nearest(centerYpct, targetsY, snapHThresholdPct)
       setSnapGuides(prev =>
         prev.h === snapH && prev.v === snapV ? prev : { h: snapH, v: snapV }
       )
-      if (snapV) centerXpct = 50
-      if (snapH) centerYpct = 50
-      const snappedX = centerXpct - unrotWPct / 2
-      const snappedY = centerYpct - unrotHPct / 2
+      if (snapV !== null) centerXpct = snapV
+      if (snapH !== null) centerYpct = snapH
+      const snappedX = centerXpct - anchorXpct - unrotWPct / 2
+      const snappedY = centerYpct - anchorYpct - unrotHPct / 2
       if (ds.kind === "graphic") {
         setGraphicElements(prev =>
           prev.map(g => (g.id === ds.id ? { ...g, x: snappedX, y: snappedY } : g))
@@ -1946,7 +2096,7 @@ export default function Designer({
         setSelectedGraphicId(null)
         bringTextToFront(ds.id)
       }
-      setSnapGuides({ h: false, v: false })
+      setSnapGuides({ h: null, v: null })
       dragStateRef.current = null
     }
     document.addEventListener("pointermove", onMove)
@@ -2039,6 +2189,26 @@ export default function Designer({
     const initialDist = Math.hypot(e.clientX - anchorScreenX, e.clientY - anchorScreenY)
     const initialWidthPct = (w0 / paRect.width) * 100
     const initialHeightPct = (h0 / paRect.height) * 100
+    // Curved text: the box is offset from the stored x/y by the path anchor.
+    // Without capturing it, the first move frame writes the box's own corner
+    // back as the model position and the element jumps by the anchor.
+    let pathAnchorX0 = 0
+    let pathAnchorY0 = 0
+    if (kind === "text") {
+      const full = textElementsRef.current.find(t => t.id === el.id)
+      if (full?.textPath) {
+        const l = curvedLayout(
+          full.content,
+          full.textPath,
+          full.fontSize * zoom,
+          full.fontFamily
+        )
+        if (l) {
+          pathAnchorX0 = l.anchorDX * canvasScaleRef.current
+          pathAnchorY0 = l.anchorDY * canvasScaleRef.current
+        }
+      }
+    }
     resizeStateRef.current = {
       kind,
       id: el.id,
@@ -2054,6 +2224,8 @@ export default function Designer({
       anchorOffY,
       anchorScreenX,
       anchorScreenY,
+      pathAnchorX0,
+      pathAnchorY0,
       paLeft: paRect.left,
       paTop: paRect.top,
       paWidth: paRect.width,
@@ -3973,6 +4145,7 @@ export default function Designer({
               {printAreaOverlay && (
                 <div
                   ref={printAreaBoxRef}
+                  data-print-area="true"
                   className="absolute pointer-events-none"
                   style={{
                     left: `${printAreaOverlay.left}%`,
@@ -3981,11 +4154,17 @@ export default function Designer({
                     height: `${printAreaOverlay.height}%`,
                   }}
                 >
-                  {snapGuides.v && (
-                    <div className="pointer-events-none absolute left-1/2 top-0 bottom-0 w-px bg-[#FF3B30] -translate-x-1/2" />
+                  {snapGuides.v !== null && (
+                    <div
+                      className="pointer-events-none absolute top-0 bottom-0 w-px bg-[#FF3B30] -translate-x-1/2"
+                      style={{ left: `${snapGuides.v}%` }}
+                    />
                   )}
-                  {snapGuides.h && (
-                    <div className="pointer-events-none absolute top-1/2 left-0 right-0 h-px bg-[#FF3B30] -translate-y-1/2" />
+                  {snapGuides.h !== null && (
+                    <div
+                      className="pointer-events-none absolute left-0 right-0 h-px bg-[#FF3B30] -translate-y-1/2"
+                      style={{ top: `${snapGuides.h}%` }}
+                    />
                   )}
                   {visibleTextElements.map(el =>
                     editingTextId === el.id ? (
@@ -4000,7 +4179,6 @@ export default function Designer({
                           ? curvedLayout(
                               el.content,
                               el.textPath,
-                              el.textPathOffset ?? 0,
                               el.fontSize * zoom,
                               el.fontFamily
                             )
@@ -4035,7 +4213,7 @@ export default function Designer({
                           let bestD = Infinity
                           for (let i = 0; i < widths.length; i++) {
                             const bp = pointAtLength(
-                              curved.renderPath,
+                              el.textPath!,
                               (curved.runStartPx + widths[i]) / curved.scale
                             )
                             if (!bp) continue
@@ -4099,7 +4277,7 @@ export default function Designer({
                                   const afterPx = widths[i + 1]
                                   const w = afterPx - beforePx
                                   const pt = pointAtLength(
-                                    curved.renderPath,
+                                    el.textPath!,
                                     (curved.runStartPx + (beforePx + afterPx) / 2) /
                                       curved.scale
                                   )
@@ -4147,7 +4325,6 @@ export default function Designer({
                                 <CurvedText
                                   text={el.content}
                                   path={el.textPath!}
-                                  offset={el.textPathOffset ?? 0}
                                   fontSize={el.fontSize * zoom}
                                   fontFamily={el.fontFamily}
                                   color={el.color}
@@ -4176,7 +4353,7 @@ export default function Designer({
                                     Math.min(curveSel.end, (widths?.length ?? 1) - 1)
                                   ] ?? 0
                                 const pt = pointAtLength(
-                                  curved.renderPath,
+                                  el.textPath!,
                                   (curved.runStartPx + before) / curved.scale
                                 )
                                 if (!pt) return null
@@ -4445,7 +4622,6 @@ export default function Designer({
                         ? curvedLayout(
                             el.content,
                             el.textPath,
-                            el.textPathOffset ?? 0,
                             el.fontSize * zoom,
                             el.fontFamily
                           )
@@ -4509,7 +4685,6 @@ export default function Designer({
                             <CurvedText
                               text={el.content}
                               path={el.textPath}
-                              offset={el.textPathOffset ?? 0}
                               fontSize={el.fontSize * zoom}
                               fontFamily={el.fontFamily}
                               color={embroideryShown ? "transparent" : el.color}
@@ -5293,18 +5468,8 @@ export default function Designer({
                   if (next) {
                     setFontPanelOpen(false)
                     setTextColorPanelOpen(false)
-                    // Opening the panel applies the default curve straight away,
-                    // so the canvas shows what the panel is describing. CE.SDK
-                    // likewise has no "curve selected but not applied" state —
-                    // the path IS the state.
-                    if (!selectedText?.textPath) {
-                      updateSelectedText({
-                        textPath: textCurve(DEFAULT_TEXT_CURVE).path,
-                        textPathOffset: selectedText?.textPathOffset ?? 0,
-                        // Curved text is always centre-aligned.
-                        textAlign: "center",
-                      })
-                    }
+                    // Nothing is applied on open: the panel's default is "Do not
+                    // curve", so the text stays straight until a curve is picked.
                   }
                   return next
                 })
@@ -5331,11 +5496,7 @@ export default function Designer({
               open={curvePanelOpen && !!selectedText}
               onClose={() => setCurvePanelOpen(false)}
               curveId={curveIdForPath(selectedText?.textPath)}
-              offset={selectedText?.textPathOffset ?? 0}
-              onCurveChange={id =>
-                updateSelectedText({ textPath: textCurve(id).path, textAlign: "center" })
-              }
-              onOffsetChange={offset => updateSelectedText({ textPathOffset: offset })}
+              onCurveChange={changeTextCurve}
             />
             </div>
           </div>

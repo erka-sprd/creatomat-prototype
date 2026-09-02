@@ -21,13 +21,19 @@
  * Flipped is not modelled — the panel does not offer it.
  */
 
-export type TextCurveId = "arch" | "wave" | "elevate"
+export type TextCurveId =
+  | "arch-top"
+  | "arch-left"
+  | "arch-right"
+  | "arch-bottom"
+  | "wave"
+  | "elevate"
 
 export type TextCurve = {
   id: TextCurveId
-  /** CE.SDK's own label for this preset (property.textOnPath.curve.*). */
+  /** What the tile says. Positions are named by where the text sits. */
   label: string
-  /** The baseline path, verbatim from CE.SDK's preset table. */
+  /** The baseline the text is laid on. */
   path: string
   /**
    * What the panel's tab draws, when that should differ from the baseline the
@@ -37,30 +43,64 @@ export type TextCurve = {
   /** Per-preset override of PATH_SLACK — how much path the run is given. */
   slack?: number
   /**
-   * Set when `path` describes a full circle. A closed path has no end for the
-   * run to fall off, so the offset must not slide the text towards one — the
-   * same circle is re-emitted starting at a different angle instead, leaving
-   * the text permanently centred on its own baseline. See circlePathFrom.
+   * Set when `path` describes a full circle, which is sized from the font
+   * rather than from the text (see CIRCLE_RADIUS_EM).
    */
   circle?: { cx: number; cy: number; r: number }
 }
 
+/**
+ * The circle CE.SDK's own "circle" preset describes: centre (60,60), r 59.5.
+ * All four arch positions ride this one circle; they differ only in where its
+ * parameterisation starts, which is what decides where the centred run lands.
+ */
+const ARCH_CIRCLE = { cx: 60, cy: 60, r: 59.5 }
+const deg = (d: number) => (d * Math.PI) / 180
+
+/**
+ * The four arch positions, and the two open curves.
+ *
+ * There is no offset control: each position IS a fixed offset, baked into its
+ * path. A run is always centred at the halfway point of its own baseline, so
+ * starting the circle half a turn away from where the text should sit puts it
+ * there — top is CE.SDK's offset 0, left -50, right +50, bottom +100.
+ *
+ * Bottom additionally runs the circle anticlockwise, which is CE.SDK's
+ * `text/pathFlipped`: without it the text would sit under the bottom of the
+ * circle upside down and reading backwards. Reversed, it reads left to right
+ * along the inside of the lower arc, the way the bottom of a circular badge is
+ * always set.
+ */
 export const TEXT_CURVES: TextCurve[] = [
   {
-    id: "arch",
-    label: "Arch",
-    // CE.SDK's CIRCLE preset, shown to shoppers as "Arch". A closed loop bends
-    // far harder than CE.SDK's own open arch arc — and the offset then rotates
-    // the run around the circle instead of running off the end of a segment.
-    // The tab keeps the arch curve as its icon, which is the shape people
-    // recognise; the label and the icon are the product, the path is the
-    // implementation.
-    path: "M 60,119.5 A 59.5,59.5 0 1,1 60.01,119.5 Z",
+    id: "arch-top",
+    label: "Top",
+    // Starting at the bottom of the circle — this is CE.SDK's circle preset
+    // path exactly, bar its redundant closing Z.
+    path: circlePathFrom(ARCH_CIRCLE, deg(90)),
     iconPath: "M 0,60 A 60,60 0 0,1 120,60",
-    // The circle that path draws: centre (60,60), r 59.5, starting at the
-    // bottom (60,119.5) and sweeping clockwise. Its rendered size comes from
-    // CIRCLE_RADIUS_EM, not from `slack` — see there.
-    circle: { cx: 60, cy: 60, r: 59.5 },
+    circle: ARCH_CIRCLE,
+  },
+  {
+    id: "arch-left",
+    label: "Left",
+    path: circlePathFrom(ARCH_CIRCLE, deg(0)),
+    iconPath: "M 60,0 A 60,60 0 0,0 60,120",
+    circle: ARCH_CIRCLE,
+  },
+  {
+    id: "arch-right",
+    label: "Right",
+    path: circlePathFrom(ARCH_CIRCLE, deg(180)),
+    iconPath: "M 60,0 A 60,60 0 0,1 60,120",
+    circle: ARCH_CIRCLE,
+  },
+  {
+    id: "arch-bottom",
+    label: "Bottom",
+    path: circlePathFrom(ARCH_CIRCLE, deg(270), false),
+    iconPath: "M 0,60 A 60,60 0 0,0 120,60",
+    circle: ARCH_CIRCLE,
   },
   {
     id: "wave",
@@ -73,9 +113,6 @@ export const TEXT_CURVES: TextCurve[] = [
     path: "M0 118.777C0 118.777 0.99638 97.3573 16.1221 83.5172C25.5824 74.8611 44.53 59.7505 82.2446 59.3886C119.959 59.0267 144.113 42.2993 155.245 27.5426C166.378 12.7859 164.49 0 164.49 0",
   },
 ]
-
-/** The preset CE.SDK opens with. */
-export const DEFAULT_TEXT_CURVE: TextCurveId = "arch"
 
 export const textCurve = (id: TextCurveId): TextCurve =>
   TEXT_CURVES.find(c => c.id === id) ?? TEXT_CURVES[0]
@@ -90,31 +127,28 @@ export function curveIdForPath(path: string | null | undefined): TextCurveId | n
   return TEXT_CURVES.find(c => c.path === path)?.id ?? null
 }
 
-/** CE.SDK clamps the offset to [-1, 1]. */
-export const clampOffset = (offset: number) => Math.max(-1, Math.min(1, offset))
-
 /**
- * The same circle, re-emitted so its parameterisation STARTS at `angle`
- * (radians, screen space: y down, 90° = bottom). Geometrically identical — same
- * centre, same radius, same clockwise sweep — but the run laid on it lands
- * somewhere else, which is how the offset moves text around a closed path
- * without ever pushing it past an end.
+ * The circle, emitted so its parameterisation STARTS at `angle` (radians,
+ * screen space: y down, 90° = bottom) and runs clockwise or anticlockwise.
+ * Every variant is the same circle geometrically; only where a run laid on it
+ * ends up, and which way the glyphs face, differ.
  *
  * The arc stops a hair short of a full turn, as a 360° arc between two
  * identical points is degenerate and renders as nothing. CE.SDK's own circle
- * preset uses the same trick (its 60 → 60.01 endpoints).
+ * preset uses the same trick (its 60 -> 60.01 endpoints).
  */
 export function circlePathFrom(
   { cx, cy, r }: { cx: number; cy: number; r: number },
-  angle: number
+  angle: number,
+  clockwise = true
 ): string {
-  const gap = 0.01 / r
+  const gap = (clockwise ? 1 : -1) * (0.01 / r)
   const sx = cx + r * Math.cos(angle)
   const sy = cy + r * Math.sin(angle)
   const ex = cx + r * Math.cos(angle - gap)
   const ey = cy + r * Math.sin(angle - gap)
   const n = (v: number) => Number(v.toFixed(3))
-  return `M ${n(sx)},${n(sy)} A ${r},${r} 0 1,1 ${n(ex)},${n(ey)}`
+  return `M ${n(sx)},${n(sy)} A ${r},${r} 0 1,${clockwise ? 1 : 0} ${n(ex)},${n(ey)}`
 }
 
 // --- geometry ---------------------------------------------------------------
@@ -252,14 +286,6 @@ export type CurvedLayout = {
   /** The measured text width, CSS px. */
   textWidth: number
   /**
-   * The baseline actually drawn and measured against. Equals the preset's path
-   * for open curves; for the closed circle it is that circle re-emitted from a
-   * different start angle, which is how the offset moves the text.
-   */
-  renderPath: string
-  /** Fraction of renderPath where the middle of the run sits (textAnchor=middle). */
-  startOffset: number
-  /**
    * CSS px to shift the element by so its PATH, rather than its box, stays put.
    *
    * The box tracks the glyphs, so it moves and resizes as the offset slides the
@@ -281,27 +307,15 @@ export type CurvedLayout = {
 export function curvedLayout(
   text: string,
   path: string,
-  offset: number,
   fontSize: number,
   fontFamily: string
 ): CurvedLayout | null {
   const preset = TEXT_CURVES.find(c => c.path === path)
-  // Slack is per-preset where a curve needs its own (the closed circle behind
-  // "Arch"), falling back to the shared constant.
+  // Slack is per-preset where a curve needs its own, falling back to the
+  // shared constant.
   const slack = preset?.slack ?? PATH_SLACK
 
-  // On a closed circle the offset ROTATES the baseline instead of sliding the
-  // run along it: the text then always sits at the middle of its own path and
-  // can never be clipped off an end, and since ±1 is half a turn each way, both
-  // extremes land on the same place — the behaviour CE.SDK shows. Open curves
-  // keep the plain start-offset, where running off an end is correct.
-  const eff = clampOffset(offset)
-  const renderPath = preset?.circle
-    ? circlePathFrom(preset.circle, Math.PI / 2 + eff * Math.PI)
-    : path
-  const runOffset = preset?.circle ? 0 : eff
-
-  const metrics = pathMetrics(renderPath)
+  const metrics = pathMetrics(path)
   const textWidth = measureTextWidth(text, fontSize, fontFamily)
   if (!metrics.length || !textWidth) return null
 
@@ -319,7 +333,7 @@ export function curvedLayout(
   // direction, so a box padded only at the top would cut the sides off.
   const above = fontSizeUser * 1.15
   const below = fontSizeUser * 0.32
-  const runStartPx = pathLengthPx * (0.5 + runOffset / 2) - textWidth / 2
+  const runStartPx = pathLengthPx / 2 - textWidth / 2
 
   // The box wraps the GLYPHS, not the path. Walking the run's own stretch of
   // baseline and expanding each sample along its normal — ascent outward,
@@ -339,7 +353,7 @@ export function curvedLayout(
     if (y > maxY) maxY = y
   }
   for (let i = 0; i <= SAMPLES; i++) {
-    const p = pointAtLength(renderPath, (runStartPx + (textWidth * i) / SAMPLES) / scale)
+    const p = pointAtLength(path, (runStartPx + (textWidth * i) / SAMPLES) / scale)
     if (!p) continue
     // Text's "up" is the tangent turned a quarter left; in SVG's y-down space
     // that is (sin a, -cos a).
@@ -364,8 +378,6 @@ export function curvedLayout(
     height: runBox.height * scale,
     runStartPx,
     textWidth,
-    renderPath,
-    startOffset: 0.5 + runOffset / 2,
     // Offset-dependent, because runBox is: together they cancel out, leaving
     // the path's bounding box at a fixed place on the artwork.
     anchorDX: (runBox.x - metrics.x) * scale,
