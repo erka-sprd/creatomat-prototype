@@ -1,6 +1,7 @@
 "use client"
 
-import { TEXT_CURVES, type TextCurveId, pathMetrics } from "@/lib/text-path"
+import { CurvePreview, STRAIGHT_PATH } from "@/components/ui/text-path/curve-tiles"
+import { TEXT_CURVES, type TextCurveId } from "@/lib/text-path"
 
 type TextPathPanelProps = {
   open: boolean
@@ -9,48 +10,6 @@ type TextPathPanelProps = {
   curveId: TextCurveId | null
   /** null clears the baseline — CE.SDK's setTextOnPath(id, null). */
   onCurveChange: (id: TextCurveId | null) => void
-}
-
-// The "no curve" tile's icon: a plain straight baseline, the thing every other
-// tile is a bend of. CE.SDK labels this state "None"
-// (property.textOnPath.none); spelled out here so it reads as an action.
-const STRAIGHT_PATH = "M 0,0 L 120,0"
-
-/**
- * A preset's shape drawn as its button. Fit into the tile by its measured
- * bounding box, so paths of very different proportions all read at one size.
- */
-function CurvePreview({ path, className = "h-7 w-12" }: { path: string; className?: string }) {
-  const m = pathMetrics(path)
-  if (!m.width && !m.height) return null
-  // A straight baseline has no height at all, which would make the viewBox
-  // degenerate and scale the stroke away; give it a sliver to sit in.
-  const h = m.height || Math.max(m.width * 0.04, 1)
-  // A hair of padding so the stroke's own width is not clipped at the edges.
-  const pad = Math.max(m.width, h) * 0.06
-  return (
-    <svg
-      viewBox={`${m.x - pad} ${m.y - pad} ${m.width + pad * 2} ${h + pad * 2}`}
-      className={className}
-      preserveAspectRatio="xMidYMid meet"
-      aria-hidden="true"
-    >
-      {/* non-scaling-stroke, so every tile draws at the same 2px however its
-          path is scaled to fit. A width in user units would not: these paths
-          have very different bounding boxes (120x60 for the arches, 60x120 on
-          their sides, 164x119 for Elevate), and preserveAspectRatio shrinks
-          each by a different factor — which rendered the side arches at half
-          the weight of the top one, reading as a lighter grey too. */}
-      <path
-        d={path}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        vectorEffect="non-scaling-stroke"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
 }
 
 /**

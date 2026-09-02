@@ -63,6 +63,9 @@ import MobileColorDrawer from "@/components/mobile/mobile-color-drawer"
 import SoldOutStrike from "@/components/sold-out-strike"
 import MobileDock from "@/components/mobile/mobile-dock"
 import MobileEditSheet from "@/components/mobile/mobile-edit-sheet"
+import MobileEditorBar, {
+  type MobileEditorBarPanel,
+} from "@/components/mobile/mobile-editor-bar"
 import MobileMoreMenu from "@/components/mobile/mobile-more-menu"
 import MobilePanelsDrawer from "@/components/mobile/mobile-panels-drawer"
 import MobileSizeSheet from "@/components/mobile/mobile-size-sheet"
@@ -945,6 +948,11 @@ export default function Designer({
   const [textColorPanelOpen, setTextColorPanelOpen] = useState(false)
   const [fontPanelOpen, setFontPanelOpen] = useState(false)
   const [curvePanelOpen, setCurvePanelOpen] = useState(false)
+  // Mobile: null = editor bar only; a panel name = the sheet is open on it.
+  const [mobileSheetPanel, setMobileSheetPanel] = useState<MobileEditorBarPanel | null>(null)
+  useEffect(() => {
+    setMobileSheetPanel(null)
+  }, [selectedTextId])
   // Selection range while a CURVED text is being edited. The textarea still
   // owns the real caret and selection; this mirrors its selectionStart/End so
   // both can be re-drawn on the path (the native ones are laid out flat and
@@ -1235,7 +1243,12 @@ export default function Designer({
     // event's bubble phase) doesn't clear the selection we're about to set.
     setTimeout(() => {
       setSelectedTextId(id)
-      setEditingTextId(id)
+      // Desktop drops straight into typing. Mobile does not: a new text is
+      // selected, which is what raises the editor bar over it — the same thing
+      // tapping an existing text does, and the bar's Write pill is how you get
+      // to the keyboard from there. Going straight to the caret would hide the
+      // bar behind the keyboard the instant the text appeared.
+      if (!isDlgMobile) setEditingTextId(id)
     }, 0)
   }
 
@@ -1801,7 +1814,10 @@ export default function Designer({
         // without this every tap on one of its tabs read as a click outside
         // the selection: the text got deselected and the sheet closed under
         // the finger the moment you tried to switch panel.
-        target.closest("[data-vaul-drawer]")
+        target.closest("[data-vaul-drawer]") ||
+        // Same reason as the sheet: the mobile editor bar floats over the
+        // canvas, so a tap on it must not read as a tap away from the text.
+        target.closest("[data-mobile-editor-bar]")
       ) {
         return
       }
@@ -5422,6 +5438,24 @@ export default function Designer({
               onDelete={deleteSelectedGraphic}
             />
 
+            {/* Mobile text editor bar — rendered here, beside the design bar,
+                so both are positioned against the canvas: they are the same
+                floating pill in the same place, one per selection type. On
+                mobile a tap selects and shows this; the sheet opens only when
+                one of its items is tapped, at that item's panel, which is
+                create-omat's flow (EditorBar textMobile -> MobileEditDrawer). */}
+            <MobileEditorBar
+              show={isDlgMobile && !!selectedText && !editingTextId && !mobileSheetPanel}
+              color={selectedText?.color ?? "#000000"}
+              colorSet={!!selectedText?.colorSet}
+              onWrite={() => {
+                if (selectedTextId) setEditingTextId(selectedTextId)
+              }}
+              onPanel={panel => setMobileSheetPanel(panel)}
+              onDuplicate={duplicateSelectedText}
+              onDelete={deleteSelectedText}
+            />
+
             {/* Desktop text-selection UI — below dlg the mobile edit sheet
                 replaces these three (wrapper is display:contents on desktop, so
                 layout is untouched there). */}
@@ -7580,11 +7614,9 @@ export default function Designer({
           sheet — like create-omat it gets the floating design editor bar over
           the canvas plus the Done pill in the dock. */}
       <MobileEditSheet
-        open={isDlgMobile && !!selectedText && !editingTextId}
-        onClose={() => {
-          setSelectedTextId(null)
-          setSelectedGraphicId(null)
-        }}
+        open={isDlgMobile && !!selectedText && !editingTextId && !!mobileSheetPanel}
+        initialTab={mobileSheetPanel ?? "Font"}
+        onClose={() => setMobileSheetPanel(null)}
         blockType={selectedText ? "text" : selectedGraphicId ? "graphic" : null}
         text={
           selectedText
@@ -7618,6 +7650,8 @@ export default function Designer({
         onWrite={() => {
           if (selectedTextId) setEditingTextId(selectedTextId)
         }}
+        curveId={curveIdForPath(selectedText?.textPath)}
+        onCurveChange={changeTextCurve}
       />
 
     </>

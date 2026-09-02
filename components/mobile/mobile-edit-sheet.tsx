@@ -7,13 +7,21 @@ import {
     RainbowBubble,
 } from "@/components/mobile/color-bubbles"
 import CustomColorPanel from "@/components/mobile/custom-color-panel"
-import { DeleteIcon, DuplicateIcon, MinusIcon, PlusIcon } from "@/components/mobile/icons"
+import { CurvePreview, STRAIGHT_PATH } from "@/components/ui/text-path/curve-tiles"
+import {
+    DeleteIcon,
+    DuplicateIcon,
+    KeyboardIcon,
+    MinusIcon,
+    PlusIcon,
+} from "@/components/mobile/icons"
 import { AlignIcon, BoldIcon, ItalicIcon, UnderlineIcon } from "@/components/ui/editor-bar"
 import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
 import { FontButton } from "@/components/ui/font-panel/FontButton"
 import { FONTS } from "@/lib/fonts"
-import { ArrowLeft, Keyboard } from "lucide-react"
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { TEXT_CURVES, type TextCurveId } from "@/lib/text-path"
+import { ArrowLeft } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 // Mobile edit bottom sheet — replica of create-omat's MobileEditDrawer
 // (src/components/ui/mobile-edit/): pill tabs across the top (Write / Font /
@@ -58,10 +66,16 @@ type MobileEditSheetProps = {
     onDelete: () => void
     /** Enter inline text editing (create-omat's "Write" keyboard pill). */
     onWrite: () => void
+    /** Which panel to show — set by whichever editor-bar item opened the sheet. */
+    initialTab?: TextTab
+    /** Active curve preset, or null while the text is on a straight baseline. */
+    curveId: TextCurveId | null
+    /** null clears the baseline — CE.SDK's setTextOnPath(id, null). */
+    onCurveChange: (id: TextCurveId | null) => void
 }
 
-const TEXT_TABS = ["Font", "Size", "Color", "Format"] as const
-type TextTab = (typeof TEXT_TABS)[number]
+const TEXT_TABS = ["Font", "Size", "Curve", "Color", "Format"] as const
+export type TextTab = (typeof TEXT_TABS)[number]
 
 const MIN_FONT_SIZE = 8
 
@@ -83,6 +97,9 @@ export default function MobileEditSheet({
     onDuplicate,
     onDelete,
     onWrite,
+    initialTab = "Font",
+    curveId,
+    onCurveChange,
 }: MobileEditSheetProps) {
     const [activeTab, setActiveTab] = useState<TextTab>("Font")
     // The custom colour view replaces the whole sheet body, create-omat style;
@@ -90,10 +107,10 @@ export default function MobileEditSheet({
     const [showCustomPicker, setShowCustomPicker] = useState(false)
     const [lastCustomColor, setLastCustomColor] = useState<string | null>(null)
 
-    // Reset to the first tab whenever a new element is selected.
+    // Open on whichever panel the editor bar asked for.
     useEffect(() => {
-        if (open) setActiveTab("Font")
-    }, [open, blockType])
+        if (open) setActiveTab(initialTab)
+    }, [open, blockType, initialTab])
 
     // Leaving the tab (or the sheet) drops the picker view, as create-omat does
     // when activeMobilePanel changes.
@@ -102,25 +119,42 @@ export default function MobileEditSheet({
     }, [activeTab, open])
 
     // The size slider paints an SVG track, so it needs a pixel width rather than
-    // a flex rule. Measure the cell it sits in and follow it — the sheet spans
-    // the viewport, so this changes with rotation and across devices.
-    const sliderCellRef = useRef<HTMLDivElement>(null)
+    // a flex rule. Measured through a CALLBACK ref, not an effect: the drawer
+    // mounts its content on its own schedule, so an effect keyed on the open
+    // state could run while the cell did not exist yet and never measure again
+    // — which left the slider missing whenever the sheet opened straight onto
+    // Size. A callback ref fires when the node actually appears, whenever that
+    // is, and the observer keeps it right through rotation and resizes.
     const [sliderWidth, setSliderWidth] = useState(0)
-    useLayoutEffect(() => {
-        const el = sliderCellRef.current
-        if (!el) {
+    const sliderObserverRef = useRef<ResizeObserver | null>(null)
+    const sliderCellRef = useCallback((node: HTMLDivElement | null) => {
+        sliderObserverRef.current?.disconnect()
+        sliderObserverRef.current = null
+        if (!node) {
             setSliderWidth(0)
             return
         }
-        const measure = () => setSliderWidth(el.clientWidth)
+        const measure = () => setSliderWidth(node.clientWidth)
         measure()
         const ro = new ResizeObserver(measure)
-        ro.observe(el)
-        return () => ro.disconnect()
-    }, [activeTab, open, blockType])
+        ro.observe(node)
+        sliderObserverRef.current = ro
+    }, [])
 
-    const clampSize = (v: number) =>
-        Math.min(maxFontSize, Math.max(MIN_FONT_SIZE, Math.round(v)))
+    // No rounding to whole pixels: the readout and the step buttons both work
+    // in percent, and snapping the size to integers would make a "1%" step land
+    // on anything but 1%.
+    const clampSize = (v: number) => Math.min(maxFontSize, Math.max(MIN_FONT_SIZE, v))
+    // The range the slider spans, shared by the track and the step buttons.
+    const sizeMax = Math.max(MIN_FONT_SIZE + 1, Math.floor(maxFontSize))
+    const sizeValue = Math.min(text?.fontSize ?? MIN_FONT_SIZE, sizeMax)
+    /** Move the size by whole percentage points of the slider's range. */
+    const stepSizePercent = (delta: number) => {
+        const range = sizeMax - MIN_FONT_SIZE
+        const pct = ((sizeValue - MIN_FONT_SIZE) / range) * 100
+        const next = Math.min(100, Math.max(0, Math.round(pct) + delta))
+        onFontSizeChange(clampSize(MIN_FONT_SIZE + (next / 100) * range))
+    }
 
     const title =
         blockType === "text" ? (
@@ -172,7 +206,7 @@ export default function MobileEditSheet({
                             onClick={onWrite}
                             className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-full py-2 pr-4 pl-0 text-sm font-semibold transition"
                         >
-                            <Keyboard className="size-5" strokeWidth={1.7} />
+                            <KeyboardIcon className="h-3 w-[17px]" />
                             Write
                         </button>
                         {TEXT_TABS.map(tab => (
@@ -242,7 +276,7 @@ export default function MobileEditSheet({
                                 <button
                                     type="button"
                                     aria-label="Decrease font size"
-                                    onClick={() => onFontSizeChange(clampSize(text.fontSize - 2))}
+                                    onClick={() => stepSizePercent(-1)}
                                     className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors active:bg-neutral-100"
                                 >
                                     <MinusIcon className="size-6" />
@@ -251,8 +285,8 @@ export default function MobileEditSheet({
                                     {sliderWidth > 0 && (
                                         <WedgeSlider
                                             min={MIN_FONT_SIZE}
-                                            max={Math.max(MIN_FONT_SIZE + 1, Math.floor(maxFontSize))}
-                                            value={Math.min(text.fontSize, maxFontSize)}
+                                            max={sizeMax}
+                                            value={sizeValue}
                                             onChange={v => onFontSizeChange(clampSize(v))}
                                             width={sliderWidth}
                                             jumpOnTrackClick
@@ -263,11 +297,50 @@ export default function MobileEditSheet({
                                 <button
                                     type="button"
                                     aria-label="Increase font size"
-                                    onClick={() => onFontSizeChange(clampSize(text.fontSize + 2))}
+                                    onClick={() => stepSizePercent(1)}
                                     className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors active:bg-neutral-100"
                                 >
                                     <PlusIcon className="size-6" />
                                 </button>
+                            </div>
+                        )}
+
+                        {activeTab === "Curve" && (
+                            /* The desktop Curve panel's presets, in one
+                               horizontal strip like the Font tab — a mobile
+                               sheet has width to scroll, not height to grid. */
+                            <div className="no-scrollbar flex w-full items-center overflow-x-auto">
+                                <div className="flex items-center gap-2 pr-4 pl-4">
+                                    {[null, ...TEXT_CURVES].map(curve => {
+                                        const id = curve?.id ?? null
+                                        const active = id === curveId
+                                        return (
+                                            <button
+                                                key={id ?? "none"}
+                                                type="button"
+                                                aria-pressed={active}
+                                                onClick={() => onCurveChange(id)}
+                                                className={
+                                                    "flex h-[100px] w-24 shrink-0 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xs border bg-neutral-100 px-2 transition " +
+                                                    (active
+                                                        ? "border-black"
+                                                        : "border-transparent active:bg-[#e9e9e9]")
+                                                }
+                                            >
+                                                <CurvePreview
+                                                    path={
+                                                        curve
+                                                            ? (curve.iconPath ?? curve.path)
+                                                            : STRAIGHT_PATH
+                                                    }
+                                                />
+                                                <span className="text-[12px] font-semibold">
+                                                    {curve?.label ?? "Do not curve"}
+                                                </span>
+                                            </button>
+                                        )
+                                    })}
+                                </div>
                             </div>
                         )}
 

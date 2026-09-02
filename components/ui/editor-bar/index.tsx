@@ -125,7 +125,7 @@ export function AlignIcon({ align }: { align: TextAlign }) {
  * (half-angle asin(20/42.5) = 0.4899 rad), which lands it at ~36px wide: the
  * width of the word, not of the arc it sits on.
  */
-function CurvedLabel({ text = "Curve" }: { text?: string }) {
+export function CurvedLabel({ text = "Curve" }: { text?: string }) {
   // useId yields ":r1:"-style values; colons are not valid in an XML id.
   const pathId = `curve-${useId().replace(/:/g, "")}`
   return (
