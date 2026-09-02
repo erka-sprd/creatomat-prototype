@@ -7,13 +7,13 @@ import {
     RainbowBubble,
 } from "@/components/mobile/color-bubbles"
 import CustomColorPanel from "@/components/mobile/custom-color-panel"
-import { DeleteIcon, DuplicateIcon } from "@/components/mobile/icons"
+import { DeleteIcon, DuplicateIcon, MinusIcon, PlusIcon } from "@/components/mobile/icons"
 import { AlignIcon, BoldIcon, ItalicIcon, UnderlineIcon } from "@/components/ui/editor-bar"
 import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
 import { FontButton } from "@/components/ui/font-panel/FontButton"
 import { FONTS } from "@/lib/fonts"
 import { ArrowLeft, Keyboard } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 
 // Mobile edit bottom sheet — replica of create-omat's MobileEditDrawer
 // (src/components/ui/mobile-edit/): pill tabs across the top (Write / Font /
@@ -21,7 +21,8 @@ import { useEffect, useState } from "react"
 // 184px panel area under them, and no dim overlay / non-modal so the canvas
 // stays visible while editing. Each panel mirrors its create-omat counterpart:
 //   Font    a horizontal strip of 96px tiles (FontGrid mobile), not a grid
-//   Size    the WedgeSlider with clickable Small / Large labels stepping ±2
+//   Size    minus / WedgeSlider / plus across the full width, the slider
+//           reading out its percentage above the handle as create-omat does
 //   Color   the 8-column COLOR_PALETTE bubble grid + rainbow bubble that swaps
 //           the sheet to the custom picker (back arrow in the title)
 //   Format  bordered B / I / U buttons over the labelled alignment box
@@ -99,6 +100,24 @@ export default function MobileEditSheet({
     useEffect(() => {
         setShowCustomPicker(false)
     }, [activeTab, open])
+
+    // The size slider paints an SVG track, so it needs a pixel width rather than
+    // a flex rule. Measure the cell it sits in and follow it — the sheet spans
+    // the viewport, so this changes with rotation and across devices.
+    const sliderCellRef = useRef<HTMLDivElement>(null)
+    const [sliderWidth, setSliderWidth] = useState(0)
+    useLayoutEffect(() => {
+        const el = sliderCellRef.current
+        if (!el) {
+            setSliderWidth(0)
+            return
+        }
+        const measure = () => setSliderWidth(el.clientWidth)
+        measure()
+        const ro = new ResizeObserver(measure)
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [activeTab, open, blockType])
 
     const clampSize = (v: number) =>
         Math.min(maxFontSize, Math.max(MIN_FONT_SIZE, Math.round(v)))
@@ -214,37 +233,41 @@ export default function MobileEditSheet({
                         )}
 
                         {activeTab === "Size" && (
-                            /* create-omat's SizePanel: the wedge slider with
-                               clickable Small / Large labels stepping ±2. */
-                            <div className="flex w-full flex-col items-center px-4">
-                                <div className="relative flex w-full flex-col items-center">
-                                    <div className="flex w-full justify-center py-2 pr-5">
+                            /* Minus / slider / plus across the full width inside
+                               the panel's padding, with create-omat's percentage
+                               readout riding the handle. The slider draws an SVG
+                               track and so needs a pixel width — the middle cell
+                               flexes and reports its own. */
+                            <div className="flex w-full items-center gap-2 px-4">
+                                <button
+                                    type="button"
+                                    aria-label="Decrease font size"
+                                    onClick={() => onFontSizeChange(clampSize(text.fontSize - 2))}
+                                    className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors active:bg-neutral-100"
+                                >
+                                    <MinusIcon className="size-6" />
+                                </button>
+                                <div ref={sliderCellRef} className="min-w-0 flex-1">
+                                    {sliderWidth > 0 && (
                                         <WedgeSlider
                                             min={MIN_FONT_SIZE}
                                             max={Math.max(MIN_FONT_SIZE + 1, Math.floor(maxFontSize))}
                                             value={Math.min(text.fontSize, maxFontSize)}
                                             onChange={v => onFontSizeChange(clampSize(v))}
+                                            width={sliderWidth}
+                                            jumpOnTrackClick
+                                            showPercentage
                                         />
-                                    </div>
-                                    <div className="flex w-full items-center justify-between px-4">
-                                        <span
-                                            className="cursor-pointer text-xs font-normal"
-                                            onClick={() =>
-                                                onFontSizeChange(clampSize(text.fontSize - 2))
-                                            }
-                                        >
-                                            Small
-                                        </span>
-                                        <span
-                                            className="cursor-pointer text-base text-black"
-                                            onClick={() =>
-                                                onFontSizeChange(clampSize(text.fontSize + 2))
-                                            }
-                                        >
-                                            Large
-                                        </span>
-                                    </div>
+                                    )}
                                 </div>
+                                <button
+                                    type="button"
+                                    aria-label="Increase font size"
+                                    onClick={() => onFontSizeChange(clampSize(text.fontSize + 2))}
+                                    className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors active:bg-neutral-100"
+                                >
+                                    <PlusIcon className="size-6" />
+                                </button>
                             </div>
                         )}
 

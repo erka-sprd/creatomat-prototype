@@ -32,6 +32,9 @@ type WedgeSliderProps = {
   // Fires on grab and on release, so the owner can swap what it shows while the
   // handle is being moved.
   onDragChange?: (dragging: boolean) => void
+  // Show the value as a percentage above the handle — how create-omat's mobile
+  // size panel reads out its slider.
+  showPercentage?: boolean
 }
 
 // End thicknesses of the "taper" track, and the clearance a mark dot keeps
@@ -111,6 +114,7 @@ export function WedgeSlider({
   trackFill,
   marks,
   onDragChange,
+  showPercentage = false,
 }: WedgeSliderProps) {
   // Unique per instance: two sliders on a page must not share a clip path.
   const fillClipId = useId()
@@ -310,6 +314,16 @@ export function WedgeSlider({
               : "group-hover:shadow-[0_0_0_6px_rgba(0,0,0,0.1)]")
           }
         />
+        {/* The readout create-omat puts above the handle on mobile: the value
+            as a percentage of the range, in the display face at 28/36 and
+            weight 900, riding the thumb. */}
+        {showPercentage && (
+          <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2">
+            <span className="font-display text-[28px] leading-[36px] font-[900] whitespace-nowrap text-black uppercase">
+              {Math.round(percentage)}%
+            </span>
+          </div>
+        )}
       </div>
     </div>
   )
