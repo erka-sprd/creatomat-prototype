@@ -82,6 +82,13 @@ export const TEXT_CURVES: TextCurve[] = [
     circle: ARCH_CIRCLE,
   },
   {
+    id: "arch-bottom",
+    label: "Bottom",
+    path: circlePathFrom(ARCH_CIRCLE, deg(270), false),
+    iconPath: "M 0,60 A 60,60 0 0,0 120,60",
+    circle: ARCH_CIRCLE,
+  },
+  {
     id: "arch-left",
     label: "Left",
     path: circlePathFrom(ARCH_CIRCLE, deg(0)),
@@ -93,13 +100,6 @@ export const TEXT_CURVES: TextCurve[] = [
     label: "Right",
     path: circlePathFrom(ARCH_CIRCLE, deg(180)),
     iconPath: "M 60,0 A 60,60 0 0,1 60,120",
-    circle: ARCH_CIRCLE,
-  },
-  {
-    id: "arch-bottom",
-    label: "Bottom",
-    path: circlePathFrom(ARCH_CIRCLE, deg(270), false),
-    iconPath: "M 0,60 A 60,60 0 0,0 120,60",
     circle: ARCH_CIRCLE,
   },
   {

@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { createPortal } from "react-dom"
+import { createPortal, flushSync } from "react-dom"
 import * as Popover from "@radix-ui/react-popover"
 import { Basket, type BasketItem, mergeIntoBasket } from "@/components/basket"
 import {
@@ -447,6 +447,10 @@ export default function Designer({
     const prevOverscroll = body.style.overscrollBehavior
     body.style.overflow = "hidden"
     body.style.overscrollBehavior = "none"
+    // Marks the app-like mobile designer for globals.css, which turns text
+    // selection off inside it. A class rather than a blanket media query, so
+    // the /handoff documents stay selectable on a phone.
+    body.classList.add("designer-mobile")
     const preventGesture = (e: Event) => e.preventDefault()
     const preventMultiTouchMove = (e: TouchEvent) => {
       if (e.touches.length > 1) e.preventDefault()
@@ -457,6 +461,7 @@ export default function Designer({
     return () => {
       body.style.overflow = prevOverflow
       body.style.overscrollBehavior = prevOverscroll
+      body.classList.remove("designer-mobile")
       document.removeEventListener("gesturestart", preventGesture)
       document.removeEventListener("gesturechange", preventGesture)
       document.removeEventListener("touchmove", preventMultiTouchMove)
@@ -942,6 +947,9 @@ export default function Designer({
     textPath?: string | null
   }
   const DEFAULT_FONT_FAMILY = "Inter"
+  // What a new text arrives with. Entering the editor compares against it, so
+  // an untouched placeholder can be selected whole and typed straight over.
+  const DEFAULT_TEXT_CONTENT = "Text"
   const [textElements, setTextElements] = useState<TextElement[]>([])
   const [editingTextId, setEditingTextId] = useState<string | null>(null)
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null)
@@ -1182,7 +1190,7 @@ export default function Designer({
   const addTextElement = () => {
     if (!currentPrintAreaId) return
     const id = uid("text")
-    const content = "Your text here"
+    const content = DEFAULT_TEXT_CONTENT
     let fontSize = 32
     let x = 25
     let y = 40
@@ -1250,6 +1258,83 @@ export default function Designer({
       // bar behind the keyboard the instant the text appeared.
       if (!isDlgMobile) setEditingTextId(id)
     }, 0)
+  }
+
+  // Where a point falls in a text's characters — the caret index to place when
+  // editing is entered by pointer, so the cursor lands where the shopper
+  // pointed instead of the whole run being selected.
+  const caretIndexAtPoint = (
+    el: TextElement,
+    clientX: number,
+    clientY: number
+  ): number | null => {
+    const node = textElementRefs.current[el.id]
+    if (!node) return null
+    const fs = el.fontSize * zoom
+
+    // Curved: map the point into the path's user units through the rendered
+    // svg's screen CTM (which absorbs zoom and rotation), then take the nearest
+    // caret boundary along the baseline — the same method the drag-select uses.
+    if (el.textPath) {
+      const layout = curvedLayout(el.content, el.textPath, fs, el.fontFamily)
+      const svg = node.querySelector("svg[data-curved-text]") as SVGSVGElement | null
+      const ctm = svg?.getScreenCTM()
+      if (!layout || !ctm) return null
+      const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse())
+      const widths = textBoundaryWidths(el.content, fs, el.fontFamily)
+      let best = 0
+      let bestD = Infinity
+      for (let i = 0; i < widths.length; i++) {
+        const bp = pointAtLength(
+          el.textPath,
+          (layout.runStartPx + widths[i]) / layout.scale
+        )
+        if (!bp) continue
+        const d = (bp.x - p.x) ** 2 + (bp.y - p.y) ** 2
+        if (d < bestD) {
+          bestD = d
+          best = i
+        }
+      }
+      return best
+    }
+
+    // Flat: undo the element's rotation about its centre, pick the line by the
+    // vertical offset (leading-none, so a line is exactly one font size), then
+    // the nearest boundary within it.
+    const rect = node.getBoundingClientRect()
+    const rad = ((el.rotation ?? 0) * Math.PI) / 180
+    const dx = clientX - (rect.left + rect.width / 2)
+    const dy = clientY - (rect.top + rect.height / 2)
+    const cos = Math.cos(-rad)
+    const sin = Math.sin(-rad)
+    const vs = canvasScaleRef.current || 1
+    const localX = (dx * cos - dy * sin) / vs + node.offsetWidth / 2
+    const localY = (dx * sin + dy * cos) / vs + node.offsetHeight / 2
+
+    const lines = el.content.split("\n")
+    const lineIdx = Math.max(0, Math.min(lines.length - 1, Math.floor(localY / fs)))
+    let base = 0
+    for (let i = 0; i < lineIdx; i++) base += lines[i].length + 1
+    const widths = textBoundaryWidths(lines[lineIdx], fs, el.fontFamily)
+    let best = 0
+    let bestD = Infinity
+    for (let i = 0; i < widths.length; i++) {
+      const d = Math.abs(widths[i] - localX)
+      if (d < bestD) {
+        bestD = d
+        best = i
+      }
+    }
+    return base + best
+  }
+
+  // Caret index to apply when the editing textarea mounts; null = end of text.
+  const pendingCaretRef = useRef<number | null>(null)
+  /** Enter editing with the caret at a point, rather than selecting everything. */
+  const beginTextEditAt = (el: TextElement, clientX: number, clientY: number) => {
+    pendingCaretRef.current = caretIndexAtPoint(el, clientX, clientY)
+    setEditingTextId(el.id)
   }
 
   const updateSelectedText = (patch: Partial<TextElement>) => {
@@ -1383,9 +1468,6 @@ export default function Designer({
       setTrashPos(null)
       return
     }
-    // getBoundingClientRect is the rotated on-screen box — the same thing the
-    // plugin reads via getScreenSpaceBoundingBoxXYWH.
-    const rect = node.getBoundingClientRect()
     const rotation =
       (selectedTextId
         ? textElements.find(t => t.id === selectedTextId)?.rotation
@@ -1393,12 +1475,46 @@ export default function Designer({
     // Rotation is stored -180..180, so this matches the plugin's
     // |deg| in (90, 270) upside-down window.
     const upsideDown = Math.abs(rotation) > 90 && Math.abs(rotation) < 270
-    setTrashPos({
-      left: rect.left + rect.width / 2 - TRASH_BUTTON_SIZE / 2,
-      top: upsideDown
-        ? rect.bottom + TRASH_OFFSET
-        : rect.top - TRASH_OFFSET - TRASH_BUTTON_SIZE,
-    })
+    const place = () => {
+      // getBoundingClientRect is the rotated on-screen box — the same thing the
+      // plugin reads via getScreenSpaceBoundingBoxXYWH.
+      const rect = node.getBoundingClientRect()
+      // The phone keyboard moves the VISUAL viewport and leaves the layout one
+      // alone. A position:fixed element anchors to the layout viewport, while
+      // the rect above is read against the visual one — so with the keyboard up
+      // the two disagree by exactly this offset, and the button hangs away from
+      // its text until the keyboard goes again. Adding the offset back puts it
+      // where the rect says it should be.
+      const vv = window.visualViewport
+      const offX = vv ? vv.offsetLeft : 0
+      const offY = vv ? vv.offsetTop : 0
+      setTrashPos({
+        left: rect.left + rect.width / 2 - TRASH_BUTTON_SIZE / 2 + offX,
+        top:
+          (upsideDown
+            ? rect.bottom + TRASH_OFFSET
+            : rect.top - TRASH_OFFSET - TRASH_BUTTON_SIZE) + offY,
+      })
+    }
+    place()
+
+    // The button is position:fixed, so its coordinates are viewport ones and go
+    // stale whenever the viewport moves under it — which the phone keyboard
+    // does on every open and close, leaving the button stranded above a text
+    // that has since moved. visualViewport is the only thing that reports that
+    // on iOS; resize and capture-phase scroll cover the rest (rotation, the
+    // canvas scrolling beneath).
+    const vv = window.visualViewport
+    window.addEventListener("resize", place)
+    window.addEventListener("scroll", place, true)
+    vv?.addEventListener("resize", place)
+    vv?.addEventListener("scroll", place)
+    return () => {
+      window.removeEventListener("resize", place)
+      window.removeEventListener("scroll", place, true)
+      vv?.removeEventListener("resize", place)
+      vv?.removeEventListener("scroll", place)
+    }
   }, [
     selectedTextId,
     selectedGraphicId,
@@ -4547,9 +4663,29 @@ export default function Designer({
                               ref={node => {
                                 if (!node) return
                                 if (node.dataset.initialSelectDone === "1") return
-                                node.setSelectionRange(0, node.value.length)
+                                // Explicit focus, not just autoFocus: on iOS the
+                                // keyboard only opens for a focus() that happens
+                                // inside the tap that asked for it, and autoFocus
+                                // is applied a beat later. Paired with the
+                                // flushSync in the Write handlers, this call
+                                // still sits inside the gesture.
+                                node.focus()
+                                // An untouched placeholder is selected whole,
+                                // so the first keystroke replaces it. Once it
+                                // has been written, editing places a caret
+                                // instead — at the point that opened the editor,
+                                // or at the end when there was none (Write).
+                                const caret = Math.min(
+                                  pendingCaretRef.current ?? node.value.length,
+                                  node.value.length
+                                )
+                                pendingCaretRef.current = null
+                                const untouched = node.value === DEFAULT_TEXT_CONTENT
+                                const from = untouched ? 0 : caret
+                                const to = untouched ? node.value.length : caret
+                                node.setSelectionRange(from, to)
                                 node.dataset.initialSelectDone = "1"
-                                setCurveSel({ start: 0, end: node.value.length })
+                                setCurveSel({ start: from, end: to })
                               }}
                               className={`pointer-events-auto bg-transparent outline-none leading-none ${
                                 curved ? "curve-editing" : ""
@@ -4656,7 +4792,7 @@ export default function Designer({
                           else delete textElementRefs.current[el.id]
                         }}
                         onPointerDown={e => startTextDrag(e, el)}
-                        onDoubleClick={() => setEditingTextId(el.id)}
+                        onDoubleClick={e => beginTextEditAt(el, e.clientX, e.clientY)}
                         style={{
                           position: "absolute",
                           touchAction: "none",
@@ -4712,9 +4848,20 @@ export default function Designer({
                               bold={el.bold}
                               italic={el.italic}
                               underline={el.underline}
-                              // The guide follows the Curve panel: while it is
-                              // open on this text, the path it edits is drawn.
-                              showPath={curvePanelOpen && selectedTextId === el.id}
+                              // Desktop: while the Curve panel is open, which
+                              // sits beside the canvas so the guide is visible
+                              // the whole time you work.
+                              //
+                              // Mobile has no beside — the sheet covers the
+                              // canvas, so tying the guide to it would show the
+                              // path only while the text is hidden behind the
+                              // sheet. It stays up for as long as the curved
+                              // text is selected instead, which is the same
+                              // thing the desktop panel achieves.
+                              showPath={
+                                selectedTextId === el.id &&
+                                (isDlgMobile ? !!el.textPath : curvePanelOpen)
+                              }
                             />
                           ) : (
                             el.content
@@ -5449,7 +5596,23 @@ export default function Designer({
               color={selectedText?.color ?? "#000000"}
               colorSet={!!selectedText?.colorSet}
               onWrite={() => {
-                if (selectedTextId) setEditingTextId(selectedTextId)
+                if (!selectedTextId) return
+                const id = selectedTextId
+                // Two separate synchronous commits, in this order, both still
+                // inside the tap. First the sheet closes and React commits that,
+                // so the drawer's focus management is finished before the
+                // textarea exists — done in one commit, the drawer restores focus
+                // out of the textarea on its way down and iOS never raises the
+                // keyboard. Then the textarea mounts and takes focus (see its ref).
+                // This is create-omat's sequence: flushSync(onClose), then
+                // enterEditMode().
+                flushSync(() => setMobileSheetPanel(null))
+                flushSync(() => setEditingTextId(id))
+  // And once more now the element is really in the document. The ref's
+  // focus() runs mid-commit, which iOS sometimes declines for a node it
+  // has not laid out yet; this one is post-commit and still inside the
+  // same tap, which is the moment Safari does honour.
+  document.querySelector<HTMLTextAreaElement>("[data-text-element] textarea")?.focus()
               }}
               onPanel={panel => setMobileSheetPanel(panel)}
               onDuplicate={duplicateSelectedText}
@@ -7648,7 +7811,23 @@ export default function Designer({
         onDuplicate={selectedText ? duplicateSelectedText : duplicateSelectedGraphic}
         onDelete={selectedText ? deleteSelectedText : deleteSelectedGraphic}
         onWrite={() => {
-          if (selectedTextId) setEditingTextId(selectedTextId)
+          if (!selectedTextId) return
+          const id = selectedTextId
+          // Two separate synchronous commits, in this order, both still
+          // inside the tap. First the sheet closes and React commits that,
+          // so the drawer's focus management is finished before the
+          // textarea exists — done in one commit, the drawer restores focus
+          // out of the textarea on its way down and iOS never raises the
+          // keyboard. Then the textarea mounts and takes focus (see its ref).
+          // This is create-omat's sequence: flushSync(onClose), then
+          // enterEditMode().
+          flushSync(() => setMobileSheetPanel(null))
+          flushSync(() => setEditingTextId(id))
+  // And once more now the element is really in the document. The ref's
+  // focus() runs mid-commit, which iOS sometimes declines for a node it
+  // has not laid out yet; this one is post-commit and still inside the
+  // same tap, which is the moment Safari does honour.
+  document.querySelector<HTMLTextAreaElement>("[data-text-element] textarea")?.focus()
         }}
         curveId={curveIdForPath(selectedText?.textPath)}
         onCurveChange={changeTextCurve}

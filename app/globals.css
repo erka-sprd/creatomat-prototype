@@ -686,3 +686,21 @@
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* No text selection inside the mobile designer. It is an app surface, not a
+   document: a long press on a control's label was raising iOS's Copy / Look Up
+   callout over the canvas. Scoped to the body class the designer sets below the
+   dlg breakpoint, so the /handoff documents stay selectable on a phone.
+   Real inputs keep selection — the caret and its handles are the point. */
+body.designer-mobile {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+body.designer-mobile input,
+body.designer-mobile textarea,
+body.designer-mobile [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}

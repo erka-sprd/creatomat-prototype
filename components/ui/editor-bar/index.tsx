@@ -129,7 +129,16 @@ export function CurvedLabel({ text = "Curve" }: { text?: string }) {
   // useId yields ":r1:"-style values; colons are not valid in an XML id.
   const pathId = `curve-${useId().replace(/:/g, "")}`
   return (
-    <svg width="46" height="25" viewBox="0 0 46 25" aria-hidden="true">
+    // -2px on the glyph only: the arc sits low in its own box, and lifting the
+    // box would move the button. relative + top keeps the button's own metrics
+    // (and so the bar's layout) exactly where they were.
+    <svg
+      width="46"
+      height="25"
+      viewBox="0 0 46 25"
+      aria-hidden="true"
+      className="relative top-[-2px]"
+    >
       <defs>
         <path id={pathId} d="M 3 19 A 42.5 42.5 0 0 1 43 19" fill="none" />
       </defs>
