@@ -7923,7 +7923,21 @@ function ViewDesignThumb({
 }: {
   image: string
   overlay: { left: number; top: number; width: number; height: number } | null
-  textElements: { id: string; x: number; y: number; z: number; color: string; fontSize: number; fontFamily: string; content: string; rotation?: number }[]
+  textElements: {
+    id: string
+    x: number
+    y: number
+    z: number
+    color: string
+    fontSize: number
+    fontFamily: string
+    content: string
+    rotation?: number
+    textPath?: string | null
+    bold?: boolean
+    italic?: boolean
+    underline?: boolean
+  }[]
   graphicElements: { id: string; x: number; y: number; z: number; width: number; height: number; src: string; rotation?: number }[]
   displaySize: number
   size: number
@@ -7960,26 +7974,47 @@ function ViewDesignThumb({
           height: `${overlay.height}%`,
         }}
       >
-        {textElements.map(el => (
-          <div
-            key={el.id}
-            style={{
-              position: "absolute",
-              zIndex: el.z,
-              left: `${el.x}%`,
-              top: `${el.y}%`,
-              color: el.color,
-              fontSize: `${el.fontSize}px`,
-              fontFamily: `"${el.fontFamily}"`,
-              whiteSpace: "pre",
-              lineHeight: 1,
-              transform: `rotate(${el.rotation ?? 0}deg)`,
-              transformOrigin: "center",
-            }}
-          >
-            {el.content}
-          </div>
-        ))}
+        {textElements.map(el => {
+          // Same as the basket preview: a curved run is SVG text on its
+          // baseline, and its stored x/y anchors the PATH rather than the
+          // glyphs, so the anchor offset has to come with it.
+          const curved = el.textPath
+            ? curvedLayout(el.content, el.textPath, el.fontSize, el.fontFamily)
+            : null
+          return (
+            <div
+              key={el.id}
+              style={{
+                position: "absolute",
+                zIndex: el.z,
+                left: curved ? `calc(${el.x}% + ${curved.anchorDX}px)` : `${el.x}%`,
+                top: curved ? `calc(${el.y}% + ${curved.anchorDY}px)` : `${el.y}%`,
+                color: el.color,
+                fontSize: `${el.fontSize}px`,
+                fontFamily: `"${el.fontFamily}"`,
+                whiteSpace: "pre",
+                lineHeight: 1,
+                transform: `rotate(${el.rotation ?? 0}deg)`,
+                transformOrigin: "center",
+              }}
+            >
+              {el.textPath ? (
+                <CurvedText
+                  text={el.content}
+                  path={el.textPath}
+                  fontSize={el.fontSize}
+                  fontFamily={el.fontFamily}
+                  color={el.color}
+                  bold={el.bold}
+                  italic={el.italic}
+                  underline={el.underline}
+                />
+              ) : (
+                el.content
+              )}
+            </div>
+          )
+        })}
         {graphicElements.map(el => (
           <img
             key={el.id}

@@ -5,6 +5,8 @@ import { useEffect, useState } from "react"
 import QuantityStepper from "@/components/quantity-stepper"
 import { discountedPrice, volumeDiscountPercentage } from "@/lib/volume-discount"
 import { FREE_SHIPPING_THRESHOLD } from "@/lib/shipping"
+import { CurvedText } from "@/components/ui/text-path/CurvedText"
+import { curvedLayout } from "@/lib/text-path"
 
 export type BasketDesignText = {
   id: string
@@ -16,6 +18,11 @@ export type BasketDesignText = {
   fontSize: number
   fontFamily: string
   rotation?: number
+  /** Baseline path when the text is curved — see lib/text-path.ts. */
+  textPath?: string | null
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
 }
 
 export type BasketDesignGraphic = {
@@ -462,26 +469,51 @@ export function DesignThumbnail({
           height: `${printAreaOverlay.height}%`,
         }}
       >
-        {textElements.map(el => (
-          <div
-            key={el.id}
-            style={{
-              position: "absolute",
-              zIndex: el.z,
-              left: `${el.x}%`,
-              top: `${el.y}%`,
-              color: el.color,
-              fontSize: `${el.fontSize}px`,
-              fontFamily: `"${el.fontFamily}"`,
-              whiteSpace: "pre",
-              lineHeight: 1,
-              transform: `rotate(${el.rotation ?? 0}deg)`,
-              transformOrigin: "center",
-            }}
-          >
-            {el.content}
-          </div>
-        ))}
+        {textElements.map(el => {
+          // A curved text is drawn as SVG text on its baseline, exactly as the
+          // designer draws it — rendering the raw string here would show it
+          // straight. Its stored x/y anchors the PATH, not the glyphs, so the
+          // same anchor offset the designer applies has to be applied here too;
+          // without it the run is placed wherever its circle's bounding box
+          // begins, which for an arch is well away from the letters and often
+          // outside the preview frame altogether.
+          const curved = el.textPath
+            ? curvedLayout(el.content, el.textPath, el.fontSize, el.fontFamily)
+            : null
+          return (
+            <div
+              key={el.id}
+              style={{
+                position: "absolute",
+                zIndex: el.z,
+                left: curved ? `calc(${el.x}% + ${curved.anchorDX}px)` : `${el.x}%`,
+                top: curved ? `calc(${el.y}% + ${curved.anchorDY}px)` : `${el.y}%`,
+                color: el.color,
+                fontSize: `${el.fontSize}px`,
+                fontFamily: `"${el.fontFamily}"`,
+                whiteSpace: "pre",
+                lineHeight: 1,
+                transform: `rotate(${el.rotation ?? 0}deg)`,
+                transformOrigin: "center",
+              }}
+            >
+              {el.textPath ? (
+                <CurvedText
+                  text={el.content}
+                  path={el.textPath}
+                  fontSize={el.fontSize}
+                  fontFamily={el.fontFamily}
+                  color={el.color}
+                  bold={el.bold}
+                  italic={el.italic}
+                  underline={el.underline}
+                />
+              ) : (
+                el.content
+              )}
+            </div>
+          )
+        })}
         {graphicElements.map(el => (
           <img
             key={el.id}
