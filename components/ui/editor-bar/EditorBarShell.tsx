@@ -97,6 +97,10 @@ export function EditorBarShell({
             {canScrollLeft && arrow("left")}
             <div
                 ref={scrollRef}
+                // Named so anything outside can find the scroller itself rather
+                // than guess at a utility class — the handoff parks it at its
+                // right end to show the controls that live there.
+                data-editor-bar-scroller="true"
                 onScroll={updateScrollState}
                 // [&>*]:shrink-0 is the point of the whole thing: flex children
                 // shrink by default, so without it a narrow bar squeezes its

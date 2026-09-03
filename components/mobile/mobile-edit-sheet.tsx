@@ -7,7 +7,7 @@ import {
     RainbowBubble,
 } from "@/components/mobile/color-bubbles"
 import CustomColorPanel from "@/components/mobile/custom-color-panel"
-import { CurvePreview, STRAIGHT_PATH } from "@/components/ui/text-path/curve-tiles"
+import { CurveStrip } from "@/components/ui/text-path/curve-tiles"
 import {
     DeleteIcon,
     DuplicateIcon,
@@ -19,7 +19,7 @@ import { AlignIcon, BoldIcon, ItalicIcon, UnderlineIcon } from "@/components/ui/
 import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
 import { FontButton } from "@/components/ui/font-panel/FontButton"
 import { FONTS, MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/fonts"
-import { TEXT_CURVES, type TextCurveId } from "@/lib/text-path"
+import { type TextCurveId } from "@/lib/text-path"
 import { ArrowLeft } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
@@ -76,9 +76,15 @@ type MobileEditSheetProps = {
     curveId: TextCurveId | null
     /** null clears the baseline — CE.SDK's setTextOnPath(id, null). */
     onCurveChange: (id: TextCurveId | null) => void
+    /**
+     * Portal host. Given an element, the sheet is positioned absolutely inside
+     * it instead of fixed to the viewport — how the handoff shows the real
+     * sheet inside a demo frame rather than over the page.
+     */
+    container?: HTMLElement | null
 }
 
-const TEXT_TABS = ["Font", "Format", "Color", "Size", "Curve"] as const
+const TEXT_TABS = ["Font", "Format", "Size", "Color", "Curve"] as const
 export type TextTab = (typeof TEXT_TABS)[number]
 
 export default function MobileEditSheet({
@@ -103,6 +109,7 @@ export default function MobileEditSheet({
     initialTab = "Font",
     curveId,
     onCurveChange,
+    container,
 }: MobileEditSheetProps) {
     const [activeTab, setActiveTab] = useState<TextTab>("Font")
     // The custom colour view replaces the whole sheet body, create-omat style;
@@ -192,6 +199,7 @@ export default function MobileEditSheet({
             overlay={false}
             modal={false}
             title={title}
+            container={container}
         >
             {blockType === "text" && text && showCustomPicker ? (
                 <div className="pb-[calc(8px+env(safe-area-inset-bottom))]">
@@ -206,7 +214,13 @@ export default function MobileEditSheet({
             ) : blockType === "text" && text ? (
                 <div className="flex flex-col pb-[calc(8px+env(safe-area-inset-bottom))]">
                     {/* Pill tabs + duplicate/delete at the row's end, one scroller. */}
-                    <div className="no-scrollbar flex items-center gap-2 overflow-x-auto px-4 whitespace-nowrap">
+                    <div
+                        // Named so anything outside can reach the row itself —
+                        // the handoff scrolls the active tab into view and
+                        // makes the row inert.
+                        data-sheet-tabs="true"
+                        className="no-scrollbar flex items-center gap-2 overflow-x-auto px-4 whitespace-nowrap"
+                    >
                         <button
                             type="button"
                             onClick={onWrite}
@@ -313,42 +327,7 @@ export default function MobileEditSheet({
                         )}
 
                         {activeTab === "Curve" && (
-                            /* The desktop Curve panel's presets, in one
-                               horizontal strip like the Font tab — a mobile
-                               sheet has width to scroll, not height to grid. */
-                            <div className="no-scrollbar flex w-full items-center overflow-x-auto">
-                                <div className="flex items-center gap-2 pr-4 pl-4">
-                                    {[null, ...TEXT_CURVES].map(curve => {
-                                        const id = curve?.id ?? null
-                                        const active = id === curveId
-                                        return (
-                                            <button
-                                                key={id ?? "none"}
-                                                type="button"
-                                                aria-pressed={active}
-                                                onClick={() => onCurveChange(id)}
-                                                className={
-                                                    "flex h-[100px] w-24 shrink-0 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xs border bg-neutral-100 px-2 transition " +
-                                                    (active
-                                                        ? "border-black"
-                                                        : "border-transparent active:bg-[#e9e9e9]")
-                                                }
-                                            >
-                                                <CurvePreview
-                                                    path={
-                                                        curve
-                                                            ? (curve.iconPath ?? curve.path)
-                                                            : STRAIGHT_PATH
-                                                    }
-                                                />
-                                                <span className="text-[12px] font-semibold">
-                                                    {curve?.label ?? "Do not curve"}
-                                                </span>
-                                            </button>
-                                        )
-                                    })}
-                                </div>
-                            </div>
+                            <CurveStrip curveId={curveId} onCurveChange={onCurveChange} />
                         )}
 
                         {activeTab === "Color" && (

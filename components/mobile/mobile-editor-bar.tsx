@@ -69,14 +69,14 @@ export default function MobileEditorBar({
                     Format
                 </button>
                 {line}
-                <button type="button" onClick={() => onPanel("Color")} className={item}>
-                    <ColorDotIcon color={color} isDefault={!colorSet} />
-                    Color
-                </button>
-                {line}
                 <button type="button" onClick={() => onPanel("Size")} className={item}>
                     <TextSizeIcon />
                     Size
+                </button>
+                {line}
+                <button type="button" onClick={() => onPanel("Color")} className={item}>
+                    <ColorDotIcon color={color} isDefault={!colorSet} />
+                    Color
                 </button>
                 {line}
                 <button

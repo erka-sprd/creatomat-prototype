@@ -70,6 +70,30 @@ const taperPath = (width: number) => {
   ].join(" ")
 }
 
+/** Thickness of the "wedge" track at its right end, where it is fullest. */
+const WEDGE_HEIGHT = 7
+
+/**
+ * The wedge: a point at the left opening to a full semicircular cap at the
+ * right, drawn at 1:1 in user units.
+ *
+ * It used to be one fixed 140-unit path stretched to fit with
+ * preserveAspectRatio="none", which squashed the cap horizontally by whatever
+ * the track was scaled by — barely visible at 140px, an obvious flattened
+ * ellipse once the editor bar's slider came down to 80. Generating the path at
+ * the real width costs nothing and keeps the cap circular at every size.
+ */
+const wedgePath = (width: number) => {
+  const r = WEDGE_HEIGHT / 2
+  const capCentre = Math.max(r, width - r)
+  return [
+    `M 0 ${r}`,
+    `L ${capCentre} 0`,
+    `A ${r} ${r} 0 0 1 ${capCentre} ${WEDGE_HEIGHT}`,
+    "Z",
+  ].join(" ")
+}
+
 /** Track thickness at a given x, from the linear taper between the two ends. */
 const taperHeightAt = (x: number, width: number) =>
   width > 0
@@ -291,17 +315,13 @@ export function WedgeSlider({
       ) : (
         <svg
           className="pointer-events-none absolute"
-          preserveAspectRatio="none"
           xmlns="http://www.w3.org/2000/svg"
           width={width}
-          height="7"
-          viewBox="0 0 140 7"
+          height={WEDGE_HEIGHT}
           fill="none"
+          aria-hidden="true"
         >
-          <path
-            d="M0 4.17231L136.482 0.00201946C138.407 -0.0568061 140 1.48787 140 3.41397C140 5.32519 138.431 6.86402 136.52 6.82687L0 4.17231Z"
-            fill="#DEDEDE"
-          />
+          <path d={wedgePath(width)} fill="#DEDEDE" />
         </svg>
       )}
       <div

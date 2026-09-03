@@ -1,6 +1,6 @@
 "use client"
 
-import { useId } from "react"
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/fonts"
 import { EditorBarShell } from "./EditorBarShell"
 import { EditorBarTooltip } from "./EditorBarTooltip"
@@ -23,12 +23,21 @@ type EditorBarProps = {
   // False while the text sits on a curve: curved text is always centre-aligned
   // here, so the control shows that state and stops responding.
   canAlign?: boolean
+  /** A curve is applied — the Curve button holds its pressed state, as B/I/U do. */
+  curved?: boolean
   /**
    * Largest size the print area allows for this text — the far end of the
    * slider's travel, so dragging to it fills the area rather than overshooting
    * an arbitrary constant. Held still while typing by the owner.
    */
   maxFontSize?: number
+  /**
+   * The bar's own words. English by default. create-omat takes these from
+   * next-intl (editor-bar.tabs.font, editor-bar.tabs.color); the prototype has
+   * no i18n, so they are props — enough for the handoff to render the bar in
+   * other languages and show that the row still holds.
+   */
+  labels?: { font?: string; color?: string; curve?: string; curveTooltip?: string }
   onFontSizeChange: (next: number) => void
   /**
    * The size gesture is over. Fires on the slider's release and on each step
@@ -115,45 +124,110 @@ export function AlignIcon({ align }: { align: TextAlign }) {
   )
 }
 
+// The measurement has to land before the browser paints, or the estimate
+// flashes — but useLayoutEffect has nothing to do on the server and warns if
+// asked. Same hook, chosen once.
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect
+
+/* The label's fixed proportions; everything else is derived from the word. */
+const LABEL_SAGITTA = 5 // how far the arc lifts at its middle
+const LABEL_BASELINE = 19 // where its ends sit in the box
+const LABEL_PAD = 3 // clear space either side of the arc
+const LABEL_HEIGHT = 25
+const LABEL_RULE_GAP = 4 // the rule rides this far inside the baseline
+// Arc given to the word beyond its own width. Glyphs are rotated to the
+// tangent, so the ones at the very ends lean out past it; the slack keeps them
+// inside the box, and it is what made the original "Curve" a 40px chord for a
+// 35px word.
+const LABEL_SLACK = 5
+const LABEL_MIN_CHORD = 24
+
+/** One shared context — the label only ever measures a single short word. */
+let labelCtx: CanvasRenderingContext2D | null = null
+
 /**
- * The word "Curve" set on an upward arc, so the button is its own preview of
- * what it does. SVG text-on-path rather than a picture of type, so it keeps the
- * bar's own face at the same 12px semibold as the Font and Color labels beside
- * it — fontFamily="inherit" pulls the face down from the button.
+ * The arc, the box and the rule for a word of `chord` px.
  *
- * Geometry: a 40px chord lifted 5px at its middle, so R = (40²/4 + 5²) / (2·5)
- * = 42.5. That arc is ~41.6px long, enough for the word at this size, and the
- * lift stays gentle enough to read as type rather than as a logo.
+ * A circle through both ends and the apex: with a chord c and a lift h, the
+ * radius is (c²/4 + h²) / 2h. The lift is what stays constant, not the radius,
+ * so the box keeps its height and a longer word reads as a flatter arc rather
+ * than a deeper bowl.
+ */
+function labelGeometry(advance: number) {
+  const c = Math.max(LABEL_MIN_CHORD, advance + LABEL_SLACK)
+  const r = (c * c) / 4 / (2 * LABEL_SAGITTA) + LABEL_SAGITTA / 2
+  const width = c + LABEL_PAD * 2
+  const cx = width / 2
+  const cy = LABEL_BASELINE + r - LABEL_SAGITTA
+  // The rule is concentric with the baseline and spans the same angular
+  // extent, so it holds an even gap along the whole word instead of pinching
+  // at the ends.
+  const half = Math.asin(Math.min(1, c / 2 / r))
+  const rr = r - LABEL_RULE_GAP
+  const rx = rr * Math.sin(half)
+  const ry = cy - rr * Math.cos(half)
+  return {
+    width,
+    arc: `M ${LABEL_PAD} ${LABEL_BASELINE} A ${r} ${r} 0 0 1 ${LABEL_PAD + c} ${LABEL_BASELINE}`,
+    rule: `M ${cx - rx} ${ry} A ${rr} ${rr} 0 0 1 ${cx + rx} ${ry}`,
+  }
+}
+
+/**
+ * A word set on an upward arc, so the button is its own preview of what it
+ * does. SVG text-on-path rather than a picture of type, so it keeps the bar's
+ * own face at the same 12px semibold as the Font and Color labels beside it —
+ * fontFamily="inherit" pulls the face down from the button.
  *
- * The rule beneath is drawn, not a text-decoration: Chrome ignores
+ * Sized to the word rather than to a constant. It used to be a fixed 46 × 25
+ * box drawn for "Curve"; any longer word — every translation of it — ran past
+ * that box and was clipped at the edge, and the rule beneath stayed 36px
+ * whatever it was underlining. The word is measured in the face the button is
+ * actually set in, and the arc, the box and the rule all follow it.
+ *
+ * The rule is drawn rather than a text-decoration: Chrome ignores
  * text-underline-offset on SVG text-on-path (Firefox honours it), so the gap
- * was uncontrollable that way. Drawing it costs a second arc but renders the
+ * was uncontrollable that way. Drawing it costs a second arc and renders the
  * same everywhere.
- *
- * That arc is concentric with the baseline — same centre (23, 56.5), radius 4px
- * shorter — so it holds an even 4px gap along the whole word instead of
- * pinching at the ends. Its endpoints keep the baseline's angular extent
- * (half-angle asin(20/42.5) = 0.4899 rad), which lands it at ~36px wide: the
- * width of the word, not of the arc it sits on.
  */
 export function CurvedLabel({ text = "Curve" }: { text?: string }) {
   // useId yields ":r1:"-style values; colons are not valid in an XML id.
   const pathId = `curve-${useId().replace(/:/g, "")}`
+  const textRef = useRef<SVGTextElement>(null)
+  // A close estimate for the first paint; the measurement below replaces it
+  // before the browser gets to draw, so the estimate is never seen.
+  const [chord, setChord] = useState(() => text.length * 7)
+
+  useIsomorphicLayoutEffect(() => {
+    const node = textRef.current
+    if (!node) return
+    if (!labelCtx) labelCtx = document.createElement("canvas").getContext("2d")
+    if (!labelCtx) return
+    // Read the face off the element rather than naming it here: it is inherited
+    // from the button, and the bar is free to change it.
+    const style = getComputedStyle(node)
+    labelCtx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+    setChord(labelCtx.measureText(text).width)
+  }, [text])
+
+  const { width, arc, rule } = labelGeometry(chord)
+
   return (
     // -2px on the glyph only: the arc sits low in its own box, and lifting the
     // box would move the button. relative + top keeps the button's own metrics
     // (and so the bar's layout) exactly where they were.
     <svg
-      width="46"
-      height="25"
-      viewBox="0 0 46 25"
+      width={width}
+      height={LABEL_HEIGHT}
+      viewBox={`0 0 ${width} ${LABEL_HEIGHT}`}
       aria-hidden="true"
       className="relative top-[-2px]"
     >
       <defs>
-        <path id={pathId} d="M 3 19 A 42.5 42.5 0 0 1 43 19" fill="none" />
+        <path id={pathId} d={arc} fill="none" />
       </defs>
       <text
+        ref={textRef}
         fill="currentColor"
         fontSize="12"
         fontWeight="600"
@@ -165,7 +239,7 @@ export function CurvedLabel({ text = "Curve" }: { text?: string }) {
         </textPath>
       </text>
       <path
-        d="M 4.88 22.91 A 38.5 38.5 0 0 1 41.12 22.91"
+        d={rule}
         fill="none"
         stroke="currentColor"
         strokeWidth="1.5"
@@ -188,7 +262,9 @@ export function EditorBar({
   canBold = true,
   canItalic = true,
   canAlign = true,
+  curved = false,
   maxFontSize = MAX_FONT_SIZE,
+  labels,
   onFontSizeChange,
   onFontSizeCommit,
   onFontFamilyClick,
@@ -224,7 +300,7 @@ export function EditorBar({
             onClick={onFontFamilyClick}
             className="flex h-9 cursor-pointer items-center justify-start rounded-md rounded-l-[24px] px-3 text-left text-[12px] font-semibold hover:bg-neutral-100"
           >
-            Font
+            {labels?.font ?? "Font"}
           </button>
         </EditorBarTooltip>
 
@@ -283,39 +359,6 @@ export function EditorBar({
         {/* divider */}
         <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
-        {/* Color */}
-        <EditorBarTooltip content="Select text color">
-        <button
-          type="button"
-          aria-label="Text color"
-          onClick={onColorClick}
-          className="flex h-9 items-center gap-2 cursor-pointer rounded-md px-2 hover:bg-neutral-100"
-        >
-          {isDefaultColor ? (
-            // Rainbow swatch while the colour is still the default (unchanged).
-            <span
-              aria-hidden="true"
-              className="flex h-5 w-5 items-center justify-center rounded-full"
-              style={{
-                background:
-                  "conic-gradient(from 90deg, rgba(43, 113, 247, 1) 0deg, rgba(254, 48, 195, 1) 83.07deg, rgba(254, 28, 31, 1) 157.5deg, rgba(244, 245, 71, 1) 240.57deg, rgba(1, 241, 87, 1) 294.23deg, rgba(102, 102, 102, 1) 360deg)",
-              }}
-            >
-              <span className="h-3 w-3 rounded-full bg-white" />
-            </span>
-          ) : (
-            <span
-              aria-hidden="true"
-              className="inline-block h-5 w-5 rounded-full border border-neutral-300"
-              style={{ backgroundColor: color }}
-            />
-          )}
-          <span className="text-[12px] font-semibold">Color</span>
-        </button>
-        </EditorBarTooltip>
-
-        {/* divider */}
-        <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
         {/* Font size: decrease */}
         <EditorBarTooltip content="Decrease text size">
@@ -346,7 +389,7 @@ export function EditorBar({
           value={Math.min(Math.max(fontSize, MIN_FONT_SIZE), max)}
           onChange={v => onFontSizeChange(clamp(v))}
           onCommit={onFontSizeCommit}
-          width={120}
+          width={80}
         />
 
         {/* Font size: increase */}
@@ -372,16 +415,52 @@ export function EditorBar({
 
         {/* divider */}
         <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
+        {/* Color */}
+        <EditorBarTooltip content="Select text color">
+        <button
+          type="button"
+          aria-label="Text color"
+          onClick={onColorClick}
+          className="flex h-9 items-center gap-2 cursor-pointer rounded-md px-2 hover:bg-neutral-100"
+        >
+          {isDefaultColor ? (
+            // Rainbow swatch while the colour is still the default (unchanged).
+            <span
+              aria-hidden="true"
+              className="flex h-5 w-5 items-center justify-center rounded-full"
+              style={{
+                background:
+                  "conic-gradient(from 90deg, rgba(43, 113, 247, 1) 0deg, rgba(254, 48, 195, 1) 83.07deg, rgba(254, 28, 31, 1) 157.5deg, rgba(244, 245, 71, 1) 240.57deg, rgba(1, 241, 87, 1) 294.23deg, rgba(102, 102, 102, 1) 360deg)",
+              }}
+            >
+              <span className="h-3 w-3 rounded-full bg-white" />
+            </span>
+          ) : (
+            <span
+              aria-hidden="true"
+              className="inline-block h-5 w-5 rounded-full border border-neutral-300"
+              style={{ backgroundColor: color }}
+            />
+          )}
+          <span className="text-[12px] font-semibold">{labels?.color ?? "Color"}</span>
+        </button>
+        </EditorBarTooltip>
+
+        {/* divider */}
+        <div className="bg-[#e9e9e9] -my-1.5 w-px self-stretch" />
 
         {/* Curve */}
-        <EditorBarTooltip content="Curve text">
+        <EditorBarTooltip content={labels?.curveTooltip ?? "Curve text"}>
           <button
             type="button"
             aria-label="Curve text"
+            aria-pressed={curved}
             onClick={onCurveClick}
-            className="flex h-9 cursor-pointer items-center justify-center rounded-md px-2 text-[12px] font-semibold hover:bg-neutral-100"
+            className={`flex h-9 cursor-pointer items-center justify-center rounded-md px-2 text-[12px] font-semibold hover:bg-neutral-100 ${
+              curved ? "bg-neutral-100" : ""
+            }`}
           >
-            <CurvedLabel />
+            <CurvedLabel text={labels?.curve} />
           </button>
         </EditorBarTooltip>
 

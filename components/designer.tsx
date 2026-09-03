@@ -5773,6 +5773,7 @@ export default function Designer({
               canBold={fontCaps.canBold}
               canItalic={fontCaps.canItalic}
               canAlign={!selectedText?.textPath}
+              curved={!!selectedText?.textPath}
               maxFontSize={maxFontSize}
               // Curved text is always centre-aligned (the renderer anchors the
               // run's middle to the path), so the align toggle pins to center
