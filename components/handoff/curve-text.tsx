@@ -621,7 +621,7 @@ export default function CurveTextHandoff() {
           <LocalizedBars />
         </Demo>
 
-        <p className="ho-caption">Size control, before and now. Change is for easier vibisiblity of the Curve button.</p>
+        <p className="ho-caption">Size control, before and now. -- Replace labels with static - and + buttons. Reduce the width of the ranger.</p>
         <Demo padding="px-3.5 py-[30px]">
           <SizeControlCompare />
         </Demo>
