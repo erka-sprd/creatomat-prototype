@@ -33,8 +33,16 @@ const ENTRIES: Entry[] = [
     ],
     updated: "August 28, 2026",
     status: "live",
-  }
-
+  },
+  {
+    slug: "curve-text",
+    title: "Curve text",
+    summary:
+      "Bending a text along a baseline — where it is reached from, the panel it opens, and how its presets sit on img.ly's own text-on-path API.",
+    covers: ["Editor bar", "Curve panel", "Presets", "img.ly mapping"],
+    updated: "September 3, 2026",
+    status: "live",
+  },
 ]
 
 export default function HandoffIndex() {

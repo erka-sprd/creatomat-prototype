@@ -176,6 +176,59 @@
     }
 }
 
+/* Curve text §1 — the stack of localised bars. Everything but the Curve
+   control is pushed back, so the eye lands on the one word the section is
+   about and the four translations read as a column.
+
+   Selected by what the control contains rather than by a class: the Curve
+   button is the only item in the bar whose icon is SVG <text>, its label being
+   the word itself set on an arc. Nothing in the product has to carry a hook
+   for this. */
+.ho-focus-curve [data-editor-bar-scroller] > * {
+    filter: blur(1.7px);
+    opacity: 0.4;
+}
+.ho-focus-curve [data-editor-bar-scroller] > *:has(svg text) {
+    filter: none;
+    opacity: 1;
+}
+
+/* A specimen of one control, not a working bar: only Curve answers the pointer,
+   so no other tooltip can open over the row. */
+.ho-focus-curve [data-editor-bar-scroller] > *:not(:has(svg text)) {
+    pointer-events: none;
+}
+
+/* And nothing to scroll. The row is parked at its right end and the rest is
+   clipped behind the blur, so the chevrons would only offer to un-focus the
+   thing the demo is focusing. Programmatic scrollTo still works on an
+   overflow:hidden box, which is what parks it. */
+.ho-focus-curve [data-editor-bar-scroller] {
+    overflow: hidden;
+}
+.ho-focus-curve [data-editor-bar] > button {
+    display: none;
+}
+
+/* The bar parks itself 32px down its canvas, which is right above a product and
+   dead grey in a stack of four. Here each row is only as tall as the bar it
+   holds, and the bar sits in the middle of it.
+
+   Centred with a margin rather than a translate: the shell already carries
+   -translate-x-1/2 for its horizontal centring, and a second transform would
+   be fighting it. Half of the shell's fixed 48px height. */
+.ho-focus-curve [data-editor-bar] {
+    top: 50%;
+    margin-top: -24px;
+}
+
+/* Curve text §2 — the mobile sheet, shown for its Curve panel. The tab row is
+   inert: a reader who lands on Color has lost what the section is showing.
+   The panel below it stays live, so the presets can still be picked. */
+.ho-sheet-tabs [data-sheet-tabs] {
+    pointer-events: none;
+}
+
 /* The nav scrolls horizontally under 900px — no bar across it. */
 .ho-noscrollbar {
     scrollbar-width: none;
