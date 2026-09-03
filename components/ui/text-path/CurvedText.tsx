@@ -1,6 +1,6 @@
 "use client"
 
-import { useId } from "react"
+import { memo, useId } from "react"
 import { curvedLayout } from "@/lib/text-path"
 
 type CurvedTextProps = {
@@ -38,8 +38,13 @@ type CurvedTextProps = {
  * Everything lives in the path's own user units and is scaled by the viewBox →
  * width/height mapping, so one number (`scale`) relates the two spaces and the
  * font size is expressed back in user units.
+ *
+ * Memoized: the designer re-renders its whole canvas on every pointer move, and
+ * this subtree is expensive to reconcile — laying glyphs on a path is real work
+ * for the browser. All its props are primitives, so the default comparison is
+ * exactly right, and a drag that only moves the wrapper never re-renders it.
  */
-export function CurvedText({
+export const CurvedText = memo(function CurvedText({
   text,
   path,
   fontSize,
@@ -112,4 +117,4 @@ export function CurvedText({
       </text>
     </svg>
   )
-}
+})

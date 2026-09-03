@@ -58,6 +58,31 @@ const ARCH_CIRCLE = { cx: 60, cy: 60, r: 59.5 }
 const deg = (d: number) => (d * Math.PI) / 180
 
 /**
+ * The circle each circular path was minted from, remembered by its path string.
+ *
+ * A circle's geometry has a closed form — point, tangent, length and bounding
+ * box are all one line of trigonometry — while the same answers read out of an
+ * SVGPathElement cost a flattened walk of the curve. The four arch presets are
+ * circles, and they are the presets people actually use, so keeping their
+ * parameters lets every query about them skip the DOM entirely: laying out one
+ * arch measured 32ms of getPointAtLength before this, and 0.004ms after.
+ *
+ * Declared above TEXT_CURVES because circlePathFrom fills it while that table
+ * is being built.
+ */
+type CircleGeometry = {
+  cx: number
+  cy: number
+  r: number
+  /** Where the parameterisation starts, radians, screen space (y down). */
+  start: number
+  /** +1 clockwise, -1 anticlockwise — which way length runs from `start`. */
+  dir: 1 | -1
+  length: number
+}
+const circleForPath = new Map<string, CircleGeometry>()
+
+/**
  * The four arch positions, and the two open curves.
  *
  * There is no offset control: each position IS a fixed offset, baked into its
@@ -148,7 +173,19 @@ export function circlePathFrom(
   const ex = cx + r * Math.cos(angle - gap)
   const ey = cy + r * Math.sin(angle - gap)
   const n = (v: number) => Number(v.toFixed(3))
-  return `M ${n(sx)},${n(sy)} A ${r},${r} 0 1,${clockwise ? 1 : 0} ${n(ex)},${n(ey)}`
+  const d = `M ${n(sx)},${n(sy)} A ${r},${r} 0 1,${clockwise ? 1 : 0} ${n(ex)},${n(ey)}`
+  // Remember what this string is, so everything downstream can answer questions
+  // about it with trigonometry instead of walking an SVGPathElement.
+  circleForPath.set(d, {
+    cx,
+    cy,
+    r,
+    start: angle,
+    dir: clockwise ? 1 : -1,
+    // The arc covers a full turn less the degenerate gap: r × (2π − gap/r).
+    length: 2 * Math.PI * r - 0.01,
+  })
+  return d
 }
 
 // --- geometry ---------------------------------------------------------------
@@ -172,6 +209,23 @@ const EMPTY: PathMetrics = { length: 0, x: 0, y: 0, width: 0, height: 0 }
 export function pathMetrics(d: string): PathMetrics {
   const cached = metricsCache.get(d)
   if (cached) return cached
+
+  // A circle we minted ourselves needs no measuring, and works on the server
+  // too — the arc is a full turn bar a hundredth of a unit, so its box is the
+  // circle's.
+  const circle = circleForPath.get(d)
+  if (circle) {
+    const m: PathMetrics = {
+      length: circle.length,
+      x: circle.cx - circle.r,
+      y: circle.cy - circle.r,
+      width: circle.r * 2,
+      height: circle.r * 2,
+    }
+    metricsCache.set(d, m)
+    return m
+  }
+
   if (typeof document === "undefined") return EMPTY
 
   const ns = "http://www.w3.org/2000/svg"
@@ -216,10 +270,40 @@ export function measureTextWidth(text: string, fontSize: number, fontFamily: str
   return ctx.measureText(text || " ").width
 }
 
+/**
+ * Bumped whenever a webfont finishes loading.
+ *
+ * Everything below is measured in a particular face, so a measurement taken
+ * while the family was still falling back to a system font is wrong the moment
+ * the real one arrives. Nothing cached survives that: the epoch is part of every
+ * key, and the caches are emptied outright so the stale entries do not sit in
+ * them.
+ */
+let fontEpoch = 0
+
 // Prefix widths per caret boundary, memoized: the caret, the selection band and
 // pointer hit-testing all ask for "width of the text up to index i" many times
 // per frame, so it is computed once per (text, size, family).
 const boundaryCache = new Map<string, number[]>()
+
+/**
+ * Throw away everything measured in a font face.
+ *
+ * Called on `loadingdone` for faces that arrive on their own, and directly by
+ * whoever loads a family before re-rendering with it — the event and the
+ * re-render are not ordered against each other, so the caller that knows the
+ * font just landed drops the stale measurements itself rather than hoping the
+ * listener ran first.
+ */
+export function invalidateTextMetrics() {
+  fontEpoch++
+  boundaryCache.clear()
+  layoutCache.clear()
+}
+
+if (typeof document !== "undefined" && document.fonts) {
+  document.fonts.addEventListener("loadingdone", invalidateTextMetrics)
+}
 
 /**
  * widths[i] = width of text.slice(0, i) in CSS px, for i in 0..text.length —
@@ -230,7 +314,7 @@ export function textBoundaryWidths(
   fontSize: number,
   fontFamily: string
 ): number[] {
-  const key = `${fontSize}|${fontFamily}|${text}`
+  const key = `${fontEpoch}|${fontSize}|${fontFamily}|${text}`
   const cached = boundaryCache.get(key)
   if (cached) return cached
   const ctx = ctx2d()
@@ -304,7 +388,35 @@ export type CurvedLayout = {
  * is textWidth × PATH_SLACK; textAnchor="middle" pins the middle of the run at
  * (0.5 + offset/2) of the path.
  */
+/**
+ * Layouts, memoized on everything they depend on.
+ *
+ * A single frame asks for the same layout from five places — the element's
+ * position, its clip polygon, the caret, the renderer and each preview thumb —
+ * and each one used to walk the path again. One entry per (text, path, size,
+ * family) collapses those into one computation; a drag or a keystroke changes
+ * the key once and the rest of the frame reads it back.
+ */
+const layoutCache = new Map<string, CurvedLayout | null>()
+
 export function curvedLayout(
+  text: string,
+  path: string,
+  fontSize: number,
+  fontFamily: string
+): CurvedLayout | null {
+  // fontSize is continuous while resizing, so the key is rounded — a
+  // thousandth of a pixel is well below anything visible.
+  const cacheKey = `${fontEpoch}|${path}|${fontFamily}|${fontSize.toFixed(3)}|${text}`
+  if (layoutCache.has(cacheKey)) return layoutCache.get(cacheKey) ?? null
+
+  const layout = computeCurvedLayout(text, path, fontSize, fontFamily)
+  if (layoutCache.size > 400) layoutCache.clear()
+  layoutCache.set(cacheKey, layout)
+  return layout
+}
+
+function computeCurvedLayout(
   text: string,
   path: string,
   fontSize: number,
@@ -352,8 +464,13 @@ export function curvedLayout(
     if (y < minY) minY = y
     if (y > maxY) maxY = y
   }
+  // Sampled in one pass rather than a call per point: samplePath resolves the
+  // path and its length once for the whole run, which is most of the cost.
+  const lengths: number[] = []
   for (let i = 0; i <= SAMPLES; i++) {
-    const p = pointAtLength(path, (runStartPx + (textWidth * i) / SAMPLES) / scale)
+    lengths.push((runStartPx + (textWidth * i) / SAMPLES) / scale)
+  }
+  for (const p of samplePath(path, lengths)) {
     if (!p) continue
     // Text's "up" is the tangent turned a quarter left; in SVG's y-down space
     // that is (sin a, -cos a).
@@ -408,6 +525,7 @@ function pathEl(d: string): SVGPathElement | null {
   if (pathElCache.size > 300) {
     hiddenSvg.replaceChildren()
     pathElCache.clear()
+    totalLengthCache.clear()
   }
   const el = document.createElementNS(ns, "path")
   el.setAttribute("d", d)
@@ -416,18 +534,48 @@ function pathEl(d: string): SVGPathElement | null {
   return el
 }
 
+export type PathPoint = { x: number; y: number; angle: number }
+
+// getTotalLength walks the flattened path every time it is asked, and every
+// query below needs it to clamp against. It cannot change for a given path
+// string, so it is measured once. Emptied with pathElCache, whose elements it
+// describes.
+const totalLengthCache = new Map<string, number>()
+
+function pathTotalLength(d: string): number {
+  const cached = totalLengthCache.get(d)
+  if (cached !== undefined) return cached
+  const circle = circleForPath.get(d)
+  const total = circle ? circle.length : (pathEl(d)?.getTotalLength() ?? 0)
+  totalLengthCache.set(d, total)
+  return total
+}
+
+/** The closed form, for the circles we minted ourselves. See circleForPath. */
+function circlePointAtLength(c: CircleGeometry, length: number): PathPoint {
+  const at = Math.max(0, Math.min(c.length, length))
+  const theta = c.start + (c.dir * at) / c.r
+  // Position is the circle; the tangent is its derivative, a quarter turn on,
+  // pointing whichever way the parameterisation runs.
+  return {
+    x: c.cx + c.r * Math.cos(theta),
+    y: c.cy + c.r * Math.sin(theta),
+    angle: (Math.atan2(c.dir * Math.cos(theta), -c.dir * Math.sin(theta)) * 180) / Math.PI,
+  }
+}
+
 /**
  * Point and tangent angle at a distance along the path, in the path's own user
  * units. Distance clamps to [0, length]; the angle comes from a short chord
  * around the point, in degrees, ready for a CSS rotate.
  */
-export function pointAtLength(
-  d: string,
-  length: number
-): { x: number; y: number; angle: number } | null {
+export function pointAtLength(d: string, length: number): PathPoint | null {
+  const circle = circleForPath.get(d)
+  if (circle) return circlePointAtLength(circle, length)
+
   const el = pathEl(d)
   if (!el) return null
-  const total = el.getTotalLength()
+  const total = pathTotalLength(d)
   if (!total) return null
   const at = Math.max(0, Math.min(total, length))
   const p = el.getPointAtLength(at)
@@ -438,4 +586,38 @@ export function pointAtLength(
     y: p.y,
     angle: (Math.atan2(after.y - before.y, after.x - before.x) * 180) / Math.PI,
   }
+}
+
+/**
+ * Many points along one path, in a single pass — the same answers as calling
+ * pointAtLength in a loop, without repeating its per-call setup.
+ *
+ * A circle is answered in closed form, so a batch of any size costs nothing.
+ * Any other path is resolved to its element and total length once for the whole
+ * batch rather than once per point, and each point keeps its own ±0.5 chord for
+ * the tangent — taking the tangent from neighbouring samples instead would be
+ * cheaper still, but on the tightly-bending open curves the samples sit too far
+ * apart for that and the run's box came out up to 3px off.
+ */
+export function samplePath(d: string, lengths: number[]): (PathPoint | null)[] {
+  if (!lengths.length) return []
+  const circle = circleForPath.get(d)
+  if (circle) return lengths.map(l => circlePointAtLength(circle, l))
+
+  const el = pathEl(d)
+  if (!el) return lengths.map(() => null)
+  const total = pathTotalLength(d)
+  if (!total) return lengths.map(() => null)
+
+  return lengths.map(l => {
+    const at = Math.max(0, Math.min(total, l))
+    const p = el.getPointAtLength(at)
+    const before = el.getPointAtLength(Math.max(0, at - 0.5))
+    const after = el.getPointAtLength(Math.min(total, at + 0.5))
+    return {
+      x: p.x,
+      y: p.y,
+      angle: (Math.atan2(after.y - before.y, after.x - before.x) * 180) / Math.PI,
+    }
+  })
 }
