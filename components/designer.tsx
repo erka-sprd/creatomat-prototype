@@ -95,10 +95,12 @@ import {
   type TextCurveId,
   curveIdForPath,
   curvedLayout,
+  invalidateTextMetrics,
   pointAtLength,
   textBoundaryWidths,
   textCurve,
 } from "@/lib/text-path"
+import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/fonts"
 import { useFonts, getFontVariants } from "@/hooks/useFonts"
 import LottieLoader from "@/components/ui/lottie/LottieLoader"
 import CustomerServiceMode from "@/components/cs-mode/CustomerServiceMode"
@@ -969,6 +971,18 @@ export default function Designer({
   // cannot follow the curve, so they are hidden and re-drawn: a collapsed
   // range draws a caret, a spread one draws a band of per-glyph quads).
   const [curveSel, setCurveSel] = useState({ start: 0, end: 0 })
+  /**
+   * Write the range, keeping the previous object when it has not actually
+   * changed so React can bail out of the render entirely.
+   *
+   * The sources are all high-frequency — a selection drag reports on every
+   * pointer move, onSelect on every caret event — and most of those reports
+   * land on the boundary the last one did. Handing back a fresh object each
+   * time re-rendered the whole designer for a range that had not moved.
+   */
+  const applyCurveSel = useCallback((start: number, end: number) => {
+    setCurveSel(prev => (prev.start === start && prev.end === end ? prev : { start, end }))
+  }, [])
   // Where a curved-text selection drag started (grapheme index), so pointermove
   // can spread the range in either direction from it. Null = not dragging.
   const curveDragAnchorRef = useRef<number | null>(null)
@@ -1423,7 +1437,13 @@ export default function Designer({
       )
     }
     apply()
-    loadFont(selectedFontFamily).then(apply)
+    loadFont(selectedFontFamily).then(() => {
+      // The face just changed under every text measurement taken so far; drop
+      // them before apply() re-renders, so the curve is laid out in the font
+      // that is now actually drawing it.
+      invalidateTextMetrics()
+      apply()
+    })
     return () => {
       active = false
     }
@@ -1756,6 +1776,9 @@ export default function Designer({
       s,
       xPct: el.x + ((bx - (cx - bw / 2)) / paRect.width) * 100,
       yPct: el.y + ((by - (cy - bh / 2)) / paRect.height) * 100,
+      // What was measured, so a repeat pass can tell whether the DOM has caught
+      // up with the correction the previous one wrote — see fitElementAfterRelease.
+      measured: { w: rect.width, h: rect.height, x: rect.left, y: rect.top },
     }
   }
 
@@ -1838,17 +1861,35 @@ export default function Designer({
   // So this re-measures and goes again until nothing moves (computePrintAreaFit
   // returns null once the element is inside), capped so a pathological case
   // cannot loop.
-  const FIT_PASSES = 4
+  const FIT_PASSES = 6
+  type FitMeasure = { w: number; h: number; x: number; y: number }
   const fitElementAfterRelease = (
     kind: "text" | "graphic",
     id: string,
-    pass = 0
+    pass = 0,
+    // The box the previous pass acted on.
+    last?: FitMeasure
   ) => {
     const fit = computePrintAreaFit(kind, id)
     if (!fit) return
+    // A pass may run before the browser has laid out what the last one wrote —
+    // React's commit and the frame boundary are not ordered against each other.
+    // Applying the scale again then multiplies it: a run needing 0.13 got
+    // 0.13² and came back a fifth of the size it should be. An unchanged box
+    // means the correction has not landed yet, so wait another frame rather
+    // than correct a second time for the same overflow.
+    const stale =
+      !!last &&
+      Math.abs(fit.measured.w - last.w) < 0.5 &&
+      Math.abs(fit.measured.h - last.h) < 0.5 &&
+      Math.abs(fit.measured.x - last.x) < 0.5 &&
+      Math.abs(fit.measured.y - last.y) < 0.5
     if (pass < FIT_PASSES) {
-      requestAnimationFrame(() => fitElementAfterRelease(kind, id, pass + 1))
+      requestAnimationFrame(() =>
+        fitElementAfterRelease(kind, id, pass + 1, stale ? last : fit.measured)
+      )
     }
+    if (stale) return
     if (kind === "graphic") {
       setGraphicElements(prev =>
         prev.map(g =>
@@ -3279,44 +3320,6 @@ export default function Designer({
     // observer never attaches and printAreaPxSize stays 0 (no embroidery render).
     // It's a stable string (unlike printAreaOverlay, a fresh object each render).
   }, [productId, activeViewId, currentPrintAreaId])
-  // Computes the largest font size at which `text` fits in `areaWidth × areaHeight`.
-  // The largest font size at which a run still fits the print area.
-  //
-  // Measured in the element's OWN face and weight. It used to measure
-  // everything in Inter, which made the cap wrong for every other font — and
-  // wrong in the dangerous direction for a wider face like the Lobster Two
-  // default, where the text stayed over-sized and hung outside the area.
-  //
-  // Lines are measured separately (the widest one decides the width) and the
-  // height is shared between them, since leading-none makes N lines exactly N
-  // font sizes tall. Measuring the whole string as one run, newlines included,
-  // both over-counted the width and under-counted the height.
-  const computeMaxFontSize = (
-    text: string,
-    areaWidth: number,
-    areaHeight: number,
-    fontFamily: string,
-    bold?: boolean,
-    italic?: boolean
-  ) => {
-    if (areaWidth <= 0 || areaHeight <= 0) return MIN_TEXT_FONT_SIZE
-    const lines = (text || "A").split("\n")
-    const byHeight = areaHeight / lines.length
-    if (typeof document === "undefined") return Math.floor(byHeight)
-    const ctx = document.createElement("canvas").getContext("2d")
-    if (!ctx) return Math.floor(byHeight)
-    ctx.font = `${italic ? "italic " : ""}${bold ? "700" : "400"} 100px "${fontFamily}", sans-serif`
-    let widthAt100 = 0
-    for (const line of lines) {
-      widthAt100 = Math.max(widthAt100, ctx.measureText(line || "A").width)
-    }
-    if (widthAt100 <= 0) return Math.floor(byHeight)
-    const byWidth = (areaWidth / widthAt100) * 100
-    // Floored at the shared minimum rather than 14: a long line on a small
-    // print area genuinely needs to go below that, and the old floor was one
-    // of the reasons such a text would not come back inside.
-    return Math.max(MIN_TEXT_FONT_SIZE, Math.floor(Math.min(byWidth, byHeight)))
-  }
   // Measures a text run's pixel width at the given fontSize/fontFamily.
   const measureTextWidth = (text: string, fontSize: number, fontFamily: string) => {
     if (typeof document === "undefined") return 0
@@ -3337,46 +3340,110 @@ export default function Designer({
   }
   const MIN_TEXT_FONT_SIZE = 1
   const MIN_GRAPHIC_WIDTH_PCT = 5
-  const maxFontSize = useMemo(
-    () =>
-      // /zoom: fontSize is stored at zoom-1 scale but printAreaPxSize is measured
-      // at the current zoom.
-      computeMaxFontSize(
-        selectedText?.content ?? "",
-        printAreaPxSize.width,
-        printAreaPxSize.height,
-        selectedText?.fontFamily ?? DEFAULT_FONT_FAMILY,
-        selectedText?.bold,
-        selectedText?.italic
-      ) / zoom,
-    [
-      selectedText?.content,
-      selectedText?.fontFamily,
-      selectedText?.bold,
-      selectedText?.italic,
-      printAreaPxSize.width,
-      printAreaPxSize.height,
-      zoom,
-    ]
-  )
 
-  // Auto-clamp the selected text's fontSize if its content makes the current size overflow.
+  /**
+   * The largest stored font size at which the selected text still fits the
+   * print area — the far end of the size control's travel, so dragging to it
+   * fills the area instead of overshooting an arbitrary constant.
+   *
+   * Both sides are taken in LAYOUT px — the glyph box the element actually
+   * renders (textGlyphBox, which already knows how a curved run is measured)
+   * against the print area's own offsetWidth/Height. Neither carries the
+   * canvas' fit transform or the designer zoom, so nothing has to be divided
+   * back out: an earlier version compared canvas font metrics against a
+   * getBoundingClientRect and came out short by the canvas scale, bounding the
+   * slider at 148 where 183 fits. Measuring the glyphs rather than the wrapper
+   * also keeps the 4px the editing box pads itself by out of the arithmetic.
+   *
+   * Scale-invariant, so the current size is only a reference point: the glyph
+   * box grows in proportion with it, and the ratio that fills the area does not.
+   */
+  const measureMaxFontSize = () => {
+    const id = selectedTextId
+    if (!id) return MAX_FONT_SIZE
+    const pa = printAreaBoxRef.current
+    const el = textElementsRef.current.find(t => t.id === id)
+    if (!pa || !el?.fontSize) return MAX_FONT_SIZE
+    const g = textGlyphBox(el, el.textPath ?? null)
+    const paW = pa.offsetWidth
+    const paH = pa.offsetHeight
+    if (g.w <= 0 || g.h <= 0 || paW <= 0 || paH <= 0) return MAX_FONT_SIZE
+    const s = Math.min(paW / g.w, paH / g.h)
+    return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE + 1, Math.floor(el.fontSize * s)))
+  }
+
+  /**
+   * When that bound is republished.
+   *
+   * It is a fact about the current string, so it genuinely moves as characters
+   * are added — but pushing it out on every keystroke is what made the control
+   * feel unstable: the range shifted under a hand that had not touched it,
+   * sliding the thumb and changing what one step was worth. So it settles: a
+   * pause in the typing, or immediately whenever the text is not being edited
+   * at all, which covers picking another element, switching product or view,
+   * zooming, and the font finishing loading.
+   */
+  const MAX_SIZE_SETTLE_MS = 400
+  const [maxFontSize, setMaxFontSize] = useState(MAX_FONT_SIZE)
   useEffect(() => {
-    if (!selectedTextId) return
-    setTextElements(prev => {
-      const t = prev.find(x => x.id === selectedTextId)
-      if (!t || t.fontSize <= maxFontSize) return prev
-      return prev.map(x =>
-        x.id === selectedTextId ? { ...x, fontSize: maxFontSize } : x
+    const apply = () => {
+      const next = measureMaxFontSize()
+      setMaxFontSize(next)
+      // Bring the size itself down with the bound, so the handle never sits at
+      // the end of its travel describing a text that is larger than the end
+      // means. Only the size — the position is left alone, since this can land
+      // mid-sentence and shoving the box across the print area under a caret
+      // that is still being typed into would be its own kind of wrong. Anything
+      // still hanging out is fitted when the edit ends.
+      setTextElements(prev =>
+        prev.map(t =>
+          t.id === selectedTextId && t.fontSize > next ? { ...t, fontSize: next } : t
+        )
       )
-    })
-  }, [maxFontSize, selectedTextId])
+    }
+    if (!editingTextId) {
+      apply()
+      return
+    }
+    const timer = window.setTimeout(apply, MAX_SIZE_SETTLE_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedTextId,
+    editingTextId,
+    selectedText?.content,
+    selectedText?.fontFamily,
+    selectedText?.bold,
+    selectedText?.italic,
+    selectedText?.textPath,
+    selectedText?.rotation,
+    fontCaps,
+    printAreaPxSize.width,
+    printAreaPxSize.height,
+    zoom,
+  ])
 
-  // Typing changes an element's size, and nothing else fits it back: the cap
-  // above only limits the FONT, so a run that grew past the edge stayed there,
-  // correctly sized but hanging outside. create-omat fits on every block update
-  // for the same reason. Deferred to the frame after editing ends so the final
-  // content has laid out before the box is measured.
+  /**
+   * The size gesture is over — settle the text back inside the print area.
+   *
+   * Deliberately on release, not on every value the slider passes through. The
+   * fit scales an over-sized element down, so running it live turned a drag
+   * into a fight: the handle grew the text, the fit shrank it, and it flickered
+   * between the two several times a second. A graphic being resized doesn't
+   * behave that way — it follows the pointer out past the edge (clipped to the
+   * print area) and is fitted back when let go — and the size slider now
+   * matches it. create-omat lands in the same place from the other direction:
+   * its restriction runs on history updates, which its engine coalesces rather
+   * than emitting per frame.
+   */
+  const commitTextSize = () => {
+    if (!selectedTextId) return
+    // A frame first, so the last value the gesture wrote has laid out before
+    // the box is measured.
+    requestAnimationFrame(() => fitElementAfterRelease("text", selectedTextId))
+  }
+
+  // A final pass once editing ends, after the last content has laid out.
   const wasEditingRef = useRef<string | null>(null)
   useEffect(() => {
     const was = wasEditingRef.current
@@ -4602,10 +4669,10 @@ export default function Designer({
                               rows={1}
                               onChange={e => {
                                 const v = e.target.value
-                                setCurveSel({
-                                  start: e.target.selectionStart ?? v.length,
-                                  end: e.target.selectionEnd ?? v.length,
-                                })
+                                applyCurveSel(
+                                  e.target.selectionStart ?? v.length,
+                                  e.target.selectionEnd ?? v.length
+                                )
                                 setTextElements(prev =>
                                   prev.map(t => (t.id === el.id ? { ...t, content: v } : t))
                                 )
@@ -4615,10 +4682,7 @@ export default function Designer({
                               // drawn caret and band track it.
                               onSelect={e => {
                                 const ta = e.target as HTMLTextAreaElement
-                                setCurveSel({
-                                  start: ta.selectionStart ?? 0,
-                                  end: ta.selectionEnd ?? 0,
-                                })
+                                applyCurveSel(ta.selectionStart ?? 0, ta.selectionEnd ?? 0)
                               }}
                               onBlur={() => setEditingTextId(null)}
                               onKeyDown={e => {
@@ -4646,7 +4710,7 @@ export default function Designer({
                                 if (idx == null) return
                                 ta.focus()
                                 ta.setSelectionRange(idx, idx)
-                                setCurveSel({ start: idx, end: idx })
+                                applyCurveSel(idx, idx)
                                 curveDragAnchorRef.current = idx
                                 ta.setPointerCapture(e.pointerId)
                               }}
@@ -4668,7 +4732,7 @@ export default function Designer({
                                   en,
                                   idx < anchor ? "backward" : "forward"
                                 )
-                                setCurveSel({ start: s, end: en })
+                                applyCurveSel(s, en)
                               }}
                               onPointerUp={e => {
                                 curveDragAnchorRef.current = null
@@ -4702,7 +4766,7 @@ export default function Designer({
                                   while (en < t.length && /\s/.test(t[en])) en++
                                 }
                                 ta.setSelectionRange(s, en)
-                                setCurveSel({ start: s, end: en })
+                                applyCurveSel(s, en)
                               }}
                               style={{
                                 position: "absolute",
@@ -4758,7 +4822,7 @@ export default function Designer({
                                 const to = untouched ? node.value.length : caret
                                 node.setSelectionRange(from, to)
                                 node.dataset.initialSelectDone = "1"
-                                setCurveSel({ start: from, end: to })
+                                applyCurveSel(from, to)
                               }}
                               className={`pointer-events-auto bg-transparent outline-none leading-none ${
                                 curved ? "curve-editing" : ""
@@ -5720,6 +5784,7 @@ export default function Designer({
               onToggleItalic={() => updateSelectedText({ italic: !selectedText?.italic })}
               onToggleUnderline={() => updateSelectedText({ underline: !selectedText?.underline })}
               onFontSizeChange={size => updateSelectedText({ fontSize: size })}
+              onFontSizeCommit={commitTextSize}
               onFontFamilyClick={() =>
                 setFontPanelOpen(o => {
                   const next = !o
@@ -7868,11 +7933,12 @@ export default function Designer({
               }
             : null
         }
-        maxFontSize={maxFontSize}
         canBold={fontCaps.canBold}
         canItalic={fontCaps.canItalic}
+        maxFontSize={maxFontSize}
         onFontFamilyChange={family => updateSelectedText({ fontFamily: family })}
         onFontSizeChange={size => updateSelectedText({ fontSize: size })}
+        onFontSizeCommit={commitTextSize}
         onColorChange={color => updateSelectedText({ color, colorSet: true })}
         // Same rule as the desktop bar: on a path, alignment pins to center.
         onTextAlignChange={align =>

@@ -18,7 +18,7 @@ import {
 import { AlignIcon, BoldIcon, ItalicIcon, UnderlineIcon } from "@/components/ui/editor-bar"
 import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
 import { FontButton } from "@/components/ui/font-panel/FontButton"
-import { FONTS } from "@/lib/fonts"
+import { FONTS, MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/fonts"
 import { TEXT_CURVES, type TextCurveId } from "@/lib/text-path"
 import { ArrowLeft } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -53,11 +53,14 @@ type MobileEditSheetProps = {
     onClose: () => void
     blockType: "text" | "graphic" | null
     text: TextValues | null
-    maxFontSize: number
     canBold: boolean
     canItalic: boolean
     onFontFamilyChange: (family: string) => void
+    /** Largest size the print area allows — see the editor bar's maxFontSize. */
+    maxFontSize: number
     onFontSizeChange: (size: number) => void
+    /** The size gesture is over — see the editor bar's onFontSizeCommit. */
+    onFontSizeCommit?: () => void
     onColorChange: (color: string) => void
     onTextAlignChange: (align: "left" | "center" | "right") => void
     onToggleBold: () => void
@@ -78,18 +81,17 @@ type MobileEditSheetProps = {
 const TEXT_TABS = ["Font", "Format", "Color", "Size", "Curve"] as const
 export type TextTab = (typeof TEXT_TABS)[number]
 
-const MIN_FONT_SIZE = 8
-
 export default function MobileEditSheet({
     open,
     onClose,
     blockType,
     text,
-    maxFontSize,
     canBold,
     canItalic,
+    maxFontSize,
     onFontFamilyChange,
     onFontSizeChange,
+    onFontSizeCommit,
     onColorChange,
     onTextAlignChange,
     onToggleBold,
@@ -145,16 +147,19 @@ export default function MobileEditSheet({
     // No rounding to whole pixels: the readout and the step buttons both work
     // in percent, and snapping the size to integers would make a "1%" step land
     // on anything but 1%.
-    const clampSize = (v: number) => Math.min(maxFontSize, Math.max(MIN_FONT_SIZE, v))
-    // The range the slider spans, shared by the track and the step buttons.
-    const sizeMax = Math.max(MIN_FONT_SIZE + 1, Math.floor(maxFontSize))
-    const sizeValue = Math.min(text?.fontSize ?? MIN_FONT_SIZE, sizeMax)
+    const sizeMax = Math.max(
+        MIN_FONT_SIZE + 1,
+        Math.min(MAX_FONT_SIZE, Math.floor(maxFontSize))
+    )
+    const clampSize = (v: number) => Math.min(sizeMax, Math.max(MIN_FONT_SIZE, v))
+    const sizeValue = clampSize(text?.fontSize ?? MIN_FONT_SIZE)
     /** Move the size by whole percentage points of the slider's range. */
     const stepSizePercent = (delta: number) => {
         const range = sizeMax - MIN_FONT_SIZE
         const pct = ((sizeValue - MIN_FONT_SIZE) / range) * 100
         const next = Math.min(100, Math.max(0, Math.round(pct) + delta))
         onFontSizeChange(clampSize(MIN_FONT_SIZE + (next / 100) * range))
+        onFontSizeCommit?.()
     }
 
     const title =
@@ -289,6 +294,7 @@ export default function MobileEditSheet({
                                             max={sizeMax}
                                             value={sizeValue}
                                             onChange={v => onFontSizeChange(clampSize(v))}
+                                            onCommit={onFontSizeCommit}
                                             width={sliderWidth}
                                             jumpOnTrackClick
                                             showPercentage

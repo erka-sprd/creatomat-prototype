@@ -32,6 +32,10 @@ type WedgeSliderProps = {
   // Fires on grab and on release, so the owner can swap what it shows while the
   // handle is being moved.
   onDragChange?: (dragging: boolean) => void
+  // Fires once the handle is let go, for owners that settle something only when
+  // the gesture is over — the way a drag or a resize commits on release rather
+  // than on every frame of the movement.
+  onCommit?: () => void
   // Show the value as a percentage above the handle — how create-omat's mobile
   // size panel reads out its slider.
   showPercentage?: boolean
@@ -114,6 +118,7 @@ export function WedgeSlider({
   trackFill,
   marks,
   onDragChange,
+  onCommit,
   showPercentage = false,
 }: WedgeSliderProps) {
   // Unique per instance: two sliders on a page must not share a clip path.
@@ -217,6 +222,7 @@ export function WedgeSlider({
       announcedRef.current = false
       onDragChange?.(false)
     }
+    onCommit?.()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {

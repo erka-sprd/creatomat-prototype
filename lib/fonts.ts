@@ -73,3 +73,19 @@ export const FONTS: FontDef[] = [
   { family: "Sacramento", category: "handwriting" },
   { family: "Great Vibes", category: "handwriting" },
 ]
+
+/**
+ * The range every size control offers — create-omat's MIN_FONT_SIZE and
+ * MAX_FONT_SIZE (src/lib/Constants.ts), shared by its editor bar and its mobile
+ * SizePanel alike.
+ *
+ * Fixed, and deliberately not derived from what is typed. The range belongs to
+ * the control, not to the content: a max computed from the current string moves
+ * its own end as characters are added, so the thumb slides and the step size
+ * changes under a hand that never touched it. Text too big for the print area
+ * is dealt with where create-omat deals with it — the block is scaled back to
+ * fit after the change (see the print-area fit in designer.tsx), which leaves
+ * the control still.
+ */
+export const MIN_FONT_SIZE = 14
+export const MAX_FONT_SIZE = 320

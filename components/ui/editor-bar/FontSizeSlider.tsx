@@ -20,16 +20,23 @@ export function FontSizeSlider({
   max,
   value,
   onChange,
+  onCommit,
   width,
 }: {
   min: number
   max: number
   value: number
   onChange: (value: number) => void
+  /** Fires when the gesture is over and the value has settled. */
+  onCommit?: () => void
   /** Track length in px; the slider draws an SVG track so it needs a number. */
   width?: number
 }) {
   const rafRef = useRef<number | null>(null)
+  // A track click releases the pointer immediately but the value keeps easing
+  // for another quarter second, so the commit waits for the glide to land —
+  // otherwise the owner settles against a size the slider has already left.
+  const pendingCommitRef = useRef(false)
   // Read at the start of a tween, so a glide eases from wherever the size
   // actually is rather than from a value captured on some earlier render.
   const valueRef = useRef(value)
@@ -58,6 +65,10 @@ export function FontSizeSlider({
       } else {
         rafRef.current = null
         onChange(target)
+        if (pendingCommitRef.current) {
+          pendingCommitRef.current = false
+          onCommit?.()
+        }
       }
     }
     rafRef.current = requestAnimationFrame(tick)
@@ -74,6 +85,11 @@ export function FontSizeSlider({
       onChange={v => {
         cancel()
         onChange(v)
+      }}
+      onCommit={() => {
+        // Mid-glide: let the tween's last frame do it.
+        if (rafRef.current !== null) pendingCommitRef.current = true
+        else onCommit?.()
       }}
       jumpOnTrackClick
       onJump={animateTo}

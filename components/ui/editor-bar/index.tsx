@@ -1,6 +1,7 @@
 "use client"
 
 import { useId } from "react"
+import { MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/fonts"
 import { EditorBarShell } from "./EditorBarShell"
 import { EditorBarTooltip } from "./EditorBarTooltip"
 import { FontSizeSlider } from "./FontSizeSlider"
@@ -22,8 +23,19 @@ type EditorBarProps = {
   // False while the text sits on a curve: curved text is always centre-aligned
   // here, so the control shows that state and stops responding.
   canAlign?: boolean
+  /**
+   * Largest size the print area allows for this text — the far end of the
+   * slider's travel, so dragging to it fills the area rather than overshooting
+   * an arbitrary constant. Held still while typing by the owner.
+   */
   maxFontSize?: number
   onFontSizeChange: (next: number) => void
+  /**
+   * The size gesture is over. Fires on the slider's release and on each step
+   * button, so the owner can settle the element (fit it back into the print
+   * area) once, instead of on every frame of a drag.
+   */
+  onFontSizeCommit?: () => void
   onFontFamilyClick: () => void
   onColorClick: () => void
   onCurveClick?: () => void
@@ -35,8 +47,6 @@ type EditorBarProps = {
   onDelete?: () => void
 }
 
-const MIN_FONT_SIZE = 1
-const ABS_MAX_FONT_SIZE = 320
 const ALIGN_ORDER: TextAlign[] = ["left", "center", "right"]
 
 export function BoldIcon() {
@@ -178,8 +188,9 @@ export function EditorBar({
   canBold = true,
   canItalic = true,
   canAlign = true,
-  maxFontSize = ABS_MAX_FONT_SIZE,
+  maxFontSize = MAX_FONT_SIZE,
   onFontSizeChange,
+  onFontSizeCommit,
   onFontFamilyClick,
   onColorClick,
   onCurveClick,
@@ -191,7 +202,8 @@ export function EditorBar({
   onDelete,
 }: EditorBarProps) {
   if (!show) return null
-  const max = Math.max(MIN_FONT_SIZE, Math.min(ABS_MAX_FONT_SIZE, Math.floor(maxFontSize)))
+  // The absolute ceiling still applies; the print area usually binds first.
+  const max = Math.max(MIN_FONT_SIZE + 1, Math.min(MAX_FONT_SIZE, Math.floor(maxFontSize)))
   const clamp = (n: number) => Math.max(MIN_FONT_SIZE, Math.min(max, Math.round(n)))
   const nextAlign = ALIGN_ORDER[(ALIGN_ORDER.indexOf(textAlign) + 1) % ALIGN_ORDER.length]
   const iconBtn = (active: boolean, disabled: boolean) =>
@@ -310,7 +322,10 @@ export function EditorBar({
           <button
             type="button"
             aria-label="Decrease font size"
-            onClick={() => onFontSizeChange(clamp(fontSize - 1))}
+            onClick={() => {
+              onFontSizeChange(clamp(fontSize - 1))
+              onFontSizeCommit?.()
+            }}
             className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md hover:bg-neutral-100"
           >
             <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
@@ -328,8 +343,9 @@ export function EditorBar({
         <FontSizeSlider
           min={MIN_FONT_SIZE}
           max={max}
-          value={Math.min(fontSize, max)}
+          value={Math.min(Math.max(fontSize, MIN_FONT_SIZE), max)}
           onChange={v => onFontSizeChange(clamp(v))}
+          onCommit={onFontSizeCommit}
           width={120}
         />
 
@@ -338,7 +354,10 @@ export function EditorBar({
           <button
             type="button"
             aria-label="Increase font size"
-            onClick={() => onFontSizeChange(clamp(fontSize + 1))}
+            onClick={() => {
+              onFontSizeChange(clamp(fontSize + 1))
+              onFontSizeCommit?.()
+            }}
             className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-md hover:bg-neutral-100"
           >
             <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
