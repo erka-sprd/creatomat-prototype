@@ -985,14 +985,18 @@ export function TierHint({
     : `%${volumeDiscountPercentage(quantity, productId)} off applied`
 
   return (
-    <div className="flex items-center justify-end gap-1.5 text-[14px] font-medium text-red-600">
-      <span>{text}</span>
-      <span className="group/tiers relative flex">
+    <div className="flex justify-end">
+      {/* The hint and its chevron in one #FFEEEB badge, shaped as the kit's
+          (4px radius, px-2 py-1), text in the discounted prices' #DC2626, as in
+          designer.tsx */}
+      <span className="group/tiers relative flex items-center gap-1.5 rounded-[4px] bg-[#FFEEEB] px-2 py-1 text-[14px] font-medium text-[#DC2626]">
+        <span>{text}</span>
         {/* Hover-only affordance: not a button and not focusable, so a click
             neither opens anything nor pins the preview open. */}
         <span
           aria-label="Volume discount tiers"
-          className="flex items-center justify-center rounded-full bg-[#FFEEEB] p-1 outline-none"
+          // No circle; two steps lighter than the text (red-400), as in designer.tsx
+          className="flex items-center justify-center text-[var(--sprd-red-400)] outline-none"
         >
           <svg
             width="16"
@@ -1152,7 +1156,8 @@ function SizeSheetBody({
     {/* The open sheet covers the rail, so it carries the same three
         facts in the same screen position: next tier, per item, total. */}
     <div
-      className={`flex flex-shrink-0 flex-col gap-3 border-t bg-white p-6 pt-[18px] pb-[14px] ${
+      // Bottom padding as the sides' (p-6), as in designer.tsx
+      className={`flex flex-shrink-0 flex-col gap-3 border-t bg-white p-6 pt-[18px] ${
         atEnd ? "border-neutral-200" : "border-transparent"
       }`}
     >
@@ -1194,9 +1199,6 @@ function SizeSheetBody({
             </span>
           </span>
         </div>
-        <p className="text-right text-[12px] text-[#6A6A6A]">
-          Excl. shipping, incl. printing costs
-        </p>
       </div>
     </div>
     </>

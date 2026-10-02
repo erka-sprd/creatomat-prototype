@@ -42,7 +42,7 @@ import {
 const PROTOTYPE = "https://creatomat-prototype.vercel.app/add-to-basket-new-1"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
 
-const LAST_UPDATED = "August 28, 2026 · 4:50 PM"
+const LAST_UPDATED = "October 2, 2026 · 1:04 PM"
 
 /** The quantities §6 shows the hint at — every state it has. */
 const TIER_STATES = [

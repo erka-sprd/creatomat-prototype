@@ -7221,25 +7221,36 @@ export default function Designer({
                          present-but-transparent so toggling it never shifts
                          layout by a pixel. */
                       <div
-                        className={`flex flex-shrink-0 flex-col gap-3 border-t bg-white p-6 pt-[18px] pb-[14px] ${
+                        // Bottom padding as the sides' (p-6): the total row is
+                        // the last line now, so it sits as far from the bottom
+                        // edge as from the left and right
+                        className={`flex flex-shrink-0 flex-col gap-3 border-t bg-white p-6 pt-[18px] ${
                           sizeListAtEnd ? "border-neutral-200" : "border-transparent"
                         }`}
                       >
-                        {/* Opens the sticky area — plain right-aligned red text
-                            with a chevron affordance: hovering it previews the
-                            full tier table and flips the chevron up. */}
-                        <div className="flex items-center justify-end gap-1.5 text-[14px] font-medium text-red-600">
-                          <span>{hypoTierBannerText}</span>
-                          <span className="group/tiers relative flex">
+                        {/* Opens the sticky area — a right-aligned red badge on
+                            the rail discount banner's #FFEEEB ground, holding
+                            the hint and its chevron: hovering it previews the
+                            full tier table and flips the chevron up. Shaped as
+                            create-omat's kit badge (ProductCard Badges: 4px
+                            radius, px-2 py-1), with red text for the discount
+                            cue — the #DC2626 the per-item and total figures
+                            turn once discounted, not Tailwind's red-600, which
+                            is a different red here; the radius is written out
+                            because this repo's rounded-sm is not the kit's. */}
+                        <div className="flex justify-end">
+                          <span className="group/tiers relative flex items-center gap-1.5 rounded-[4px] bg-[#FFEEEB] px-2 py-1 text-[14px] font-medium text-[#DC2626]">
+                            <span>{hypoTierBannerText}</span>
                             {/* Hover-only affordance: not a button and not
                                 focusable, so a click neither opens anything nor
                                 pins the preview open (focus would have kept it
                                 visible after the pointer left). */}
                             <span
                               aria-label="Volume discount tiers"
-                              // Same #FFEEEB ground as the rail's discount
-                              // banner, as a 2px-padded circle.
-                              className="flex items-center justify-center rounded-full bg-[#FFEEEB] p-1 outline-none"
+                              // No circle of its own; two steps lighter on the red
+                              // scale than the hint text (red-600), so it reads as
+                              // the affordance rather than part of the message
+                              className="flex items-center justify-center text-[var(--sprd-red-400)] outline-none"
                             >
                               {/* Kit v2 Chevron. Flips to point up on hover —
                                   transition on `rotate`, since Tailwind v4
@@ -7333,11 +7344,6 @@ export default function Designer({
                               </span>
                             </span>
                           </div>
-                          {/* What the total does and does not contain, under
-                              the figure it qualifies. */}
-                          <p className="text-right text-[12px] text-[#6A6A6A]">
-                            Excl. shipping, incl. printing costs
-                          </p>
                           {/* The breakdown itself opens as a companion panel
                               beside the sheet — see above, next to the size
                               guide. */}
