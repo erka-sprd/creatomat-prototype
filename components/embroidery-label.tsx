@@ -162,11 +162,13 @@ export function EmbroideryPreviewStatus({ loading }: { loading: boolean }) {
 export type EmbroiderySizeStatus = "too-large" | "good" | "thin-line"
 
 const SIZE_BADGE = {
+  // Two tones brighter than the thin-line warning's orange (400/500 against
+  // its 600/700).
   "too-large": {
     label: "Design too large for embroidery",
     icon: "!",
-    frame: "border-[#EA580C] text-[#C2410C]",
-    dot: "bg-[#EA580C]",
+    frame: "border-[#FB923C] text-[#F97316]",
+    dot: "bg-[#FB923C]",
   },
   good: {
     label: "Good design size for embroidery",
