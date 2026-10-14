@@ -23,7 +23,13 @@ import {
   type StaticView,
 } from "product-catalog-client"
 import { hasImageDrag, readImageDrag, startImageDrag } from "@/lib/canvas-drop"
+import { ResizeSizeLabels } from "@/components/resize-size-labels"
 import { formatDeliveryWindow } from "@/lib/delivery"
+import {
+  embroideryHoopFillScale,
+  embroideryHoopFitScale,
+  embroideryHoopFrameFraction,
+} from "@/lib/embroidery-limits"
 import { buildCarryMap, carryBox, carryTextPoint } from "@/lib/design-carry"
 import { IMAGE_SERVER_BASE, loadCatalog, modelImagesFor } from "@/lib/catalog"
 import {
@@ -62,6 +68,14 @@ import MobileActionHeader from "@/components/mobile/mobile-action-header"
 import MobileColorDrawer from "@/components/mobile/mobile-color-drawer"
 import SoldOutStrike from "@/components/sold-out-strike"
 import MobileDock from "@/components/mobile/mobile-dock"
+import EmbroideryLabel, {
+  BADGE_OFFSET,
+  EmbroideryPreviewStatus,
+  EmbroiderySizeBadge,
+  EmbroideryThinLineHelp,
+  ThinLineHelpPopover,
+  type EmbroiderySizeStatus,
+} from "@/components/embroidery-label"
 import MobileEditSheet from "@/components/mobile/mobile-edit-sheet"
 import MobileEditorBar, {
   type MobileEditorBarPanel,
@@ -139,6 +153,9 @@ const DESKTOP_VIEW_SWITCHER: "thumbs" | "dropdown" = "thumbs"
 // canvas. Gated off for now — set to true to bring it back. (CS mode keeps its
 // own technique section inside the CS modal regardless.)
 const SHOW_PRINT_TECHNIQUE_SELECTOR: boolean = false
+// Shortest time the embroidery "Creating preview" loader stays up for a changed
+// design, so a fast render doesn't flash it by unseen.
+const EMBROIDERY_MIN_LOADER_MS = 1800
 
 // Monotonic unique id — Date.now() alone collides when two elements are created
 // in the same millisecond (e.g. uploading/placing several at once).
@@ -273,19 +290,62 @@ const isLightProductColor = (hex?: string): boolean => {
 // visible on the light (#F4F4F4) tile. Tweak the values here.
 const LIGHT_PRODUCT_IMAGE_SHADOW = "drop-shadow(0px 0px 1px rgba(0, 0, 0, 0.55))"
 
-// Embroidery can't stitch arbitrarily large designs. Ported from the dock-change
-// prototype: clamp the design to at most 1/7 of the print area (by area),
-// anchored to its center. Returns the same bbox if it already fits.
-const EMBROIDERY_MAX_AREA_FRACTION = 1 / 7
+// Embroidery resize: how close (screen px, along the drag) the dragged corner
+// has to come to the hoop-frame size before it snaps onto it.
+const HOOP_SNAP_PX = 10
+
+// The hoop guide's arrow is dropped once the object is within this share of
+// the hoop-frame size (snapped, or about to be) — there is nowhere left to point.
+const HOOP_ARROW_MIN_RATIO_GAP = 0.02
+
+// How strongly the object under the hoop guide is blurred, in px, and how long
+// it takes to blur in and back out — the 300ms ease of the canvas pills.
+const HOOP_GUIDE_CONTENT_BLUR_PX = 4
+const HOOP_GUIDE_BLUR_MS = 300
+const HOOP_GUIDE_BLUR_TRANSITION = `filter ${HOOP_GUIDE_BLUR_MS}ms ease-out`
+
+// During a guided resize the object counts as fitting the hoop frame within
+// this share of it — matches the snap, which lands it exactly on the frame.
+const HOOP_RESIZE_FIT_TOLERANCE = 0.01
+
+// Selection frame / corner handle / text-edit edge colours per state: the
+// gizmo blue, the too-large orange and the fits-the-hoop green. Literal class
+// names so Tailwind picks them up.
+const SELECTION_TONE = {
+  blue: {
+    hex: "#3355FF",
+    handle: "border-[#3355FF] hover:bg-[#3355FF]",
+    edge: "bg-[#3355FF]",
+    edgeHover: "bg-[#2B48D9]",
+  },
+  orange: {
+    hex: "#EA580C",
+    handle: "border-[#EA580C] hover:bg-[#EA580C]",
+    edge: "bg-[#EA580C]",
+    edgeHover: "bg-[#C2410C]",
+  },
+  green: {
+    hex: "#16A34A",
+    handle: "border-[#16A34A] hover:bg-[#16A34A]",
+    edge: "bg-[#16A34A]",
+    edgeHover: "bg-[#15803D]",
+  },
+} as const
+
 
 // Blur applied to the designer frame (canvas, left tools, right sidebar — not
 // the header) while the view dropdown is open. Tweak freely.
 const VIEW_DROPDOWN_BLUR_PX = 6
+
+// Embroidery can't stitch beyond the hoop frame. Ported from the dock-change
+// prototype: scale the design down until it fits the product's hoop frame (a
+// share of the print area's width and height — see lib/embroidery-limits),
+// anchored to its center. Returns the same bbox if it already fits or there is
+// no limit (null).
 type DesignBbox = { x: number; y: number; w: number; h: number }
-function clampEmbroideryBbox(b: DesignBbox): DesignBbox {
-  const area = b.w * b.h
-  if (area <= EMBROIDERY_MAX_AREA_FRACTION) return b
-  const scale = Math.sqrt(EMBROIDERY_MAX_AREA_FRACTION / area)
+function clampEmbroideryBbox(b: DesignBbox, hoopFrame: number | null): DesignBbox {
+  const scale = embroideryHoopFitScale(b.w, b.h, hoopFrame)
+  if (scale === 1) return b
   const cx = b.x + b.w / 2
   const cy = b.y + b.h / 2
   const w = b.w * scale
@@ -296,10 +356,13 @@ function clampEmbroideryBbox(b: DesignBbox): DesignBbox {
 export default function Designer({
   csMode = false,
   basketHypotheses = false,
+  embroidery = false,
 }: {
   csMode?: boolean
   /** /add-to-basket-new-1: desktop size-dropdown hypotheses (H1–H4). */
   basketHypotheses?: boolean
+  /** ?embroidery=true: the embroidery version, marked by the vertical canvas label. */
+  embroidery?: boolean
 }) {
   // Product catalogue is fetched once from the central host at runtime.
   const [products, setProducts] = useState<StaticProduct[]>([])
@@ -323,6 +386,9 @@ export default function Designer({
     () => getProductType(products, productId),
     [products, productId]
   )
+  // Embroidery hoop frame for this product, as a share of the print area's
+  // width/height (null: no limit) — see lib/embroidery-limits.
+  const embroideryHoopFrame = productData ? embroideryHoopFrameFraction(productData.name) : null
   const [activeColorIndex, setActiveColorIndex] = useState(0)
   // Canvas zoom (1 = fit, up to MAX_ZOOM) controlled by the slider at the bottom-left.
   // When zoomed in, the canvas area scrolls so different parts of the product
@@ -514,6 +580,8 @@ export default function Designer({
         dragStateRef.current = null
         resizeStateRef.current = null
         rotateStateRef.current = null
+        setResizingElId(null)
+        setResizeHoopGuide(null)
         const z = mobileZoomRef.current
         gestureRef.current = {
           mode: "pinch",
@@ -1039,17 +1107,28 @@ export default function Designer({
   // selection frame and handles hide for the duration of the drag, like the
   // imgly gizmo in create-omat.
   const [draggingElId, setDraggingElId] = useState<string | null>(null)
-  // On-canvas embroidery: after the design settles, wait ~1s (showing a spinner
-  // over the design) before revealing the stitched render — no opacity fade.
+  // Element being resized by a corner handle. Like the imgly gizmo in
+  // create-omat, its handles hide while the size changes, leaving the frame and
+  // the width/height labels (ResizeSizeLabels).
+  const [resizingElId, setResizingElId] = useState<string | null>(null)
+  // On-canvas embroidery: once nothing is selected, the stitched render replaces
+  // the flat design — after the "Creating preview" loader if it had to be
+  // re-rendered, at once if it didn't. No opacity fade.
   const [embroideryShown, setEmbroideryShown] = useState(false)
   const [embroideryLoading, setEmbroideryLoading] = useState(false)
-  // Only the very first embroidery render of the session gets the
-  // "Embroidery preview…" label next to the spinner; later renders show just
-  // the spinner.
-  const embroideryEverShownRef = useRef(false)
-  // The first reveal is held an extra second (even after the render is ready)
-  // so the "Embroidery preview…" label is readable.
-  const [embroideryFirstDelayPassed, setEmbroideryFirstDelayPassed] = useState(false)
+  // A design that differs from the one last shown stitched gets the "Creating
+  // preview" loader for at least EMBROIDERY_MIN_LOADER_MS before its preview is
+  // revealed, even if the render landed sooner (it can render in the background
+  // before the first deselect, and is quick enough to otherwise flash by
+  // unseen). `sig` ties the hold to one design; `done` marks it served.
+  const [embroideryHold, setEmbroideryHold] = useState<{
+    sig: string
+    until: number
+    done: boolean
+  } | null>(null)
+  // Signature of the design the stitched preview was last revealed for — an
+  // unchanged design skips the loader and shows its preview at once.
+  const lastShownEmbroiderySigRef = useRef<string | null>(null)
   // Source image fed to the embroidery renderer. Only updated when the design's
   // *appearance* (not its position) changes, so moving never regenerates it.
   const [embroiderySrc, setEmbroiderySrc] = useState<string | null>(null)
@@ -1067,8 +1146,12 @@ export default function Designer({
   // shows the spinner until the render is ready.
   const [embroideryRenderStale, setEmbroideryRenderStale] = useState(false)
 
-  // Print technique (only relevant for embroidery-suitable products).
-  const [printTechnique, setPrintTechnique] = useState<"standard" | "embroidery">("standard")
+  // Print technique (only relevant for embroidery-suitable products). The
+  // ?embroidery=true version starts on embroidery, so designs show the stitched
+  // preview without the (gated-off) technique selector.
+  const [printTechnique, setPrintTechnique] = useState<"standard" | "embroidery">(
+    embroidery ? "embroidery" : "standard"
+  )
   const [printTechniqueOpen, setPrintTechniqueOpen] = useState(false)
   const [printTechniqueMenuOpen, setPrintTechniqueMenuOpen] = useState(false)
   // Some products (stickers, posters, mugs, …) can't be embroidered. For those
@@ -1176,6 +1259,36 @@ export default function Designer({
     paTop: number
     paWidth: number
     paHeight: number
+    // Embroidery flow: the size scale (relative to the drag start) at which the
+    // object fills the hoop frame. The resize snaps to it and draws it as the
+    // green hoop guide. null outside embroidery or without a hoop frame.
+    hoopScale: number | null
+    // Size scale of the latest move frame, so release knows where it ended.
+    lastSizeScale: number
+  } | null>(null)
+  // Whether the object fit the hoop frame when its guided resize was
+  // released. Holds the frame/badge colour until the next deselect measures the
+  // design again — otherwise they'd fall back to the pre-resize measurement.
+  const [resizeFitAfterRelease, setResizeFitAfterRelease] = useState<boolean | null>(null)
+  // The "See what this means" popover under the thin-line warning. While open,
+  // the designer blurs around it like the add-to-basket size sheet.
+  const [thinLineHelpOpen, setThinLineHelpOpen] = useState(false)
+  const closeThinLineHelp = useCallback(() => setThinLineHelpOpen(false), [])
+  // Whether its sharp layer is on screen, closing fade included — the
+  // originals stay concealed for that long (see ThinLineHelpPopover).
+  const [thinLineHelpPresent, setThinLineHelpPresent] = useState(false)
+  // The mocked thin-line warning (when it shows: see the effects by
+  // embroiderySizeStatus). It replaces the green "good size" badge the moment
+  // it arrives.
+  const [thinLineWarning, setThinLineWarning] = useState(false)
+  // The green hoop guide during an embroidery resize: the object's largest
+  // size inside the hoop frame, pinned to the corner opposite the dragged one.
+  // `ratio` is that size relative to the object's current size, and says
+  // whether it fits. Lone objects only — see hoopScale.
+  const [resizeHoopGuide, setResizeHoopGuide] = useState<{
+    id: string
+    corner: "nw" | "ne" | "sw" | "se"
+    ratio: number
   } | null>(null)
   // Drag-to-rotate an element via the handle below its box. Angles are measured
   // from the box centre; rotation is stored in degrees on the element.
@@ -1203,6 +1316,12 @@ export default function Designer({
     rotateStateRef.current = { kind, id: el.id, cx, cy, startAngle, startRotation: el.rotation ?? 0 }
   }
 
+  // Embroidery flow: new elements are sized to fill the product's hoop frame
+  // rather than the usual default size. null outside embroidery or without a
+  // hoop frame limit (caps), which keeps the defaults.
+  const newElementHoopFrame =
+    effectivePrintTechnique === "embroidery" ? embroideryHoopFrame : null
+
   const addTextElement = () => {
     if (!currentPrintAreaId) return
     const id = uid("text")
@@ -1218,14 +1337,28 @@ export default function Designer({
       const canvas = document.createElement("canvas")
       const ctx = canvas.getContext("2d")
       if (ctx) {
-        ctx.font = '100px "Inter", sans-serif'
+        // Embroidery measures in the font the text renders in, so it reaches
+        // the hoop frame's edge exactly; the default sizing keeps Inter.
+        ctx.font =
+          newElementHoopFrame !== null
+            ? `100px "${DEFAULT_FONT_FAMILY}", "Inter", sans-serif`
+            : '100px "Inter", sans-serif'
         const widthAt100 = ctx.measureText(content).width
         if (widthAt100 > 0) {
           // Polo front: place new elements on the left chest (smaller) instead
           // of centred in the large front print area.
           const leftChest = productId === "2116" && currentPrintAreaId === "6322"
           const targetWidthPx = printAreaPxSize.width * (leftChest ? 0.26 : 0.5)
-          const computedFontSize = (targetWidthPx / widthAt100) * 100
+          // Embroidery flow: the text fills the hoop frame instead — as wide
+          // as the frame, or as tall when that is the tighter side (a line is
+          // fontSize tall).
+          const computedFontSize =
+            newElementHoopFrame !== null
+              ? Math.min(
+                  ((printAreaPxSize.width * newElementHoopFrame) / widthAt100) * 100,
+                  printAreaPxSize.height * newElementHoopFrame
+                )
+              : (targetWidthPx / widthAt100) * 100
           // Floor at MIN_TEXT_FONT_SIZE (not 14): on narrow areas (e.g. a hoodie
           // arm) the 50%-width font can be < 14px, and a hard 14px floor would
           // make the text wider than the print area and overflow it.
@@ -1566,7 +1699,15 @@ export default function Designer({
         ? { centerX: 76, centerY: 15, widthPct: 26 }
         : undefined)
     const clampPos = (v: number, size: number) => Math.max(0, Math.min(100 - size, v))
-    const place = (rawWidth: number, rawHeight: number) => {
+    const place = (defaultWidth: number, defaultHeight: number) => {
+      // Embroidery flow: fill the hoop frame instead of the default size.
+      const hoopFill = embroideryHoopFillScale(
+        defaultWidth / 100,
+        defaultHeight / 100,
+        newElementHoopFrame
+      )
+      const rawWidth = defaultWidth * hoopFill
+      const rawHeight = defaultHeight * hoopFill
       // AI artwork lands at (or below) its print-quality cap rather than the
       // usual default size, so it never appears already too large.
       const fraction = (rawWidth / 100) * (rawHeight / 100)
@@ -1995,7 +2136,12 @@ export default function Designer({
         target.closest("[data-vaul-drawer]") ||
         // Same reason as the sheet: the mobile editor bar floats over the
         // canvas, so a tap on it must not read as a tap away from the text.
-        target.closest("[data-mobile-editor-bar]")
+        target.closest("[data-mobile-editor-bar]") ||
+        // The thin-line warning's "See what this means" and the popover it
+        // opens (portalled to <body>, its backdrop included): reading the
+        // explanation, or closing it, leaves the selection as it was.
+        target.closest("[data-thin-line-help]") ||
+        target.closest("[data-thin-line-help-layer]")
       ) {
         return
       }
@@ -2084,9 +2230,15 @@ export default function Designer({
       const rs = resizeStateRef.current
       if (rs) {
         setIsManipulating(true)
+        setResizingElId(rs.id)
         if (rs.initialDist > 0) {
           const newDist = Math.hypot(e.clientX - rs.anchorScreenX, e.clientY - rs.anchorScreenY)
-          const rawScale = newDist / rs.initialDist
+          // Embroidery: within HOOP_SNAP_PX of the hoop-frame size, the
+          // dragged corner snaps onto it.
+          const snapsToHoop =
+            rs.hoopScale !== null &&
+            Math.abs(newDist - rs.initialDist * rs.hoopScale) <= HOOP_SNAP_PX
+          const rawScale = snapsToHoop ? rs.hoopScale! : newDist / rs.initialDist
           // Scale uniformly about the pinned (rotated) anchor corner, preserving
           // aspect ratio. Text drives off font size; graphics scale directly.
           let nextFontSize = rs.initialFontSize
@@ -2097,6 +2249,12 @@ export default function Designer({
             nextFontSize = Math.max(MIN_TEXT_FONT_SIZE, rs.initialFontSize * rawScale)
             sizeScale = nextFontSize / rs.initialFontSize
           }
+          rs.lastSizeScale = sizeScale
+          setResizeHoopGuide(
+            rs.hoopScale !== null
+              ? { id: rs.id, corner: rs.corner, ratio: rs.hoopScale / sizeScale }
+              : null
+          )
           const newWidthPct = rs.initialWidthPct * sizeScale
           const newHeightPct = rs.initialHeightPct * sizeScale
           // New centre in screen px: keep the rotated anchor corner fixed while
@@ -2252,6 +2410,8 @@ export default function Designer({
     const onUp = () => {
       setIsManipulating(false)
       setDraggingElId(null)
+      setResizingElId(null)
+      setResizeHoopGuide(null)
       if (rotateStateRef.current) {
         const rot = rotateStateRef.current
         rotateStateRef.current = null
@@ -2264,6 +2424,11 @@ export default function Designer({
       if (resizeStateRef.current) {
         const rs = resizeStateRef.current
         resizeStateRef.current = null
+        // Keep the live fit verdict past release (see resizeFitAfterRelease).
+        if (rs.hoopScale !== null) {
+          const fits = rs.hoopScale / rs.lastSizeScale >= 1 - HOOP_RESIZE_FIT_TOLERANCE
+          setResizeFitAfterRelease(fits)
+        }
         // Release is the moment the element fits back into the print area (and
         // an over-sized AI graphic snaps back to its print-quality cap).
         if (rs.kind === "graphic") settleGraphicResize(rs.id)
@@ -2348,6 +2513,101 @@ export default function Designer({
       moved: false,
     }
   }
+  // The green hoop guide inside the object being resized (embroidery flow):
+  // drawn in the object's own box, so it rotates with it, and sized relative to
+  // it — it grows as the object shrinks and meets the frame when they match.
+  // An arrow runs from the dragged corner to the guide's matching corner,
+  // pointing the way to the hoop-frame size; it goes once the two meet.
+  // The object under the hoop guide is blurred so the guide's arrow stays
+  // readable over it.
+  const hoopGuideBlurs = (id: string) => resizeHoopGuide?.id === id
+
+  // A box (x, y, w, h) — fractions of whatever it's drawn in — scaled by
+  // `scale` about the corner opposite `corner`: the striped guide at that
+  // size, and an arrow from the box's dragged corner to the guide's matching
+  // one. Percent coordinates keep both on the corners at any size; the
+  // arrowhead marker is in stroke units, so it never skews. The arrow only
+  // shows while the box is too large — never once it fits the frame.
+  const hoopGuideShapes = (
+    key: string,
+    corner: "nw" | "ne" | "sw" | "se",
+    box: DesignBbox,
+    scale: number,
+    layerClass: string,
+    layerStyle?: CSSProperties
+  ) => {
+    const dx = corner.endsWith("e") ? 1 : 0
+    const dy = corner.startsWith("s") ? 1 : 0
+    // Dragged corner D and the pinned anchor A; the guide's matching corner
+    // sits `scale` of the way from A to D.
+    const d = { x: box.x + dx * box.w, y: box.y + dy * box.h }
+    const a = { x: box.x + (1 - dx) * box.w, y: box.y + (1 - dy) * box.h }
+    const g = { x: a.x + scale * (d.x - a.x), y: a.y + scale * (d.y - a.y) }
+    // Only while the object is too large (guide smaller than it): it points the
+    // way down to the hoop-frame size. An object that already fits needs no
+    // direction, so no arrow.
+    const showArrow = scale < 1 - HOOP_ARROW_MIN_RATIO_GAP
+    const pct = (v: number) => `${v * 100}%`
+    return (
+      <>
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute ${layerClass} hoop-guide-stripes border border-[#16A34A]`}
+          style={{
+            ...layerStyle,
+            left: pct(Math.min(a.x, g.x)),
+            top: pct(Math.min(a.y, g.y)),
+            width: pct(Math.abs(g.x - a.x)),
+            height: pct(Math.abs(g.y - a.y)),
+          }}
+        />
+        {showArrow && (
+          <svg
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-0 ${layerClass} h-full w-full overflow-visible`}
+            style={layerStyle}
+          >
+            <defs>
+              <marker
+                id={`hoop-arrow-${key}`}
+                viewBox="0 0 10 10"
+                refX="8"
+                refY="5"
+                markerWidth="5"
+                markerHeight="5"
+                orient="auto-start-reverse"
+              >
+                <path d="M0 0 L10 5 L0 10 z" fill="#15803D" />
+              </marker>
+            </defs>
+            <line
+              x1={pct(d.x)}
+              y1={pct(d.y)}
+              x2={pct(g.x)}
+              y2={pct(g.y)}
+              stroke="#15803D"
+              strokeWidth={2}
+              strokeLinecap="round"
+              markerEnd={`url(#hoop-arrow-${key})`}
+            />
+          </svg>
+        )}
+      </>
+    )
+  }
+
+  // A lone object's guide, inside its own box (so it rotates with it).
+  const renderHoopGuide = (id: string) => {
+    if (resizeHoopGuide?.id !== id) return null
+    return hoopGuideShapes(
+      id,
+      resizeHoopGuide.corner,
+      { x: 0, y: 0, w: 1, h: 1 },
+      resizeHoopGuide.ratio,
+      "z-20"
+    )
+  }
+
   const startResize = (
     e: React.PointerEvent,
     el: { id: string; x: number; y: number; fontSize?: number },
@@ -2356,6 +2616,8 @@ export default function Designer({
   ) => {
     e.preventDefault()
     e.stopPropagation()
+    // A new resize starts over: the thin-line warning belongs to the last one.
+    setThinLineWarning(false)
     const node = (kind === "graphic" ? graphicElementRefs : textElementRefs).current[el.id]
     const pa = printAreaBoxRef.current
     if (!node || !pa) return
@@ -2429,6 +2691,21 @@ export default function Designer({
       paTop: paRect.top,
       paWidth: paRect.width,
       paHeight: paRect.height,
+      // Only once the too-large badge has been shown this session — until
+      // then the user hasn't met the hoop frame, so neither the guide nor the
+      // snap appears. And only for a lone object in the print area: with
+      // several, the group's frame just turns orange or green (liveGroupBox).
+      hoopScale:
+        newElementHoopFrame !== null &&
+        embroiderySizeWarned &&
+        visibleTextElements.length + visibleGraphicElements.length === 1
+          ? embroideryHoopFillScale(
+              initialWidthPct / 100,
+              initialHeightPct / 100,
+              newElementHoopFrame
+            )
+          : null,
+      lastSizeScale: 1,
     }
   }
   const [hasMounted, setHasMounted] = useState(false)
@@ -2898,11 +3175,17 @@ export default function Designer({
   const designEls = [...visibleTextElements, ...visibleGraphicElements]
   const designMinX = designEls.length ? Math.min(...designEls.map(e => e.x)) : 0
   const designMinY = designEls.length ? Math.min(...designEls.map(e => e.y)) : 0
+  // Stacking as a rank, not the raw z: selecting brings an element to the front
+  // (z goes up), which changes nothing visible unless the order between
+  // elements actually changes.
+  const designZs = [...new Set(designEls.map(e => e.z))].sort((a, b) => a - b)
+  const zRank = (z: number) => designZs.indexOf(z)
+  const elementSelected = !!selectedTextId || !!selectedGraphicId
   const embroiderySignature = JSON.stringify({
     t: visibleTextElements.map(t => [
       t.x - designMinX,
       t.y - designMinY,
-      t.z,
+      zRank(t.z),
       t.content,
       t.fontSize,
       t.fontFamily,
@@ -2916,7 +3199,7 @@ export default function Designer({
     g: visibleGraphicElements.map(g => [
       g.x - designMinX,
       g.y - designMinY,
-      g.z,
+      zRank(g.z),
       g.width,
       g.height,
       g.src,
@@ -2924,34 +3207,63 @@ export default function Designer({
     ]),
   })
   // Decide what shows on the canvas for the embroidery technique:
-  //  - manipulating/editing  -> flat element (no spinner)
-  //  - settling (just released) -> flat element, wait for the position to settle
-  //  - render stale / not ready -> spinner (a new stitched render is computing)
+  //  - selected/manipulating/editing -> flat element (no loader)
+  //  - new render needed (or its minimum hold running) -> flat element + loader
+  //  - settling (just released, unchanged) -> flat element until the position settles
   //  - otherwise -> the stitched render
   useEffect(() => {
+    // A selected element shows as its normal, editable self; the stitched
+    // preview only covers the design once nothing is selected.
     const shouldEmbroider =
-      effectivePrintTechnique === "embroidery" && !!designBbox && !isManipulating && !editingTextId
-    if (!shouldEmbroider || embroiderySettling) {
+      effectivePrintTechnique === "embroidery" &&
+      !!designBbox &&
+      !isManipulating &&
+      !editingTextId &&
+      !elementSelected
+    if (!shouldEmbroider) {
       setEmbroideryShown(false)
       setEmbroideryLoading(false)
+      // An unfinished hold restarts on the next reveal, so the loader always
+      // gets its full minimum on screen rather than the time left over.
+      setEmbroideryHold(h => (h && !h.done ? null : h))
       return
+    }
+    // Decided here, at the moment of reveal: this effect runs before the flatten
+    // effect, so it is the one that first sees a deselect.
+    if (embroiderySignature !== lastShownEmbroiderySigRef.current) {
+      if (embroideryHold?.sig !== embroiderySignature) {
+        setEmbroideryHold({
+          sig: embroiderySignature,
+          until: Date.now() + EMBROIDERY_MIN_LOADER_MS,
+          done: false,
+        })
+        setEmbroideryShown(false)
+        setEmbroideryLoading(true)
+        return
+      }
+      if (!embroideryHold.done) {
+        setEmbroideryShown(false)
+        setEmbroideryLoading(true)
+        const t = setTimeout(
+          () => setEmbroideryHold(h => (h ? { ...h, done: true } : h)),
+          Math.max(0, embroideryHold.until - Date.now())
+        )
+        return () => clearTimeout(t)
+      }
     }
     if (embroideryRenderStale || !embroideryRenderedUrl) {
       setEmbroideryShown(false)
       setEmbroideryLoading(true)
       return
     }
-    // Render is ready. On the very first reveal of the session, keep the
-    // labelled loader up an extra second so the user can read it.
-    if (!embroideryEverShownRef.current && !embroideryFirstDelayPassed) {
+    if (embroiderySettling) {
       setEmbroideryShown(false)
-      setEmbroideryLoading(true)
-      const t = setTimeout(() => setEmbroideryFirstDelayPassed(true), 1000)
-      return () => clearTimeout(t)
+      setEmbroideryLoading(false)
+      return
     }
     setEmbroideryShown(true)
     setEmbroideryLoading(false)
-    embroideryEverShownRef.current = true
+    lastShownEmbroiderySigRef.current = embroiderySignature
   }, [
     printTechnique,
     embroiderySupported,
@@ -2959,18 +3271,197 @@ export default function Designer({
     embroideryRenderedUrl,
     isManipulating,
     editingTextId,
+    elementSelected,
     embroiderySettling,
     embroideryRenderStale,
-    embroideryFirstDelayPassed,
+    embroideryHold,
+    embroiderySignature,
   ])
 
-  // Embroidery clamps the design to a max area; warn when that shrinks it by >20%.
-  const embroiderySizeWarning = (() => {
-    if (!designBbox || effectivePrintTechnique !== "embroidery") return false
-    const clamped = clampEmbroideryBbox(designBbox)
-    const s = Math.sqrt((clamped.w * clamped.h) / (designBbox.w * designBbox.h))
-    return s < 0.8
-  })()
+  // How much embroidery has to shrink the design to fit the hoop frame (1 = it fits).
+  const embroideryScale = designBbox
+    ? embroideryHoopFitScale(designBbox.w, designBbox.h, embroideryHoopFrame)
+    : 1
+  // The design is wider or taller than the product's hoop frame.
+  const embroideryTooLarge = embroideryScale < 1
+
+  // While resizing with the hoop guide up, whether the object fits the hoop
+  // frame right now (the guide is at least the object's size). Live, unlike
+  // embroideryTooLarge, which is measured on deselect. null when no guide.
+  // After release it keeps the final verdict until the design is measured again.
+  const resizeFitsHoop =
+    resizeHoopGuide !== null
+      ? resizeHoopGuide.ratio >= 1 - HOOP_RESIZE_FIT_TOLERANCE
+      : resizeFitAfterRelease
+  // A fresh measurement (on deselect) takes over from the resize's verdict.
+  useEffect(() => {
+    setResizeFitAfterRelease(null)
+  }, [designBbox])
+
+  // Set the first time the too-large badge shows with the stitched preview —
+  // the session's first warning waits for the preview. From then on the
+  // warning shows straight away, a design that fits again earns the green
+  // "good size" badge, and resizes get the hoop guide.
+  const [embroiderySizeWarned, setEmbroiderySizeWarned] = useState(false)
+  useEffect(() => {
+    if (embroideryShown && embroideryTooLarge) setEmbroiderySizeWarned(true)
+  }, [embroideryShown, embroideryTooLarge])
+
+  // Several objects, live: whenever the stitched preview isn't up to frame them
+  // — one of them selected, moved or resized, and through "Creating preview"
+  // after a deselect — the group is measured from the objects' on-screen boxes
+  // and checked against the hoop frame, so moving them closer turns the frame,
+  // badge and selection green and apart turns them orange, without waiting for
+  // a deselect. Measured after every render, so it follows a drag, as fractions
+  // of the print area like designBbox. (designBbox is taken before the stitched
+  // render, so neither verdict ever waits for the render itself.)
+  const [liveGroupBox, setLiveGroupBox] = useState<DesignBbox | null>(null)
+  const liveGroupWanted =
+    effectivePrintTechnique === "embroidery" &&
+    !embroideryShown &&
+    embroiderySizeWarned &&
+    visibleTextElements.length + visibleGraphicElements.length > 1
+  useLayoutEffect(() => {
+    const pa = printAreaBoxRef.current
+    const nodes = liveGroupWanted
+      ? [
+          ...visibleTextElements.map(t => textElementRefs.current[t.id]),
+          ...visibleGraphicElements.map(g => graphicElementRefs.current[g.id]),
+        ].filter(Boolean)
+      : []
+    if (!pa || nodes.length === 0) {
+      setLiveGroupBox(prev => (prev ? null : prev))
+      return
+    }
+    const p = pa.getBoundingClientRect()
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity
+    for (const n of nodes) {
+      const r = n.getBoundingClientRect()
+      minX = Math.min(minX, r.left)
+      minY = Math.min(minY, r.top)
+      maxX = Math.max(maxX, r.right)
+      maxY = Math.max(maxY, r.bottom)
+    }
+    const next = {
+      x: (minX - p.left) / p.width,
+      y: (minY - p.top) / p.height,
+      w: (maxX - minX) / p.width,
+      h: (maxY - minY) / p.height,
+    }
+    setLiveGroupBox(prev =>
+      prev &&
+      Math.abs(prev.x - next.x) < 1e-4 &&
+      Math.abs(prev.y - next.y) < 1e-4 &&
+      Math.abs(prev.w - next.w) < 1e-4 &&
+      Math.abs(prev.h - next.h) < 1e-4
+        ? prev
+        : next
+    )
+  })
+  // The live group verdict — only once the size is in question: the design was
+  // too large when last measured, or the group is too large now. null otherwise,
+  // leaving the measured verdict (embroideryTooLarge) in charge.
+  const liveGroupTooLarge = liveGroupBox
+    ? embroideryHoopFitScale(liveGroupBox.w, liveGroupBox.h, embroideryHoopFrame) < 1
+    : null
+  const groupTooLarge =
+    liveGroupTooLarge !== null && (embroideryTooLarge || liveGroupTooLarge)
+      ? liveGroupTooLarge
+      : null
+
+  // A selected object's frame and corner handles: the gizmo blue normally, the
+  // warning orange while the design is too large for embroidery (as last
+  // measured on deselect, once the session's first warning has shown), and
+  // during a guided resize green or orange live, by whether the object fits the
+  // hoop frame at its current size — or, for several objects, by whether the
+  // group does (groupTooLarge).
+  const selectionTone: "blue" | "orange" | "green" =
+    resizeFitsHoop !== null
+      ? resizeFitsHoop
+        ? "green"
+        : "orange"
+      : groupTooLarge !== null
+        ? groupTooLarge
+          ? "orange"
+          : "green"
+      : effectivePrintTechnique === "embroidery" && embroideryTooLarge && embroiderySizeWarned
+        ? "orange"
+        : "blue"
+  const selectionFrameShadow = `0 0 0 1px ${SELECTION_TONE[selectionTone].hex}`
+  const cornerHandleColor = SELECTION_TONE[selectionTone].handle
+
+  const embroideryElementSelected = !!selectedText || !!selectedGraphicId
+  // Badge on the canvas: over the hoop frame, or back within it after a warning.
+  // Stays up throughout — stacked under the editor bar while an element is
+  // selected (the size is then the last one measured on deselect), under
+  // "Creating preview" while the stitched render is made, and in the spot itself
+  // once the preview is up. During a guided resize it follows the object live,
+  // and with several objects the group (groupTooLarge).
+  const embroiderySizeStatus: EmbroiderySizeStatus | null =
+    resizeFitsHoop !== null
+      ? resizeFitsHoop
+        ? "good"
+        : "too-large"
+      : groupTooLarge !== null
+        ? groupTooLarge
+          ? "too-large"
+          : "good"
+      : effectivePrintTechnique === "embroidery" && designBbox
+      ? embroideryTooLarge
+        ? // The first warning of the session waits for the stitched preview;
+          // after that it stays up through loader and selection alike.
+          embroiderySizeWarned || embroideryShown
+          ? "too-large"
+          : null
+        : embroiderySizeWarned
+          ? "good"
+          : null
+      : null
+
+  // What the canvas badges stack under while it holds the top spot.
+  const embroideryBadgeStack = embroideryElementSelected
+    ? ("editor-bar" as const)
+    : embroideryLoading && designBbox
+      ? ("loader" as const)
+      : null
+
+  // Mocked: every design is taken to have lines too thin to stitch. The warning
+  // arrives with a stitched preview of a design that fits the hoop frame —
+  // the first preview, or the one after a resize brought it back inside —
+  // taking the spot "Creating preview" leaves. Being too large has priority: a
+  // too-large design shows the size warning instead, and this clears. A new
+  // resize clears it too, until its own preview (see startResize).
+  useEffect(() => {
+    if (embroiderySizeStatus === "too-large") setThinLineWarning(false)
+  }, [embroiderySizeStatus])
+  useEffect(() => {
+    if (embroideryShown && designBbox && !embroideryTooLarge) setThinLineWarning(true)
+  }, [embroideryShown, designBbox, embroideryTooLarge])
+  // Nothing left in the print area — no design, so no thin lines to warn about.
+  const printAreaEmpty = visibleTextElements.length + visibleGraphicElements.length === 0
+  useEffect(() => {
+    if (printAreaEmpty) setThinLineWarning(false)
+  }, [printAreaEmpty])
+  const thinLineShown =
+    thinLineWarning && effectivePrintTechnique === "embroidery" && !printAreaEmpty
+  // The explanation goes with the warning it explains.
+  useEffect(() => {
+    if (!thinLineShown) setThinLineHelpOpen(false)
+  }, [thinLineShown])
+  // The green badge gives way to the thin-line warning the moment it arrives.
+  const sizeBadgeStatus =
+    embroiderySizeStatus === "good" && thinLineShown ? null : embroiderySizeStatus
+  // A warning on the canvas means the design can't be embroidered as it is, so
+  // add to basket is refused — and each try shakes the warning
+  // (embroideryShakeSignal) instead.
+  const embroideryBlocksBasket = thinLineShown || sizeBadgeStatus === "too-large"
+  const [embroideryShakeSignal, setEmbroideryShakeSignal] = useState(0)
+
+  // Embroidery clamps the design to the hoop frame; warn when that shrinks it by >20%.
+  const embroiderySizeWarning = effectivePrintTechnique === "embroidery" && embroideryScale < 0.8
 
   // Flatten the current print area's text + graphics into a single PNG when the
   // print-technique modal opens (combines text and graphic like dock-change).
@@ -2990,9 +3481,12 @@ export default function Designer({
       setEmbroideryRenderStale(false)
       return
     }
-    // On the canvas, don't regenerate while an element is being edited/dragged —
-    // the live editable element is shown instead of the stitched overlay.
-    if (!printTechniqueOpen && (isManipulating || editingTextId)) {
+    // On the canvas, don't regenerate while an element is selected, being
+    // edited or dragged — the live element is shown instead of the stitched
+    // overlay. Deselecting runs this again: if the appearance is unchanged the
+    // existing render is reused and shows at once; otherwise it goes stale and
+    // the loader shows until the new render lands.
+    if (!printTechniqueOpen && (isManipulating || editingTextId || elementSelected)) {
       return
     }
     // Appearance changed (not just a move) — a new stitched render is needed, so
@@ -3274,6 +3768,7 @@ export default function Designer({
     embroiderySignature,
     isManipulating,
     editingTextId,
+    elementSelected,
   ])
 
   // When switching views (print areas), clear any stale selection / editing
@@ -3616,6 +4111,13 @@ export default function Designer({
   // (extracted verbatim from the desktop button's onClick).
   const handleAddToBasket = () => {
     if (addingToBasket || flashSize) return
+    // A design embroidery can't take — too large, or too thin lines — isn't
+    // added. The warning on the canvas shakes to say why, and that's all:
+    // before the size check, so not even the size sheet opens.
+    if (embroideryBlocksBasket) {
+      setEmbroideryShakeSignal(n => n + 1)
+      return
+    }
     if (totalSelected === 0) {
       // basketHypotheses: with the dropdown closed, the CTA's most helpful
       // response is to open it — the user's next step, not a reprimand. The
@@ -3927,7 +4429,18 @@ export default function Designer({
         />
         <div className="flex flex-1 flex-col px-8 py-[16px] min-h-0 max-dlg:p-0">
         <div className="flex flex-1 items-center justify-center min-h-0">
-        <div ref={creatomatRef} id="creatomat-container" className="relative flex items-stretch gap-2 w-full max-w-[1920px] h-full justify-center">
+        <div
+          ref={creatomatRef}
+          id="creatomat-container"
+          className="relative flex items-stretch gap-2 w-full max-w-[1920px] h-full justify-center"
+          // Thin-line help open: the whole designer blurs behind it, the same
+          // blur and ease the add-to-basket size sheet uses. The warning, its
+          // link and the popover are drawn sharp above it (ThinLineHelpPopover).
+          style={{
+            transition: "filter 0.3s ease",
+            filter: thinLineHelpOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+          }}
+        >
           <div
             id="left-section"
             className={`max-dlg:hidden relative shrink-0 w-[100px] p-[6px] px-1.5 h-full bg-[#F4F4F4] rounded-[12px] flex flex-col ${
@@ -4597,6 +5110,10 @@ export default function Designer({
                                   display: "block",
                                   pointerEvents: "none",
                                   clipPath: contentClipPath("text", el),
+                                  filter: hoopGuideBlurs(el.id)
+                                    ? `blur(${HOOP_GUIDE_CONTENT_BLUR_PX}px)`
+                                    : undefined,
+                                  transition: HOOP_GUIDE_BLUR_TRANSITION,
                                 }}
                               >
                                 <CurvedText
@@ -4777,7 +5294,20 @@ export default function Designer({
                                 // the glyphs underneath are the CurvedText and
                                 // the caret is drawn on the path, so both of the
                                 // textarea's own are hidden.
-                                color: curved ? "transparent" : el.color,
+                                // Hoop guide up: the glyphs blur so its arrow
+                                // reads over them. A filter would blur the
+                                // selection frame (this box-shadow) too, so the
+                                // glyphs go transparent and a soft text-shadow
+                                // stands in for them.
+                                color:
+                                  curved || hoopGuideBlurs(el.id) ? "transparent" : el.color,
+                                // A 0px shadow when sharp (it sits exactly under
+                                // the glyphs), so the blur eases in and out
+                                // rather than starting from no shadow at all.
+                                textShadow: curved
+                                  ? undefined
+                                  : `0 0 ${hoopGuideBlurs(el.id) ? HOOP_GUIDE_CONTENT_BLUR_PX * 2 : 0}px ${el.color}`,
+                                transition: `color ${HOOP_GUIDE_BLUR_MS}ms ease-out, text-shadow ${HOOP_GUIDE_BLUR_MS}ms ease-out`,
                                 caretColor: curved ? "transparent" : el.color,
                                 fontSize: `${el.fontSize * zoom}px`,
                                 fontFamily: `"${el.fontFamily}"`,
@@ -4792,7 +5322,7 @@ export default function Designer({
                                 resize: "none",
                                 overflow: "hidden",
                                 whiteSpace: "pre",
-                                boxShadow: "0 0 0 1px #3355FF",
+                                boxShadow: selectionFrameShadow,
                                 // Glyphs (and the ring with them) clip at the
                                 // print-area edge like every other content.
                                 clipPath: contentClipPath("text", el),
@@ -4866,16 +5396,19 @@ export default function Designer({
                                 >
                                   <span
                                     className={`absolute ${edge} ${size} transition-all duration-200 ease-out ${
-                                      textBorderHover ? "bg-[#2B48D9]" : "bg-[#3355FF]"
+                                      textBorderHover
+                                        ? SELECTION_TONE[selectionTone].edgeHover
+                                        : SELECTION_TONE[selectionTone].edge
                                     }`}
                                   />
                                 </span>
                               )
                             })}
+                            {renderHoopGuide(el.id)}
                             {/* Resize handles stay available while editing. startResize
                                 preventDefaults, so the textarea keeps focus (editing
                                 is not exited). Hidden while the text is being moved. */}
-                            {draggingElId !== el.id &&
+                            {draggingElId !== el.id && resizingElId !== el.id &&
                               (["nw", "ne", "sw", "se"] as const).map(corner => {
                               const cursor =
                                 corner === "nw" || corner === "se"
@@ -4893,11 +5426,11 @@ export default function Designer({
                                 <span
                                   key={corner}
                                   style={{ cursor }} onPointerDown={e => startResize(e, el, corner)}
-                                  className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 border-[#3355FF] bg-white transition-colors hover:bg-[#3355FF]`}
+                                  className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 ${cornerHandleColor} bg-white transition-colors`}
                                 />
                               )
                             })}
-                            {draggingElId !== el.id && (
+                            {draggingElId !== el.id && resizingElId !== el.id && (
                               <SelectionBottomHandles
                                 onRotateStart={e => startRotate(e, el)}
                                 // startTextMove keeps the textarea focused, so
@@ -4963,14 +5496,25 @@ export default function Designer({
                           transformOrigin: "center",
                           boxShadow:
                             selectedTextId === el.id && draggingElId !== el.id
-                              ? "0 0 0 1px #3355FF"
+                              ? selectionFrameShadow
                               : undefined,
                         }}
                         className="pointer-events-auto select-none cursor-move leading-none"
                       >
                         {/* Block wrapper so the glyphs clip to the print area
                             without clipping the handle children. */}
-                        <span style={{ display: "block", clipPath: contentClipPath("text", el) }}>
+                        <span
+                          style={{
+                            display: "block",
+                            clipPath: contentClipPath("text", el),
+                            // Blurred while the hoop guide is up, so its arrow
+                            // reads over the glyphs.
+                            filter: hoopGuideBlurs(el.id)
+                              ? `blur(${HOOP_GUIDE_CONTENT_BLUR_PX}px)`
+                              : undefined,
+                            transition: HOOP_GUIDE_BLUR_TRANSITION,
+                          }}
+                        >
                           {el.textPath ? (
                             /* On a baseline path, so the glyphs are drawn as SVG
                                text rather than laid out by the block's own CSS —
@@ -5004,8 +5548,9 @@ export default function Designer({
                             el.content
                           )}
                         </span>
+                        {renderHoopGuide(el.id)}
                         {selectedTextId === el.id &&
-                          draggingElId !== el.id &&
+                          draggingElId !== el.id && resizingElId !== el.id &&
                           (["nw", "ne", "sw", "se"] as const).map(corner => {
                             const cursor =
                               corner === "nw" || corner === "se"
@@ -5023,11 +5568,11 @@ export default function Designer({
                               <span
                                 key={corner}
                                 style={{ cursor }} onPointerDown={e => startResize(e, el, corner)}
-                                className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 border-[#3355FF] bg-white transition-colors hover:bg-[#3355FF]`}
+                                className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 ${cornerHandleColor} bg-white transition-colors`}
                               />
                             )
                           })}
-                        {selectedTextId === el.id && draggingElId !== el.id && (
+                        {selectedTextId === el.id && draggingElId !== el.id && resizingElId !== el.id && (
                           <SelectionBottomHandles
                             onRotateStart={e => startRotate(e, el)}
                             onMoveStart={e => {
@@ -5062,7 +5607,7 @@ export default function Designer({
                         transformOrigin: "center",
                         boxShadow:
                           selectedGraphicId === el.id && draggingElId !== el.id
-                            ? "0 0 0 1px #3355FF"
+                            ? selectionFrameShadow
                             : undefined,
                       }}
                       className="pointer-events-auto select-none cursor-move"
@@ -5079,13 +5624,22 @@ export default function Designer({
                         src={el.src}
                         alt=""
                         draggable={false}
-                        style={{ clipPath: contentClipPath("graphic", el) }}
+                        style={{
+                          clipPath: contentClipPath("graphic", el),
+                          // Blurred while the hoop guide is up, so its arrow
+                          // reads over the image.
+                          filter: hoopGuideBlurs(el.id)
+                            ? `blur(${HOOP_GUIDE_CONTENT_BLUR_PX}px)`
+                            : undefined,
+                          transition: HOOP_GUIDE_BLUR_TRANSITION,
+                        }}
                         className={`pointer-events-none h-full w-full select-none object-contain ${
                           embroideryShown ? "opacity-0" : ""
                         }`}
                       />
+                      {renderHoopGuide(el.id)}
                       {selectedGraphicId === el.id &&
-                        draggingElId !== el.id &&
+                        draggingElId !== el.id && resizingElId !== el.id &&
                         (["nw", "ne", "sw", "se"] as const).map(corner => {
                           const cursor =
                             corner === "nw" || corner === "se"
@@ -5103,11 +5657,11 @@ export default function Designer({
                             <span
                               key={corner}
                               style={{ cursor }} onPointerDown={e => startResize(e, el, corner, "graphic")}
-                              className={`absolute ${pos} ${cursor} block size-[15px] touch-none rounded-full border-2 border-[#3355FF] bg-white transition-colors hover:bg-[#3355FF]`}
+                              className={`absolute ${pos} ${cursor} block size-[15px] touch-none rounded-full border-2 ${cornerHandleColor} bg-white transition-colors`}
                             />
                           )
                         })}
-                      {selectedGraphicId === el.id && draggingElId !== el.id && (
+                      {selectedGraphicId === el.id && draggingElId !== el.id && resizingElId !== el.id && (
                         <SelectionBottomHandles
                           onRotateStart={e => startRotate(e, el, "graphic")}
                           onMoveStart={e => {
@@ -5118,6 +5672,26 @@ export default function Designer({
                       )}
                     </div>
                   ))}
+                  {/* create-omat's resize popovers: width above, height left of
+                      the object while it is being resized. Portaled to body for
+                      the same reason as the trashcan below. */}
+                  {resizingElId &&
+                    typeof document !== "undefined" &&
+                    createPortal(
+                      <ResizeSizeLabels
+                        target={
+                          textElementRefs.current[resizingElId] ??
+                          graphicElementRefs.current[resizingElId] ??
+                          null
+                        }
+                        printArea={printAreaBoxRef.current}
+                        boundaryMm={
+                          productData?.printAreas.find(pa => pa.id === currentPrintAreaId)
+                            ?.boundary ?? null
+                        }
+                      />,
+                      document.body
+                    )}
                   {/* create-omat's trashcan button: fixed above the selection,
                       portaled to body so canvas zoom transforms can't re-anchor
                       its fixed positioning. */}
@@ -5227,30 +5801,49 @@ export default function Designer({
                       }}
                     />
                   )}
-                  {/* While waiting to reveal the stitched render, a loader sits at
-                      the top of the design (so it isn't hidden behind it): a black
-                      circle with a light spinner. */}
-                  {embroideryLoading && designBbox && (
-                    <div
-                      className={
-                        embroideryEverShownRef.current
-                          ? "pointer-events-none absolute flex items-center justify-center rounded-full bg-black p-2.5 shadow-lg"
-                          : "pointer-events-none absolute flex items-center gap-2.5 rounded-full bg-black py-2.5 pr-4 pl-2.5 shadow-lg"
-                      }
-                      style={{
-                        left: `${(designBbox.x + designBbox.w / 2) * 100}%`,
-                        top: `${designBbox.y * 100}%`,
-                        transform: "translate(-50%, -50%)",
-                      }}
-                    >
-                      <div className="h-7 w-7 shrink-0 animate-spin rounded-full border-[3px] border-white/30 border-t-white" />
-                      {!embroideryEverShownRef.current && (
-                        <span className="text-sm font-medium whitespace-nowrap text-white">
-                          Embroidery preview…
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  {/* Design exceeds the hoop frame: an orange frame around the
+                      object(s), alongside the "Design too large" badge. With the
+                      stitched preview up it wraps the preview's footprint; for
+                      several objects it stays up otherwise too — while one is
+                      selected and through "Creating preview" — around the whole
+                      group, measured live (liveGroupBox), and turns green once
+                      the group fits the hoop frame. The live group frame sits
+                      flush on the objects' boxes, drawn like their selection
+                      frame (a 1px ring just outside), so where the selected
+                      object reaches the group's edge the two lines coincide
+                      instead of leaving a gap; the preview's frame keeps 4px of
+                      air around the stitches. */}
+                  {(() => {
+                    const preview = embroideryShown && designBbox && embroideryTooLarge
+                    if (preview) {
+                      return (
+                        <div
+                          aria-hidden="true"
+                          className="pointer-events-none absolute border border-[#EA580C]"
+                          style={{
+                            left: `calc(${designBbox.x * 100}% - 4px)`,
+                            top: `calc(${designBbox.y * 100}% - 4px)`,
+                            width: `calc(${designBbox.w * 100}% + 8px)`,
+                            height: `calc(${designBbox.h * 100}% + 8px)`,
+                          }}
+                        />
+                      )
+                    }
+                    if (groupTooLarge === null || !liveGroupBox) return null
+                    return (
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute transition-shadow duration-300 ease-out"
+                        style={{
+                          left: `${liveGroupBox.x * 100}%`,
+                          top: `${liveGroupBox.y * 100}%`,
+                          width: `${liveGroupBox.w * 100}%`,
+                          height: `${liveGroupBox.h * 100}%`,
+                          boxShadow: `0 0 0 1px ${groupTooLarge ? "#EA580C" : "#16A34A"}`,
+                        }}
+                      />
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -5315,6 +5908,54 @@ export default function Designer({
                 views={productData.views.map(v => ({ id: v.id, name: v.name }))}
                 activeIndex={activeViewIndex}
                 onSelect={goToViewIndex}
+              />
+            )}
+
+            <EmbroideryLabel show={embroidery} />
+            {/* While the stitched render is being generated — create-omat's
+                "Creating preview" pill at the top of the canvas. */}
+            <EmbroideryPreviewStatus loading={embroideryLoading && !!designBbox} />
+            {/* Too large for the hoop frame, or a good size again after that
+                warning — stacked under the editor bar or the loader while
+                either holds the spot, then sliding up into it. Rendered first:
+                the badges share a z-index, so this one stays behind the
+                thin-line pair as the green badge fades out under them. */}
+            <EmbroiderySizeBadge
+              status={sizeBadgeStatus}
+              stack={embroideryBadgeStack}
+              // Shakes only on a refused add to basket — which only happens
+              // while a warning shows, so never as the green badge.
+              shakeSignal={embroideryShakeSignal}
+            />
+            {/* Thin-line warning: arrives in the badge spot with its "See what
+                this means" link 4px under it, replacing the green size badge.
+                The pair shakes together when add to basket is refused. */}
+            <EmbroiderySizeBadge
+              status={thinLineShown ? "thin-line" : null}
+              stack={embroideryBadgeStack}
+              concealed={thinLineHelpOpen || thinLineHelpPresent}
+              shakeSignal={embroideryShakeSignal}
+            />
+            <EmbroideryThinLineHelp
+              show={thinLineShown}
+              stack={embroideryBadgeStack}
+              concealed={thinLineHelpOpen || thinLineHelpPresent}
+              shakeSignal={embroideryShakeSignal}
+              onClick={() => setThinLineHelpOpen(true)}
+            />
+            <ThinLineHelpPopover
+              open={thinLineHelpOpen}
+              onClose={closeThinLineHelp}
+              onPresenceChange={setThinLineHelpPresent}
+            />
+            {/* Refused add to basket: alongside the shaking warning, an orange
+                inner border around the canvas that fades out over 2s. A new key
+                per refusal restarts it. */}
+            {embroideryShakeSignal > 0 && (
+              <div
+                key={embroideryShakeSignal}
+                aria-hidden="true"
+                className="canvas-alert-border pointer-events-none absolute inset-0 z-40 rounded-[inherit]"
               />
             )}
 
@@ -5595,10 +6236,10 @@ export default function Designer({
                         const regionH = regionW * paAspect
                         const regionLeft = 48 - regionW / 2
                         const regionTop = 51 - regionH / 2
-                        // Embroidery clamps the design to the max stitchable size.
+                        // Embroidery clamps the design to the hoop frame.
                         const bbox =
                           printTechnique === "embroidery"
-                            ? clampEmbroideryBbox(designBbox)
+                            ? clampEmbroideryBbox(designBbox, embroideryHoopFrame)
                             : designBbox
                         // Place the design at its true position/size within that region.
                         return (
@@ -5855,7 +6496,10 @@ export default function Designer({
               } ${dimForSizeSheet ? "pointer-events-none" : ""}`}
               style={{
                 transition: "filter 0.3s ease",
-                filter: dimForSizeSheet ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
+                filter:
+                  dimForSizeSheet || thinLineHelpOpen
+                    ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)`
+                    : "none",
               }}
             >
               {/* ===== PREVIOUS VERSION (kept, gated off) ============================
@@ -7865,7 +8509,15 @@ export default function Designer({
         onTextClick={() => startAdd("text")}
         onUploadsClick={() => startAdd("uploads")}
         onAIClick={() => togglePanel("ai")}
-        onFinish={() => setMobileSizeSheetOpen(true)}
+        onFinish={() => {
+          // Same refusal as handleAddToBasket: an embroidery warning shakes and
+          // the size sheet stays shut.
+          if (embroideryBlocksBasket) {
+            setEmbroideryShakeSignal(n => n + 1)
+            return
+          }
+          setMobileSizeSheetOpen(true)
+        }}
         onUnselect={() => {
           setSelectedTextId(null)
           setSelectedGraphicId(null)

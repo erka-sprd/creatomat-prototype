@@ -525,6 +525,104 @@
   }
 }
 
+/* Embroidery warning badges shake when add to basket is blocked by them: a
+   small vertical jolt with a tilt rocking left and right, building up and
+   settling back over 1.45s so it catches the eye. Animates `transform`, which
+   composes with the badges' `translate` slide rather than replacing it. */
+.embroidery-shake {
+  animation: embroidery-shake 1.45s ease-in-out both;
+}
+@keyframes embroidery-shake {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  8% {
+    transform: translateY(-1px) rotate(-2deg);
+  }
+  16% {
+    transform: translateY(2px) rotate(2deg);
+  }
+  24% {
+    transform: translateY(-3px) rotate(-3deg);
+  }
+  32% {
+    transform: translateY(3px) rotate(3deg);
+  }
+  40% {
+    transform: translateY(-3px) rotate(-3deg);
+  }
+  48% {
+    transform: translateY(3px) rotate(3deg);
+  }
+  56% {
+    transform: translateY(-3px) rotate(-3deg);
+  }
+  64% {
+    transform: translateY(2px) rotate(2deg);
+  }
+  72% {
+    transform: translateY(-2px) rotate(-2deg);
+  }
+  80% {
+    transform: translateY(1px) rotate(1deg);
+  }
+  90% {
+    transform: translateY(-1px) rotate(-1deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .embroidery-shake {
+    animation: none;
+  }
+}
+
+/* With the shake: an orange inner border around the designer's middle column
+   (the canvas), there at once and fading out smoothly over 2s. Opacity only,
+   so it stays on for reduced-motion users too. */
+.canvas-alert-border {
+  box-shadow: inset 0 0 0 2px #ea580c;
+  animation: canvas-alert-border 2s ease-in forwards;
+}
+@keyframes canvas-alert-border {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Embroidery hoop guide (the green box while resizing): diagonal stripes in a
+   lighter and a darker green, edge to edge with no gaps, that travel
+   continuously to pull the eye to the hoop-frame size. Both tones are slightly
+   see-through so the object under the box stays readable. One 16px tile holds
+   two light + two dark ~5.7px stripes, so sliding it a full tile loops
+   seamlessly. */
+.hoop-guide-stripes {
+  --hoop-stripe-light: rgba(134, 239, 172, 0.8);
+  --hoop-stripe-dark: rgba(22, 163, 74, 0.8);
+  background-image: linear-gradient(
+    45deg,
+    var(--hoop-stripe-dark) 0 25%,
+    var(--hoop-stripe-light) 25% 50%,
+    var(--hoop-stripe-dark) 50% 75%,
+    var(--hoop-stripe-light) 75% 100%
+  );
+  background-size: 16px 16px;
+  animation: hoop-guide-stripes 0.6s linear infinite;
+}
+@keyframes hoop-guide-stripes {
+  to {
+    background-position: 16px 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hoop-guide-stripes {
+    animation: none;
+  }
+}
+
 /* CS-mode gear button: the icon rotates a half turn on hover (slow, smooth) and
    reverses back when the pointer leaves. */
 .cs-gear {

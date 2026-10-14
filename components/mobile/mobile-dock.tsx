@@ -58,11 +58,23 @@ const AddIcon = () => (
     </svg>
 )
 
-// Mobile bottom dock — replica of create-omat's dock-v2 (Dock/MainDock/SubDock):
-// a floating white card with Products + Add, a gradient-bordered Finish button,
-// and an expandable sub-dock row (Graphics / Text / Uploads / AI) above. When an
-// element is selected on the canvas, the whole dock swaps to the "Done ✓" pill
-// (create-omat's DockUnselectButton — its general.unselect string reads "Done").
+// create-omat Icon-set "template" glyph (24px / currentColor).
+const TemplateIcon = () => (
+    <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden>
+        <rect x="2" y="2" width="8" height="20" rx="1" stroke="currentColor" strokeWidth="2" />
+        <rect x="14" y="2" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="2" />
+        <rect x="14" y="14" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="2" />
+    </svg>
+)
+
+// Mobile bottom dock — replica of create-omat's dock-v2 (Dock/MainDock/SubDock/
+// DockList, as wired in DesignerMobileDock): the main row spans the dock as three
+// equal columns — Products and Add each in their own white card, then the
+// gradient-bordered Finish button — with the add tools (AI / Uploads / Text /
+// Templates / Graphics) in one card above it. When an element is selected on the
+// canvas, the whole dock swaps to the "Done ✓" pill (create-omat's
+// DockUnselectButton — its general.unselect string reads "Done").
+// Templates is a placeholder for now: the button is there but triggers nothing.
 
 type MobileDockProps = {
     inspectorMode: boolean
@@ -97,19 +109,37 @@ function DockItem({
             onClick={onClick}
             disabled={disabled}
             className={
-                "flex flex-col items-center justify-center text-black transition-all duration-200 focus:bg-[var(--sprd-neutral-100)] focus:outline-none focus-visible:bg-[var(--sprd-neutral-100)] focus-visible:outline-none " +
-                "max-w-[120px] min-w-[68px] hover:bg-[var(--sprd-neutral-200)] active:bg-[var(--sprd-neutral-200)] " +
+                "flex flex-col items-center justify-center gap-1.5 text-black transition-all duration-200 focus:bg-[var(--sprd-neutral-100)] focus:outline-none focus-visible:bg-[var(--sprd-neutral-100)] focus-visible:outline-none " +
+                // shrink-0: items keep their width in a scrolling card instead of squeezing.
+                "min-w-[68px] shrink-0 hover:bg-[var(--sprd-neutral-200)] active:bg-[var(--sprd-neutral-200)] " +
                 "rounded-lg px-3 py-2 " +
                 (active ? "bg-neutral-100 " : "bg-transparent ") +
                 (disabled ? "cursor-not-allowed opacity-30 " : "cursor-pointer ") +
                 className
             }
         >
-            <div className="mb-1.5 flex h-6 w-6 items-center justify-center">{icon}</div>
+            <div className="flex h-6 w-6 items-center justify-center">{icon}</div>
             <span className="w-full overflow-hidden text-center text-xs leading-4 font-semibold text-ellipsis whitespace-nowrap">
                 {label}
             </span>
         </button>
+    )
+}
+
+// create-omat's DockList: a white card that scrolls sideways when its items are
+// wider than the screen; justify-center-safe keeps them centred while they fit and
+// start-aligned (so the first stays reachable) once they don't.
+function DockList({ children, className = "" }: { children: ReactNode; className?: string }) {
+    return (
+        <div
+            className={
+                "relative flex max-w-full items-center justify-center-safe overflow-x-auto rounded-xl bg-white p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden " +
+                className
+            }
+            style={{ boxShadow: "0px 2px 4px 0px #25211F0D" }}
+        >
+            {children}
+        </div>
     )
 }
 
@@ -158,7 +188,7 @@ export default function MobileDock({
     return (
         <div
             ref={dockRef}
-            className="dlg:hidden fixed bottom-2 left-1/2 z-40 flex w-full max-w-[386px] -translate-x-1/2 items-center justify-center gap-1 px-2 pb-[env(safe-area-inset-bottom)]"
+            className="dlg:hidden fixed bottom-2 left-1/2 z-40 flex w-full max-w-[400px] -translate-x-1/2 items-center justify-center gap-1 px-2 pb-[env(safe-area-inset-bottom)]"
         >
             {inspectorMode ? (
                 <div
@@ -180,27 +210,27 @@ export default function MobileDock({
                     key="main"
                     className="animate-in fade-in slide-in-from-bottom-4 flex w-full flex-col-reverse items-center gap-1 duration-200"
                 >
-                    {/* Main row: Products + Add card, Finish card */}
-                    <div className="flex items-center justify-center gap-1">
-                        <div
-                            className="relative flex max-w-full items-center justify-center rounded-xl bg-white p-1"
-                            style={cardShadow}
-                        >
+                    {/* Main row (create-omat MainDock): three equal columns —
+                        Products card, Add card, Finish button. */}
+                    <div className="flex w-full items-stretch gap-1 *:min-w-0 *:flex-1">
+                        <DockList>
                             <DockItem
                                 icon={<TagIcon />}
                                 label="Products"
                                 onClick={runAndClose(onProductsClick)}
-                                className="min-w-[100px]"
+                                className="max-w-none flex-1"
                             />
+                        </DockList>
+                        <DockList>
                             <DockItem
                                 icon={<AddIcon />}
                                 label="Add"
                                 onClick={() => setShowSubDock(prev => !prev)}
                                 active={showSubDock}
                                 disabled={actionDisabled}
-                                className="min-w-[100px]"
+                                className="max-w-none flex-1"
                             />
-                        </div>
+                        </DockList>
                         <button
                             type="button"
                             onClick={runAndClose(onFinish)}
@@ -224,23 +254,16 @@ export default function MobileDock({
                         </button>
                     </div>
 
-                    {/* Sub-dock: the four add tools, slides in above the main row */}
+                    {/* Sub-dock: the add tools in create-omat's order, slides in
+                        above the main row. w-full so the card scrolls rather than
+                        growing past the screen. */}
                     {showSubDock && (
-                        <div className="animate-in slide-in-from-bottom-4 fade-in flex items-center justify-center gap-1 duration-300 ease-out">
-                            <div
-                                className="relative flex max-w-full items-center justify-center rounded-xl bg-white p-1"
-                                style={cardShadow}
-                            >
+                        <div className="animate-in slide-in-from-bottom-4 fade-in flex w-full items-center justify-center gap-1 duration-300 ease-out">
+                            <DockList className="w-full justify-evenly">
                                 <DockItem
-                                    icon={<img src="/icons/icon-graphics.svg" alt="" className="h-6 w-6" />}
-                                    label="Graphics"
-                                    onClick={runAndClose(onGraphicsClick)}
-                                    disabled={actionDisabled}
-                                />
-                                <DockItem
-                                    icon={<img src="/icons/icon-text.svg" alt="" className="h-6 w-6" />}
-                                    label="Text"
-                                    onClick={runAndClose(onTextClick)}
+                                    icon={<img src="/icons/icon-sparkles-ai.svg" alt="" className="h-6 w-6" />}
+                                    label="AI design"
+                                    onClick={runAndClose(onAIClick)}
                                     disabled={actionDisabled}
                                 />
                                 <DockItem
@@ -250,12 +273,25 @@ export default function MobileDock({
                                     disabled={actionDisabled}
                                 />
                                 <DockItem
-                                    icon={<img src="/icons/icon-sparkles-ai.svg" alt="" className="h-6 w-6" />}
-                                    label="AI design"
-                                    onClick={runAndClose(onAIClick)}
+                                    icon={<img src="/icons/icon-text.svg" alt="" className="h-6 w-6" />}
+                                    label="Text"
+                                    onClick={runAndClose(onTextClick)}
                                     disabled={actionDisabled}
                                 />
-                            </div>
+                                {/* Placeholder: no templates panel in the proto yet. */}
+                                <DockItem
+                                    icon={<TemplateIcon />}
+                                    label="Templates"
+                                    onClick={() => {}}
+                                    disabled={actionDisabled}
+                                />
+                                <DockItem
+                                    icon={<img src="/icons/icon-graphics.svg" alt="" className="h-6 w-6" />}
+                                    label="Graphics"
+                                    onClick={runAndClose(onGraphicsClick)}
+                                    disabled={actionDisabled}
+                                />
+                            </DockList>
                         </div>
                     )}
                 </div>

@@ -277,7 +277,6 @@ export function EditorBar({
   onDuplicate,
   onDelete,
 }: EditorBarProps) {
-  if (!show) return null
   // The absolute ceiling still applies; the print area usually binds first.
   const max = Math.max(MIN_FONT_SIZE + 1, Math.min(MAX_FONT_SIZE, Math.floor(maxFontSize)))
   const clamp = (n: number) => Math.max(MIN_FONT_SIZE, Math.min(max, Math.round(n)))
@@ -290,7 +289,8 @@ export function EditorBar({
     }`
 
   return (
-    <EditorBarShell data-editor-bar="true">
+    // The shell slides the bar in and out on `show`.
+    <EditorBarShell show={show} data-editor-bar="true">
       <>
         {/* Font family (fixed label; hover shows current font) */}
         <EditorBarTooltip content={fontFamily}>

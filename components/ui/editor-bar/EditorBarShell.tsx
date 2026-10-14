@@ -6,12 +6,24 @@ import { useState } from "react"
 // The pill every editor bar is drawn in, and the one place the overflow
 // behaviour lives — create-omat's EditorBar shell (src/components/ui/editor-bar
 // /index.tsx): a 48px white pill at top-8, centred on the canvas, capped at its
-// width less 16px. When the row no longer fits, a chevron appears at whichever
-// end still has content behind it and scrolls by 120px; both vanish again once
-// there is room. The scrollbar itself is always hidden.
+// width less 16px. On desktop it sits at top-6 instead (create-omat keeps
+// top-8), the same 24px gap as the Contact and Share pills beside it. When the
+// row no longer fits, a chevron appears at whichever end still has content
+// behind it and scrolls by 120px; both vanish again once there is room. The
+// scrollbar itself is always hidden.
 //
 // The text bar, the design bar and the mobile bar all render through this, so
-// they cannot drift apart in placement or in how they behave when squeezed.
+// they cannot drift apart in placement, in how they behave when squeezed, or in
+// how they come and go: on `show` the bar slides down from above the canvas
+// (whose overflow clips it, so it enters from outside), and on hide slides back
+// up and out before unmounting — on the same 300ms ease as the size badge that
+// stacks under it. While leaving it keeps the last controls it showed, so it
+// doesn't flash the defaults its parent passes once nothing is selected.
+
+// Slide duration — matches the duration-300 on the bar. Off-screen the bar sits
+// at its own height plus 2rem higher, which clears the top offset (32px on
+// mobile, 24px on desktop) and takes it fully past the canvas's top edge.
+const SLIDE_MS = 300
 
 function Chevron({ className }: { className?: string }) {
     return (
@@ -34,13 +46,40 @@ function Chevron({ className }: { className?: string }) {
 }
 
 export function EditorBarShell({
+    show,
     children,
     className = "",
     ...rest
 }: {
+    show: boolean
     children: ReactNode
     className?: string
 } & React.HTMLAttributes<HTMLDivElement>) {
+    // `mounted` keeps the bar in the DOM through its exit slide; `entered`
+    // flips a frame after mounting so the entry slide has a start to run from.
+    const [mounted, setMounted] = useState(show)
+    const [entered, setEntered] = useState(false)
+    useEffect(() => {
+        if (show) {
+            setMounted(true)
+            let inner = 0
+            const outer = requestAnimationFrame(() => {
+                inner = requestAnimationFrame(() => setEntered(true))
+            })
+            return () => {
+                cancelAnimationFrame(outer)
+                cancelAnimationFrame(inner)
+            }
+        }
+        setEntered(false)
+        const t = setTimeout(() => setMounted(false), SLIDE_MS)
+        return () => clearTimeout(t)
+    }, [show])
+    // The controls last rendered while shown — what the bar keeps on its way out.
+    const lastChildrenRef = useRef<ReactNode>(children)
+    if (show) lastChildrenRef.current = children
+    const content = show ? children : lastChildrenRef.current
+
     const scrollRef = useRef<HTMLDivElement>(null)
     const [canScrollLeft, setCanScrollLeft] = useState(false)
     const [canScrollRight, setCanScrollRight] = useState(false)
@@ -86,11 +125,17 @@ export function EditorBarShell({
         </button>
     )
 
+    if (!mounted) return null
+
     return (
         <div
             {...rest}
+            aria-hidden={!entered}
             className={
-                "shadow-xs absolute top-8 left-1/2 z-[5] flex h-[48px] max-w-[calc(100%-16px)] -translate-x-1/2 items-center overflow-hidden rounded-full bg-white " +
+                "shadow-xs absolute top-8 dlg:top-6 left-1/2 z-[5] flex h-[48px] max-w-[calc(100%-16px)] -translate-x-1/2 items-center overflow-hidden rounded-full bg-white transition-transform duration-300 ease-out motion-reduce:transition-none " +
+                (entered
+                    ? "translate-y-0 "
+                    : "pointer-events-none translate-y-[calc(-100%-2rem)] ") +
                 className
             }
         >
@@ -109,7 +154,7 @@ export function EditorBarShell({
                 // goes to the scroller, which is what the chevrons then drive.
                 className="no-scrollbar flex h-full min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden scroll-smooth px-1.5 py-1.5 [&>*]:shrink-0"
             >
-                {children}
+                {content}
             </div>
             {canScrollRight && arrow("right")}
         </div>

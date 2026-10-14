@@ -97,12 +97,11 @@ const ITEM_CLASS =
 const DIVIDER = <div className="bg-[#e9e9e9] -my-1.5 w-px shrink-0 self-stretch" />
 
 export function GraphicEditorBar({ show, isAi = false, onDuplicate, onDelete }: GraphicEditorBarProps) {
-  if (!show) return null
-
   return (
     // Shared between desktop and mobile like create-omat's EditorBar — the
-    // shell scrolls the row and shows its chevrons once it stops fitting.
-    <EditorBarShell data-editor-bar="true">
+    // shell scrolls the row and shows its chevrons once it stops fitting, and
+    // slides the bar in and out on `show`.
+    <EditorBarShell show={show} data-editor-bar="true">
       <>
         {/* Remove Background — label only, like create-omat. Not wired yet. */}
         <button type="button" className={`${ITEM_CLASS} rounded-l-[24px] px-3`}>

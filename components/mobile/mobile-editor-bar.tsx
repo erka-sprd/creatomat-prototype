@@ -46,13 +46,12 @@ export default function MobileEditorBar({
     onDuplicate,
     onDelete,
 }: MobileEditorBarProps) {
-    if (!show) return null
-
     const item =
         "flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-md px-2 text-xs font-semibold transition-colors active:bg-neutral-100"
     const line = <div className="-my-1.5 w-px shrink-0 self-stretch bg-[#e9e9e9]" />
     return (
-        <EditorBarShell data-mobile-editor-bar="true">
+        // The shell slides the bar in and out on `show`.
+        <EditorBarShell show={show} data-mobile-editor-bar="true">
             <>
                 <button type="button" onClick={onWrite} className={item}>
                     <KeyboardIcon className="h-3 w-[17px]" />

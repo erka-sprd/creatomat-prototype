@@ -47,7 +47,7 @@ export type SortId = (typeof SORT_OPTIONS)[number]["id"]
 
 // --- Facet derivation --------------------------------------------------------
 
-type Garment =
+export type Garment =
     | "tshirt"
     | "longsleeve"
     | "tank"
@@ -75,7 +75,7 @@ type Facets = {
     sizeGroups: Set<string>
 }
 
-function deriveGarment(name: string): Garment {
+export function deriveGarment(name: string): Garment {
     const n = name.toLowerCase()
     if (/bodysuit/.test(n)) return "bodysuit"
     if (/shorts|sweatpants|jogger|jogging|trousers|leggings/.test(n)) return "pants"
