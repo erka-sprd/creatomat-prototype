@@ -61,8 +61,7 @@ const EmbroideryIcon = () => (
 //   68px and 33px, so it travels 20px and 47px.
 // - "loader": while "Creating preview" (38px) holds the spot. It spans 68–106px
 //   on mobile and 29–67px on desktop, so the badge travels 46px and 42px.
-// `offsetPx` stacks it further down, under other badges in the spot — see
-// BADGE_OFFSET for the thin-line group.
+// `offsetPx` stacks it further down, under other badges in the spot.
 export type CanvasStatusStack = "editor-bar" | "loader"
 
 // [mobile, desktop] px.
@@ -71,16 +70,9 @@ const STACK_PX: Record<CanvasStatusStack, [number, number]> = {
   loader: [46, 42],
 }
 
-// Every badge is 30px tall. Under the thin-line warning, its "See what this
-// means" link sits 4px down (it belongs to the warning).
-const BADGE_HEIGHT_PX = 30
-export const BADGE_OFFSET = {
-  thinLineLink: BADGE_HEIGHT_PX + 4,
-} as const
-
 // `concealed` hides it on the spot (no retract) — while the thin-line help
-// popover is open, a sharp copy of the warning and its link sits on top and
-// these would only show through as a blurred ghost.
+// popover is open, a sharp copy of the warning sits on top and this would only
+// show through as a blurred ghost.
 // `shakeSignal`: a counter that goes up each time add to basket is refused;
 // each increase shakes the badge once (.embroidery-shake), by remounting the
 // wrapper on a new key. Only an increase does — a badge that appears, hides
@@ -159,7 +151,14 @@ export function EmbroideryPreviewStatus({ loading }: { loading: boolean }) {
   )
 }
 
-export type EmbroiderySizeStatus = "too-large" | "good" | "thin-line"
+export type EmbroiderySizeStatus = "too-large" | "good" | EmbroideryDesignIssue
+
+// Problems with the design itself rather than its size — each warns with a
+// "See options" row and blocks add to basket.
+export type EmbroideryDesignIssue = "thin-line" | "too-complex"
+
+const isDesignIssue = (status: EmbroiderySizeStatus): status is EmbroideryDesignIssue =>
+  status === "thin-line" || status === "too-complex"
 
 const SIZE_BADGE = {
   // Two tones brighter than the thin-line warning's orange (400/500 against
@@ -182,6 +181,12 @@ const SIZE_BADGE = {
     frame: "border-[#EA580C] text-[#C2410C]",
     dot: "bg-[#EA580C]",
   },
+  "too-complex": {
+    label: "Design too complex for embroidery",
+    icon: "!",
+    frame: "border-[#EA580C] text-[#C2410C]",
+    dot: "bg-[#EA580C]",
+  },
 } as const
 
 // Shares the status pill's spot:
@@ -189,24 +194,30 @@ const SIZE_BADGE = {
 //   (lib/embroidery-limits) — the prototype's stand-in for the decoration
 //   service's DESIGN_TOO_LARGE.
 // - "good": the design fits again after a too-large warning this session.
-// - "thin-line": shrinking the design to fit made its lines too thin to stitch
-//   (mocked — shown whenever a resize ends inside the hoop frame).
+// - "thin-line": the design's lines are too thin to stitch (mocked — the pink
+//   cat graphic).
+// - "too-complex": the design has too much detail to stitch — the stand-in for
+//   DESIGN_TOO_COMPLEX (mocked — the mountain lake graphic).
 // Whatever holds the spot above it, it stacks beneath (`stack`): the editor bar
 // while an element is selected, "Creating preview" while the stitched render is
 // made — then slides up into the spot once that leaves. `offsetPx` puts it
 // further down, under other badges.
+// The design-issue warnings carry their own "See options" row; `onHelp` is
+// what that opens (ThinLineHelpPopover).
 export function EmbroiderySizeBadge({
   status,
   stack = null,
   offsetPx = 0,
   concealed = false,
   shakeSignal = 0,
+  onHelp,
 }: {
   status: EmbroiderySizeStatus | null
   stack?: CanvasStatusStack | null
   offsetPx?: number
   concealed?: boolean
   shakeSignal?: number
+  onHelp?: () => void
 }) {
   // Keep the last message on screen while the badge retracts, so it doesn't
   // empty out mid-animation.
@@ -220,133 +231,135 @@ export function EmbroiderySizeBadge({
       concealed={concealed}
       shakeSignal={shakeSignal}
     >
-      <SizeBadgePill status={status ?? shown} hidden={!show} />
+      {/* A one-line badge's 30px box: on desktop the slot centres its content
+          in 48px, so a taller badge (thin-line with "See options") would grow
+          upward into the editor bar. Held to 30px, it keeps the one-line
+          badge's top and grows downward. */}
+      <div className="flex h-[30px] flex-col items-center">
+        <SizeBadgePill status={status ?? shown} hidden={!show} onHelp={onHelp} />
+      </div>
     </CanvasStatusSlot>
   )
 }
 
-// One badge pill, also drawn sharp above the blur by ThinLineHelpPopover.
+// One badge pill, also drawn sharp above the blur by ThinLineHelpPopover. A
+// design-issue warning adds a dark grey "See options" row under its message,
+// centred in the badge, the icon staying beside the first line — so it rounds
+// as a box rather than a full pill.
 function SizeBadgePill({
   status,
   hidden = false,
+  helpOpen = false,
+  onHelp,
 }: {
   status: EmbroiderySizeStatus
   hidden?: boolean
+  helpOpen?: boolean
+  onHelp?: () => void
 }) {
   const badge = SIZE_BADGE[status]
+  const withHelp = isDesignIssue(status)
   return (
     <div
       role="status"
       aria-hidden={hidden}
-      className={PILL + `gap-1.5 border bg-white px-3 py-1.5 ${badge.frame} ` + visibility(!hidden)}
+      data-thin-line-help={withHelp ? "true" : undefined}
+      className={
+        // pl-1.5 matches py-1.5: the icon sits as far from the left edge as
+        // from the top (the 16px icon is the first row's tallest item).
+        "flex flex-col items-start border bg-white py-1.5 pr-3 pl-1.5 transition-all duration-300 ease-out " +
+        (withHelp ? "rounded-2xl pb-2 " : "rounded-full ") +
+        `${badge.frame} ` +
+        visibility(!hidden)
+      }
     >
-      <span
-        aria-hidden="true"
-        className={`flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] leading-none font-bold text-white ${badge.dot}`}
-      >
-        {badge.icon}
-      </span>
-      <span className="text-sm leading-none font-semibold whitespace-nowrap">{badge.label}</span>
+      <div className="flex items-center gap-1.5">
+        <span
+          aria-hidden="true"
+          className={`flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] leading-none font-bold text-white ${badge.dot}`}
+        >
+          {badge.icon}
+        </span>
+        <span className="text-sm leading-none font-semibold whitespace-nowrap">{badge.label}</span>
+      </div>
+      {withHelp && (
+        <button
+          type="button"
+          onClick={onHelp}
+          aria-expanded={helpOpen}
+          tabIndex={hidden ? -1 : 0}
+          className={
+            "mt-1.5 flex items-center self-center gap-0.5 text-sm leading-none font-semibold text-neutral-700 hover:text-neutral-900 " +
+            (hidden ? "" : "pointer-events-auto cursor-pointer")
+          }
+        >
+          See options
+          {/* Turns to point up while the popover it opens is showing. */}
+          <svg
+            aria-hidden="true"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`shrink-0 transition-transform duration-300 ease-out ${helpOpen ? "rotate-180" : ""}`}
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+      )}
     </div>
   )
 }
 
-// Solid warning orange with white text — the same orange as the warning's
-// border and icon above it, so the pair reads as one, darkening on hover.
-const HELP_LINK_CLASS =
-  "gap-1 border border-[#EA580C] bg-[#EA580C] px-3 py-1.5 text-white hover:border-[#C2410C] hover:bg-[#C2410C] "
-
-// The link's label and chevron, which turns to point up while the popover it
-// opens is showing.
-function HelpLinkContent({ open }: { open: boolean }) {
-  return (
-    <>
-      <span className="text-sm leading-none font-semibold whitespace-nowrap">
-        See what this means
-      </span>
-      <svg
-        aria-hidden="true"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={`shrink-0 transition-transform duration-300 ease-out ${open ? "rotate-180" : ""}`}
-      >
-        <path d="m6 9 6 6 6-6" />
-      </svg>
-    </>
-  )
-}
-
-// "See what this means" — the thin-line warning's follow-up, 4px under it, as a
-// solid orange button; it opens ThinLineHelpPopover below it.
-export function EmbroideryThinLineHelp({
-  show,
-  stack = null,
-  concealed = false,
-  shakeSignal = 0,
-  onClick,
-}: {
-  show: boolean
-  stack?: CanvasStatusStack | null
-  concealed?: boolean
-  shakeSignal?: number
-  onClick?: () => void
-}) {
-  return (
-    <CanvasStatusSlot
-      stack={stack}
-      offsetPx={BADGE_OFFSET.thinLineLink}
-      concealed={concealed}
-      shakeSignal={shakeSignal}
-    >
-      <button
-        type="button"
-        data-thin-line-help="true"
-        onClick={onClick}
-        aria-hidden={!show}
-        tabIndex={show ? 0 : -1}
-        className={
-          PILL +
-          HELP_LINK_CLASS +
-          (show ? "pointer-events-auto cursor-pointer " : "") +
-          visibility(show)
-        }
-      >
-        <HelpLinkContent open={false} />
-      </button>
-    </CanvasStatusSlot>
-  )
-}
-
-// Popover layout: 8px under the link, 450px tall, as wide as fits up to 480px.
+// Popover layout: 8px under the warning, 450px tall, as wide as fits up to
+// 480px — the too-complex one 720px, wide enough for its standard-print row
+// on one line with 150px between the title block and the prices. It stays
+// CANVAS_INSET_PX inside the canvas.
 const POPOVER_GAP_PX = 8
 const POPOVER_HEIGHT_PX = 450
+const POPOVER_WIDTH_PX = 480
+const COMPLEX_POPOVER_WIDTH_PX = 720
+const CANVAS_INSET_PX = 16
+const COLUMNS_INSET_PX = 8
 const POPOVER_SLIDE_MS = 300
 
-// The thin-line explanation. Opens under "See what this means" while the rest
-// of the designer blurs (the designer applies the blur, as for the size sheet
-// in the add-to-basket flow). The warning and the link sit inside the canvas,
-// which is blurred too — so this draws sharp copies of both on a layer above
-// the page, exactly over the originals (found by `data-thin-line-help` and
-// concealed meanwhile), with the popover below them. A click outside, the link
-// again, or Escape closes it.
+// A design issue's explanation (thin lines or too complex — `issue`). Opens
+// under the warning from its "See options"
+// while the rest of the designer blurs (the designer applies the blur, as for
+// the size sheet in the add-to-basket flow). The warning sits inside the
+// canvas, which is blurred too — so this draws a sharp copy of it on a layer
+// above the page, exactly over the original (found by `data-thin-line-help`
+// and concealed meanwhile), with the popover below it. A click outside, "See
+// options" again, or Escape closes it.
 //
 // `onPresenceChange` reports whether the layer is on screen, closing fade
 // included: the originals must stay concealed until it is gone, or they show
 // through — still blurred, as the blur eases off — as a glow behind the copies.
+// `standardPrint` is the too-complex popover's offer: the design as a
+// standard print — its price against the embroidery price, and a way
+// straight to the basket.
+export type StandardPrintOffer = {
+  price: string
+  embroideryPrice: string
+  onAddToBasket: () => void
+}
+
 export function ThinLineHelpPopover({
   open,
+  issue,
   onClose,
   onPresenceChange,
+  standardPrint,
 }: {
   open: boolean
+  issue: EmbroideryDesignIssue
   onClose: () => void
   onPresenceChange?: (present: boolean) => void
+  standardPrint?: StandardPrintOffer
 }) {
   // Kept mounted through the closing fade, like the editor bar.
   const [mounted, setMounted] = useState(open)
@@ -371,15 +384,32 @@ export function ThinLineHelpPopover({
     return () => clearTimeout(t)
   }, [open])
 
-  // Where the original link sits on screen; the copies line up with it.
-  const [anchor, setAnchor] = useState<{ centerX: number; linkTop: number } | null>(null)
+  // Where the original warning sits on screen — the copy lines up with it —
+  // and the canvas the popover has to stay inside.
+  const [anchor, setAnchor] = useState<{
+    centerX: number
+    top: number
+    bottom: number
+    canvas: { left: number; right: number; bottom: number }
+  } | null>(null)
   useLayoutEffect(() => {
     if (!open) return
     const measure = () => {
-      const link = document.querySelector<HTMLElement>("[data-thin-line-help]")
-      if (!link) return
-      const r = link.getBoundingClientRect()
-      setAnchor({ centerX: r.left + r.width / 2, linkTop: r.top })
+      const warning = document.querySelector<HTMLElement>("[data-thin-line-help]")
+      const canvas = document.getElementById("canvas-section")
+      if (!warning) return
+      const r = warning.getBoundingClientRect()
+      const c = canvas?.getBoundingClientRect() ?? {
+        left: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+      }
+      setAnchor({
+        centerX: r.left + r.width / 2,
+        top: r.top,
+        bottom: r.bottom,
+        canvas: { left: c.left, right: c.right, bottom: c.bottom },
+      })
     }
     measure()
     window.addEventListener("resize", measure)
@@ -395,38 +425,301 @@ export function ThinLineHelpPopover({
     return () => window.removeEventListener("keydown", onKey)
   }, [open, onClose])
 
+  // The too-complex options go side by side when stacked they'd need a
+  // scroll: laid out as rows first, measured, and switched to columns if
+  // they overflow. Each new placement (anchor) starts over from rows, so a
+  // taller canvas gets the rows back.
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const [columns, setColumns] = useState(false)
+  useLayoutEffect(() => {
+    setColumns(false)
+  }, [anchor])
+  useLayoutEffect(() => {
+    const el = dialogRef.current
+    if (!el || columns || issue !== "too-complex") return
+    if (el.scrollHeight > el.clientHeight + 1) setColumns(true)
+  })
+
   if (!mounted || !anchor || typeof document === "undefined") return null
 
-  const warningTop = anchor.linkTop - BADGE_OFFSET.thinLineLink
+  // Kept inside the canvas, CANVAS_INSET_PX from its edges: as wide as fits
+  // up to its own width, shifted sideways off the warning's centre when that
+  // would cross an edge, and capped in height at the canvas bottom — its
+  // content scrolls when that is short. In columns it spans the whole canvas
+  // instead, COLUMNS_INSET_PX from either side.
+  const { canvas } = anchor
+  const desiredWidth = issue === "too-complex" ? COMPLEX_POPOVER_WIDTH_PX : POPOVER_WIDTH_PX
+  const canvasWidth = canvas.right - canvas.left
+  const width = Math.max(
+    0,
+    columns
+      ? canvasWidth - 2 * COLUMNS_INSET_PX
+      : Math.min(desiredWidth, canvasWidth - 2 * CANVAS_INSET_PX)
+  )
+  const naturalLeft = anchor.centerX - width / 2
+  const left = columns
+    ? canvas.left + COLUMNS_INSET_PX
+    : Math.min(
+        Math.max(naturalLeft, canvas.left + CANVAS_INSET_PX),
+        canvas.right - CANVAS_INSET_PX - width
+      )
+  const maxHeight = Math.max(
+    120,
+    canvas.bottom - CANVAS_INSET_PX - (anchor.bottom + POPOVER_GAP_PX)
+  )
+
   return createPortal(
     <div className="fixed inset-0 z-[60]" data-thin-line-help-layer="true" onClick={onClose}>
       <div
         className="absolute flex -translate-x-1/2 flex-col items-center"
-        style={{ left: anchor.centerX, top: warningTop }}
+        style={{ left: anchor.centerX, top: anchor.top }}
         onClick={e => e.stopPropagation()}
       >
-        <SizeBadgePill status="thin-line" />
-        <button
-          type="button"
-          onClick={onClose}
-          aria-expanded={open}
-          className={PILL + HELP_LINK_CLASS + "mt-1 cursor-pointer"}
-        >
-          <HelpLinkContent open={entered} />
-        </button>
+        <SizeBadgePill status={issue} helpOpen={entered} onHelp={onClose} />
         <div
+          ref={dialogRef}
           role="dialog"
-          aria-label="What too thin lines mean for embroidery"
-          className={`flex w-[min(480px,calc(100vw-32px))] items-center justify-center rounded-2xl bg-white p-6 text-center text-sm text-neutral-500 shadow-xl transition-all duration-300 ease-out ${
+          aria-label={
+            issue === "too-complex"
+              ? "What too complex means for embroidery"
+              : "What too thin lines mean for embroidery"
+          }
+          className={`relative flex flex-col overflow-y-auto overscroll-contain rounded-2xl bg-white p-6 shadow-xl transition-[translate,opacity] duration-300 ease-out ${
             entered ? "translate-y-0 opacity-100" : "-translate-y-3 opacity-0"
           }`}
-          style={{ marginTop: POPOVER_GAP_PX, height: POPOVER_HEIGHT_PX }}
+          style={{
+            marginTop: POPOVER_GAP_PX,
+            width,
+            // Relative to the column, which is centred on the warning.
+            left: left - naturalLeft,
+            maxHeight,
+            height: issue === "too-complex" ? undefined : Math.min(POPOVER_HEIGHT_PX, maxHeight),
+          }}
         >
-          The explanation and image examples will come here...
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute top-4 right-4 flex size-8 cursor-pointer items-center justify-center rounded-full text-neutral-700 transition-colors hover:bg-neutral-100"
+          >
+            <svg
+              aria-hidden="true"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+          {issue === "too-complex" ? (
+            <ComplexHelpContent
+              standardPrint={standardPrint}
+              onBackToCustomize={onClose}
+              columns={columns}
+            />
+          ) : (
+            <div className="flex flex-1 items-center justify-center text-center text-sm text-neutral-500">
+              The explanation and image examples will come here...
+            </div>
+          )}
         </div>
       </div>
     </div>,
     document.body
+  )
+}
+
+// The tips' example slider: real marketplace designs from create-omat's
+// Graphics panel (design search, by designId), alternating one too complex
+// for stitching — full colour, fine detail — with one that stitches well —
+// few colours, simple shapes, thick lines (from the embroidery-only search,
+// already shown stitched). One set (152px a card) must be at least as wide as
+// the row (672px in the 720px popover), or the loop shows a gap before it
+// repeats.
+const EXAMPLES_DIR = "/img/embroidery-examples"
+
+const COMPLEX_EXAMPLES = [
+  135998383, // Heart of flowers
+  195056478, // Cthulhu character
+  320677910, // Lion
+  327846936, // The Tiny Adventures
+  355909416, // My Happy Place patch
+  135929734, // Treasure map
+  301877016, // Love yourself
+]
+const SIMPLE_EXAMPLES = [
+  344409580, // Tulip
+  339528140, // Star
+  337876133, // Hibiscus
+  344732077, // Blue flower
+  344828120, // Watering can
+  336838913, // Butterfly
+  337874351, // Anchor
+]
+const STITCH_EXAMPLES = COMPLEX_EXAMPLES.flatMap((id, i) => [
+  { src: `${EXAMPLES_DIR}/complex-${id}.png`, stitches: false },
+  { src: `${EXAMPLES_DIR}/simple-${SIMPLE_EXAMPLES[i]}.png`, stitches: true },
+])
+
+// The too-complex options, as two lightest-grey rows under one title:
+// - Simplify: the title with "Back to customize" (the primary, black button,
+//   closing the popover so the design can be simplified) at its right; under
+//   the title create-omat's too-complex tips (EmbroideryComplexContent,
+//   "too-complex-tip-*") bar "Smaller size", as one sentence; then "See
+//   examples:" over a slider of them, edge to edge, fading out at both ends.
+// - Standard print: the way out — the same design printed, its price against
+//   the struck-through embroidery price, and an add to basket (secondary).
+// `columns` sets the two side by side instead, for a canvas too short to
+// show them stacked without scrolling (see ThinLineHelpPopover).
+function ComplexHelpContent({
+  standardPrint,
+  onBackToCustomize,
+  columns = false,
+}: {
+  standardPrint?: StandardPrintOffer
+  onBackToCustomize: () => void
+  columns?: boolean
+}) {
+  // The slider fades out at both edges of the row.
+  const fade =
+    "linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent)"
+  return (
+    <div className="flex flex-col gap-4 text-left text-neutral-900">
+      {/* The display face, as the product title in the purchase rail. */}
+      <h2 className="font-display pr-8 text-[20px] leading-tight font-[800]">Options</h2>
+      {/* In columns each box hugs its content (items-start). */}
+      <div className={columns ? "grid grid-cols-2 items-start gap-4" : "flex flex-col gap-4"}>
+        <div className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-xl bg-neutral-100 p-4">
+          {/* Top-aligned: the title sits as far from the row's top-left corner
+            as the button from its top-right one. In a column it is a grid —
+            title | button, the description under the title in its column —
+            the text block's wrapper dissolving (contents) so its lines join
+            it. */}
+          <div
+            className={
+              columns
+                ? "grid grid-cols-[1fr_auto] items-start gap-x-3 gap-y-1"
+                : "flex flex-wrap items-start justify-between gap-x-4 gap-y-3"
+            }
+          >
+            <div className={columns ? "contents" : "flex flex-col gap-1"}>
+              <h3
+                className={`text-base leading-tight font-semibold ${
+                  columns ? "col-start-1 row-start-1 self-center" : ""
+                }`}
+              >
+                Simplify design for stitching
+              </h3>
+              <p
+                className={`text-sm text-neutral-600 ${columns ? "col-start-1 row-start-2" : ""}`}
+              >
+                Fewer colors, simpler shapes, thicker lines.
+              </p>
+            </div>
+            {/* The primary way on: back to the canvas to simplify the design. */}
+            <button
+              type="button"
+              onClick={onBackToCustomize}
+              className={`h-9 shrink-0 cursor-pointer rounded-full bg-neutral-900 px-4 text-sm font-semibold text-white transition-colors hover:bg-neutral-700 ${
+                columns ? "col-start-2 row-start-1" : ""
+              }`}
+            >
+              Back to customize
+            </button>
+          </div>
+          <p className="text-sm font-regular text-neutral-500">Examples:</p>
+          {/* Slides on its own, smoothly and endlessly: the cards are laid out
+            twice and the track (globals.css .marquee-track) moves by one set,
+            so the loop has no seam. Each card carries its own right margin
+            rather than a gap, keeping both sets the same width. Runs edge to
+            edge of the row (-mx-4). Pauses on hover. */}
+          <div
+            className="marquee-pause relative -mx-4 overflow-hidden"
+            style={{ maskImage: fade, WebkitMaskImage: fade }}
+          >
+            <div
+              className="marquee-track flex w-max"
+              style={{ animationDuration: `${STITCH_EXAMPLES.length * 4}s` }}
+            >
+              {[...STITCH_EXAMPLES, ...STITCH_EXAMPLES].map((ex, i) => (
+                <div
+                  key={i}
+                  aria-hidden={i >= STITCH_EXAMPLES.length}
+                  className="relative mr-2 size-36 shrink-0 rounded-lg bg-white p-3"
+                >
+                  <img
+                    src={ex.src}
+                    alt={ex.stitches ? "Stitches well" : "Too complex to stitch"}
+                    draggable={false}
+                    className="size-full object-contain select-none"
+                  />
+                  {/* ✓ stitches well, ✕ too complex. */}
+                  <span
+                    aria-hidden="true"
+                    className={`absolute top-1.5 right-1.5 flex size-4 items-center justify-center rounded-full text-[10px] leading-none font-bold text-white ${
+                      ex.stitches ? "bg-[#16A34A]" : "bg-[#EA580C]"
+                    }`}
+                  >
+                    {ex.stitches ? "✓" : "✕"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* One line: title | prices | button — at least 150px between the title
+          and the prices, more as the row widens. Wraps on narrow screens;
+          in a column a grid instead: title | button, description | prices
+          (right-aligned under the button). */}
+        <div
+          className={`min-w-0 rounded-xl bg-neutral-100 p-4 ${
+            columns
+              ? "grid grid-cols-[1fr_auto] items-start gap-x-3 gap-y-1"
+              : "flex flex-wrap items-start justify-between gap-x-[150px] gap-y-3"
+          }`}
+        >
+          <div className={columns ? "contents" : "flex flex-col gap-1"}>
+            <h3
+              className={`text-base leading-tight font-semibold ${
+                columns ? "col-start-1 row-start-1 self-center" : ""
+              }`}
+            >
+              Get it as standard print instead
+            </h3>
+            <p className={`text-sm text-neutral-600 ${columns ? "col-start-1 row-start-2" : ""}`}>
+              Standard print can handle complex details.
+            </p>
+          </div>
+          {standardPrint && (
+            <div className={columns ? "contents" : "flex items-center gap-3"}>
+              {/* The embroidery price it replaces, struck through, over it. */}
+              <p
+                className={`flex flex-col items-end leading-tight ${
+                  columns ? "col-start-2 row-start-2 mt-1" : ""
+                }`}
+              >
+                <s className="text-xs text-neutral-500">{standardPrint.embroideryPrice}</s>
+                <span className="text-base font-bold">{standardPrint.price}</span>
+              </p>
+              <button
+                type="button"
+                onClick={standardPrint.onAddToBasket}
+                // Secondary to "Back to customize": outlined, not filled.
+                className={`h-9 cursor-pointer rounded-full border border-neutral-900 bg-white px-4 text-sm font-semibold text-neutral-900 transition-colors hover:bg-neutral-50 ${
+                  columns ? "col-start-2 row-start-1" : ""
+                }`}
+              >
+                Add to basket
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 

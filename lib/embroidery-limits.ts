@@ -45,6 +45,29 @@ export function embroideryHoopFitScale(w: number, h: number, hoop: number | null
     return scale >= 1 - HOOP_FRAME_TOLERANCE ? 1 : scale
 }
 
+// ============================================================================
+// Mocked minimum embroidery size.
+//
+// create-omat learns a design is too small from the precheck's
+// DESIGN_TOO_SMALL, which carries `minSize`: the shortest side, in mm, the
+// technique accepts. It only finds out at add to basket; the prototype instead
+// stops a resize from ever going below it, with this hand-picked value.
+// ============================================================================
+
+export const EMBROIDERY_MIN_SIDE_MM = 20
+
+/**
+ * Smallest uniform scale a design of `widthMm` × `heightMm` may be resized to:
+ * the one that brings its shorter side to EMBROIDERY_MIN_SIDE_MM. Capped at 1,
+ * so a design already under the minimum can't shrink further but doesn't jump
+ * up either.
+ */
+export function embroideryMinSizeScale(widthMm: number, heightMm: number): number {
+    const shorter = Math.min(widthMm, heightMm)
+    if (shorter <= 0) return 0
+    return Math.min(1, EMBROIDERY_MIN_SIDE_MM / shorter)
+}
+
 /**
  * Uniform scale (up or down) that makes a design of `w` × `h` fill the hoop
  * frame — its longer side, relative to the print area, reaches the frame's
