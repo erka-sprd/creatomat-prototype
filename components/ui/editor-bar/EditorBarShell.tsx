@@ -131,6 +131,8 @@ export function EditorBarShell({
         <div
             {...rest}
             aria-hidden={!entered}
+            // The canvas blurs around it while it's up (CanvasHaloBlur).
+            data-canvas-halo="true"
             className={
                 "shadow-xs absolute top-8 dlg:top-6 left-1/2 z-[5] flex h-[48px] max-w-[calc(100%-16px)] -translate-x-1/2 items-center overflow-hidden rounded-full bg-white transition-transform duration-300 ease-out motion-reduce:transition-none " +
                 (entered

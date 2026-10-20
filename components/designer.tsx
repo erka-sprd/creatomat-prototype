@@ -121,7 +121,8 @@ import CustomerServiceMode from "@/components/cs-mode/CustomerServiceMode"
 import HelpMenu from "@/components/help-menu"
 import ProductsIcon from "@/components/products-icon"
 import ShareButton from "@/components/share-button"
-import { CanvasTopBlur } from "@/components/canvas-top-blur"
+import { CanvasHaloBlur } from "@/components/canvas-halo-blur"
+import { DtfPatchPreview, type DtfPatchPad } from "@/components/dtf-patch-preview"
 import { graphicInkFractions, rotatedBounds, textInkPx, type InkRect } from "@/lib/ink-bounds"
 import DockHoverIcon from "@/components/ui/lottie/DockHoverIcon"
 import aiImageAnim from "@/components/ui/lottie/ai-image.json"
@@ -171,6 +172,11 @@ const ROTATE_SNAP_DEG = 8
 // Upper bound for every zoom path — slider, +/- stops, wheel, mobile pinch.
 // 1 = fit-to-canvas.
 const MAX_ZOOM = 15
+// DTF: the zoom levels its render is remade at (see dtfZoomStep), and the
+// longest side that render may reach — the patch's shape is computed per
+// pixel, so this caps the wait at high zoom.
+const DTF_ZOOM_STEPS = [1, 2, 4, 8, MAX_ZOOM]
+const DTF_MAX_RENDER_PX = 3072
 
 // True while the keyboard event targets a real text input — there the browser's
 // own copy/cut/paste (and Backspace) must win over the canvas shortcuts.
@@ -364,12 +370,20 @@ export default function Designer({
   csMode = false,
   basketHypotheses = false,
   embroidery = false,
+  dtf = false,
 }: {
   csMode?: boolean
   /** /add-to-basket-new-1: desktop size-dropdown hypotheses (H1–H4). */
   basketHypotheses?: boolean
   /** ?embroidery=true: the embroidery version, marked by the vertical canvas label. */
   embroidery?: boolean
+  /**
+   * ?dtf=true: the DTF version. Runs the embroidery preview flow — flatten,
+   * "Creating preview", reveal — but renders the design as a patch
+   * (DtfPatchPreview) and drops every embroidery limit and warning: no hoop
+   * frame, no minimum size, no design issues.
+   */
+  dtf?: boolean
 }) {
   // Product catalogue is fetched once from the central host at runtime.
   const [products, setProducts] = useState<StaticProduct[]>([])
@@ -394,13 +408,19 @@ export default function Designer({
     [products, productId]
   )
   // Embroidery hoop frame for this product, as a share of the print area's
-  // width/height (null: no limit) — see lib/embroidery-limits.
-  const embroideryHoopFrame = productData ? embroideryHoopFrameFraction(productData.name) : null
+  // width/height (null: no limit) — see lib/embroidery-limits. None in the
+  // DTF version, which takes none of embroidery's limits.
+  const embroideryHoopFrame =
+    productData && !dtf ? embroideryHoopFrameFraction(productData.name) : null
   const [activeColorIndex, setActiveColorIndex] = useState(0)
   // Canvas zoom (1 = fit, up to MAX_ZOOM) controlled by the slider at the bottom-left.
   // When zoomed in, the canvas area scrolls so different parts of the product
   // can be reached; the controls stay fixed.
   const [zoom, setZoom] = useState(1)
+  // DTF renders its design flat, so its render is made for the zoom it's seen
+  // at — rounded up to one of DTF_ZOOM_STEPS, so a zoom only re-renders when
+  // it crosses a step rather than on every tick.
+  const dtfZoomStep = dtf ? (DTF_ZOOM_STEPS.find(s => s >= zoom) ?? MAX_ZOOM) : 1
   // Animate the zoom only for the +/- buttons (a discrete step). Continuous
   // gestures (pinch, slider drag) keep it off so they don't feel laggy.
   const [zoomAnimate, setZoomAnimate] = useState(false)
@@ -870,6 +890,13 @@ export default function Designer({
   const [mobileMoreMenuOpen, setMobileMoreMenuOpen] = useState(false)
   const [mobileSizeSheetOpen, setMobileSizeSheetOpen] = useState(false)
   const [sizePopoverOpen, setSizePopoverOpen] = useState(false)
+  // basketHypotheses: the icon-only add-to-basket button opened the size
+  // popover, so it keeps its "Add to basket" label until that closes — hover
+  // or not.
+  const [ctaHoldsLabel, setCtaHoldsLabel] = useState(false)
+  useEffect(() => {
+    if (!sizePopoverOpen) setCtaHoldsLabel(false)
+  }, [sizePopoverOpen])
   // basketHypotheses (desktop, /add-to-basket-new-1) — H1 companion
   // size-guide panel, H4 inline price breakdown, H3 tier-table dialog.
   const [sizeGuideOpen, setSizeGuideOpen] = useState(false)
@@ -1139,7 +1166,15 @@ export default function Designer({
   // Source image fed to the embroidery renderer. Only updated when the design's
   // *appearance* (not its position) changes, so moving never regenerates it.
   const [embroiderySrc, setEmbroiderySrc] = useState<string | null>(null)
+  // DTF: pixels of embroiderySrc per on-screen pixel (at zoom 1), so the
+  // patch's offset comes out at its on-screen size; and how far the patch
+  // reaches past the design, as a share of its width/height, for the overlay
+  // to widen by (DtfPatchPreview).
+  const [embroiderySrcScale, setEmbroiderySrcScale] = useState(1)
+  const [dtfPad, setDtfPad] = useState<DtfPatchPad>({ x: 0, y: 0 })
   const lastEmbroiderySigRef = useRef<string | null>(null)
+  // DTF: the zoom step its render was made for (see dtfZoomStep).
+  const lastDtfZoomStepRef = useRef(1)
   // Mirrors embroiderySrc so we can detect when a re-flatten produced an
   // identical stitched source (e.g. changing alignment on single-line text): the
   // EmbroideryPreview effect won't re-run, so onRendered won't fire and we must
@@ -1155,9 +1190,10 @@ export default function Designer({
 
   // Print technique (only relevant for embroidery-suitable products). The
   // ?embroidery=true version starts on embroidery, so designs show the stitched
-  // preview without the (gated-off) technique selector.
+  // preview without the (gated-off) technique selector. The ?dtf=true version
+  // rides on the same technique for its preview flow (see the `dtf` prop).
   const [printTechnique, setPrintTechnique] = useState<"standard" | "embroidery">(
-    embroidery ? "embroidery" : "standard"
+    embroidery || dtf ? "embroidery" : "standard"
   )
   const [printTechniqueOpen, setPrintTechniqueOpen] = useState(false)
   const [printTechniqueMenuOpen, setPrintTechniqueMenuOpen] = useState(false)
@@ -2737,7 +2773,7 @@ export default function Designer({
           : null,
       minScale: (() => {
         const boundary = productData?.printAreas.find(pa => pa.id === currentPrintAreaId)?.boundary
-        if (effectivePrintTechnique !== "embroidery" || !boundary) return 0
+        if (effectivePrintTechnique !== "embroidery" || dtf || !boundary) return 0
         return embroideryMinSizeScale(
           (initialWidthPct / 100) * boundary.width,
           (initialHeightPct / 100) * boundary.height
@@ -3523,9 +3559,10 @@ export default function Designer({
   // inside — taking the spot "Creating preview" leaves. Once up it stays
   // through resizes that keep the design within the hoop frame. Being too
   // large has priority and clears it (see below).
-  const designIssue: EmbroideryDesignIssue | null = visibleGraphicElements.some(g =>
-    g.src.endsWith(COMPLEX_GRAPHIC_SRC)
-  )
+  // None in the DTF version.
+  const designIssue: EmbroideryDesignIssue | null = dtf
+    ? null
+    : visibleGraphicElements.some(g => g.src.endsWith(COMPLEX_GRAPHIC_SRC))
     ? "too-complex"
     : visibleGraphicElements.some(g => g.src.endsWith(THIN_LINE_GRAPHIC_SRC))
       ? "thin-line"
@@ -3811,15 +3848,31 @@ export default function Designer({
       // Only feed a new image to the embroidery renderer when the appearance
       // changed — a pure move keeps the same render (it just repositions, and
       // is therefore not stale).
-      if (embroiderySignature !== lastEmbroiderySigRef.current) {
+      // DTF also re-renders when the zoom passes a step: its design is drawn
+      // flat into the render, so it has to be sharp at the zoom it's seen at.
+      if (
+        embroiderySignature !== lastEmbroiderySigRef.current ||
+        (dtf && dtfZoomStep !== lastDtfZoomStepRef.current)
+      ) {
+        lastDtfZoomStepRef.current = dtfZoomStep
         // Re-render ONLY the design region at a high, size-independent target
         // resolution. The first pass scales to the whole print area, so a small
         // design lands on few pixels and the stitch effect looks rough; here the
         // design's long edge is normalised to ~TARGET_HI px so the embroidery
-        // renderer always gets a crisp, well-sized source.
-        const TARGET_HI = 620
+        // renderer always gets a crisp, well-sized source. DTF goes further:
+        // the design's on-screen size at the current zoom step, in device
+        // pixels (up to DTF_MAX_RENDER_PX), as the design is shown flat.
         const designLongPx = Math.max(fw * baseW, fh * baseH)
-        const scaleHi = Math.min(40, Math.max(1, TARGET_HI / Math.max(designLongPx, 1)))
+        const TARGET_HI = dtf
+          ? Math.min(
+              DTF_MAX_RENDER_PX,
+              Math.max(620, designLongPx * dtfZoomStep * (window.devicePixelRatio || 1))
+            )
+          : 620
+        const scaleHi = Math.min(
+          dtf ? 40 * MAX_ZOOM : 40,
+          Math.max(1, TARGET_HI / Math.max(designLongPx, 1))
+        )
         const WF = baseW * scaleHi
         const HF = baseH * scaleHi
         const cropW = Math.max(1, Math.round(fw * WF))
@@ -3892,6 +3945,7 @@ export default function Designer({
           setEmbroideryRenderStale(false)
         } else {
           lastEmbroiderySrcRef.current = nextSrc
+          setEmbroiderySrcScale(hctx ? scaleHi : scale)
           setEmbroiderySrc(nextSrc)
         }
       } else {
@@ -3917,6 +3971,7 @@ export default function Designer({
     isManipulating,
     editingTextId,
     elementSelected,
+    dtfZoomStep,
   ])
 
   // When switching views (print areas), clear any stale selection / editing
@@ -4310,6 +4365,7 @@ export default function Designer({
       // red flash is kept for when the sizes are already in front of them.
       if (basketHypotheses && !sizePopoverOpen) {
         setSizePopoverOpen(true)
+        setCtaHoldsLabel(true)
         return
       }
       setFlashSize(true)
@@ -5972,11 +6028,12 @@ export default function Designer({
                         }
                       }}
                       className="absolute cursor-move touch-none select-none"
+                      // DTF: widened by the patch's reach past the design.
                       style={{
-                        left: `${designBbox.x * 100}%`,
-                        top: `${designBbox.y * 100}%`,
-                        width: `${designBbox.w * 100}%`,
-                        height: `${designBbox.h * 100}%`,
+                        left: `${(designBbox.x - (dtf ? dtfPad.x * designBbox.w : 0)) * 100}%`,
+                        top: `${(designBbox.y - (dtf ? dtfPad.y * designBbox.h : 0)) * 100}%`,
+                        width: `${designBbox.w * (1 + (dtf ? 2 * dtfPad.x : 0)) * 100}%`,
+                        height: `${designBbox.h * (1 + (dtf ? 2 * dtfPad.y : 0)) * 100}%`,
                       }}
                     />
                   )}
@@ -6038,7 +6095,22 @@ export default function Designer({
 
             {/* Off-screen embroidery renderer — turns the flattened design into
                 the stitched look whenever embroidery is the chosen technique. */}
-            {effectivePrintTechnique === "embroidery" && embroiderySrc && (
+            {/* DTF: the patch renderer in its place, edged in the product
+                colour. */}
+            {effectivePrintTechnique === "embroidery" && embroiderySrc && dtf && (
+              <DtfPatchPreview
+                src={embroiderySrc}
+                color={appearances[activeColorIndex]?.color ?? "#ffffff"}
+                screenScale={embroiderySrcScale}
+                maxSize={DTF_MAX_RENDER_PX}
+                onRendered={(url, pad) => {
+                  setDtfPad(pad)
+                  setEmbroideryRenderedUrl(url)
+                  setEmbroideryRenderStale(false)
+                }}
+              />
+            )}
+            {effectivePrintTechnique === "embroidery" && embroiderySrc && !dtf && (
               <EmbroideryPreview
                 src={embroiderySrc}
                 maxSize={620}
@@ -6056,22 +6128,9 @@ export default function Designer({
               />
             )}
 
-            {/* Softens the product under the top and bottom rows of controls. */}
-            {/* The top band is half height until the editor bar or a canvas
-                message (preview loader, size or thin-line warning) is up, or
-                the canvas is zoomed in (the product then runs under it). */}
-            <CanvasTopBlur
-              edge="top"
-              compact={
-                zoom === 1 &&
-                !selectedText &&
-                !selectedGraphicId &&
-                !(embroideryLoading && designBbox) &&
-                sizeBadgeStatus === null &&
-                !thinLineShown
-              }
-            />
-            <CanvasTopBlur edge="bottom" />
+            {/* Softens the product around the editor bar and the canvas
+                messages, 70px out from them. */}
+            <CanvasHaloBlur container={canvasSectionRef} />
 
             {/* Contact and Share — two separate pills, top-right of the canvas
                 (each carries its own border/fill; see HelpMenu / ShareButton).
@@ -8221,7 +8280,7 @@ export default function Designer({
                   data-keeps-sizes-open="true"
                   disabled={addingToBasket || flashSize}
                   onClick={handleAddToBasket}
-                  className={`flex h-12 shrink-0 items-center justify-center px-4 text-white transition-colors ${
+                  className={`group/cta flex h-12 shrink-0 items-center justify-center px-4 text-white transition-colors ${
                     flashSize
                       ? "cursor-not-allowed bg-[#999]"
                       : addingToBasket
@@ -8254,17 +8313,25 @@ export default function Designer({
                   )}
                   {/* Outer: the animated grid track. Inner: min-w-0 +
                       overflow-hidden so the label clips while the track is
-                      narrow; its padding lives inside, collapsing with it. */}
+                      narrow; its padding lives inside, collapsing with it.
+                      Hovering the icon-only button opens it the same way,
+                      to the label alone — there's no count yet — and so does
+                      having opened the size popover with it, while that's
+                      open (ctaHoldsLabel). */}
                   {!addingToBasket && (
                     <span
-                      aria-hidden={totalSelected === 0}
+                      aria-hidden={totalSelected === 0 && !ctaHoldsLabel}
                       className={`grid transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
-                        totalSelected > 0 ? "grid-cols-[1fr]" : "grid-cols-[0fr]"
+                        totalSelected > 0 || ctaHoldsLabel
+                          ? "grid-cols-[1fr]"
+                          : "grid-cols-[0fr] group-hover/cta:grid-cols-[1fr]"
                       }`}
                     >
                       <span
                         className={`flex min-w-0 items-center overflow-hidden whitespace-nowrap transition-opacity duration-200 ${
-                          totalSelected > 0 ? "opacity-100" : "opacity-0"
+                          totalSelected > 0 || ctaHoldsLabel
+                            ? "opacity-100"
+                            : "opacity-0 group-hover/cta:opacity-100"
                         }`}
                       >
                         <span className="pl-3 text-[14px] font-semibold">Add to basket</span>
@@ -8272,9 +8339,11 @@ export default function Designer({
                             into a pill from two digits up. Fully rounded
                             either way. #007D38 is the header cart badge's
                             green — the count reads as the same basket signal. */}
-                        <span className="ml-3 flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-[#007D38] px-1.5 text-[14px] font-semibold text-white tabular-nums">
-                          {totalSelected}
-                        </span>
+                        {totalSelected > 0 && (
+                          <span className="ml-3 flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-[#007D38] px-1.5 text-[14px] font-semibold text-white tabular-nums">
+                            {totalSelected}
+                          </span>
+                        )}
                       </span>
                     </span>
                   )}

@@ -18,10 +18,19 @@ export default function DesignerClient({
     csMode = false,
     basketHypotheses = false,
     embroidery = false,
+    dtf = false,
 }: {
     csMode?: boolean
     basketHypotheses?: boolean
     embroidery?: boolean
+    dtf?: boolean
 }) {
-    return <Designer csMode={csMode} basketHypotheses={basketHypotheses} embroidery={embroidery} />
+    return (
+        <Designer
+            csMode={csMode}
+            basketHypotheses={basketHypotheses}
+            embroidery={embroidery}
+            dtf={dtf}
+        />
+    )
 }

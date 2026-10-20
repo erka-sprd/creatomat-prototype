@@ -133,6 +133,8 @@ export function EmbroideryPreviewStatus({ loading }: { loading: boolean }) {
       <div
         role="status"
         aria-hidden={!loading}
+        // The canvas blurs around it while it's up (CanvasHaloBlur).
+        data-canvas-halo="true"
         className={
           PILL +
           "gap-2 border border-neutral-200 bg-white px-4 py-2.5 text-neutral-700 " +
@@ -264,6 +266,10 @@ function SizeBadgePill({
       role="status"
       aria-hidden={hidden}
       data-thin-line-help={withHelp ? "true" : undefined}
+      // On the canvas, the canvas blurs around it while it's up
+      // (CanvasHaloBlur); the popover's copy is outside the canvas, so it
+      // never counts.
+      data-canvas-halo="true"
       className={
         // pl-1.5 matches py-1.5: the icon sits as far from the left edge as
         // from the top (the 16px icon is the first row's tallest item).
@@ -293,7 +299,8 @@ function SizeBadgePill({
             (hidden ? "" : "pointer-events-auto cursor-pointer")
           }
         >
-          See options
+          {/* The too-complex popover holds instructions rather than options. */}
+          {status === "too-complex" ? "See instructions" : "See options"}
           {/* Turns to point up while the popover it opens is showing. */}
           <svg
             aria-hidden="true"
@@ -541,6 +548,8 @@ export function ThinLineHelpPopover({
 // the row (672px in the 720px popover), or the loop shows a gap before it
 // repeats.
 const EXAMPLES_DIR = "/img/embroidery-examples"
+// How hard the examples are blurred until "See examples" is pressed.
+const EXAMPLES_HIDDEN_BLUR_PX = 12
 
 const COMPLEX_EXAMPLES = [
   135998383, // Heart of flowers
@@ -565,12 +574,13 @@ const STITCH_EXAMPLES = COMPLEX_EXAMPLES.flatMap((id, i) => [
   { src: `${EXAMPLES_DIR}/simple-${SIMPLE_EXAMPLES[i]}.png`, stitches: true },
 ])
 
-// The too-complex options, as two lightest-grey rows under one title:
-// - Simplify: the title with "Back to customize" (the primary, black button,
-//   closing the popover so the design can be simplified) at its right; under
-//   the title create-omat's too-complex tips (EmbroideryComplexContent,
-//   "too-complex-tip-*") bar "Smaller size", as one sentence; then "See
-//   examples:" over a slider of them, edge to edge, fading out at both ends.
+// The too-complex instructions, as two lightest-grey rows under one title
+// ("Simplify design for stitching"):
+// - Simplify: create-omat's too-complex tips (EmbroideryComplexContent,
+//   "too-complex-tip-*") bar "Smaller size", as one sentence, with "Back to
+//   customize" (the primary, black button, closing the popover so the design
+//   can be simplified) at its right; then a slider of examples, edge to edge,
+//   fading out at both ends — blurred and still until "See examples".
 // - Standard print: the way out — the same design printed, its price against
 //   the struck-through embroidery price, and an add to basket (secondary).
 // `columns` sets the two side by side instead, for a canvas too short to
@@ -584,13 +594,17 @@ function ComplexHelpContent({
   onBackToCustomize: () => void
   columns?: boolean
 }) {
+  // The examples stay blurred and still until asked for ("See examples").
+  const [examplesShown, setExamplesShown] = useState(false)
   // The slider fades out at both edges of the row.
   const fade =
     "linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent)"
   return (
     <div className="flex flex-col gap-4 text-left text-neutral-900">
       {/* The display face, as the product title in the purchase rail. */}
-      <h2 className="font-display pr-8 text-[20px] leading-tight font-[800]">Options</h2>
+      <h2 className="font-display pr-8 text-[20px] leading-tight font-[800]">
+        Simplify design for stitching
+      </h2>
       {/* In columns each box hugs its content (items-start). */}
       <div className={columns ? "grid grid-cols-2 items-start gap-4" : "flex flex-col gap-4"}>
         <div className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-xl bg-neutral-100 p-4">
@@ -607,17 +621,11 @@ function ComplexHelpContent({
             }
           >
             <div className={columns ? "contents" : "flex flex-col gap-1"}>
-              <h3
-                className={`text-base leading-tight font-semibold ${
-                  columns ? "col-start-1 row-start-1 self-center" : ""
-                }`}
-              >
-                Simplify design for stitching
-              </h3>
               <p
-                className={`text-sm text-neutral-600 ${columns ? "col-start-1 row-start-2" : ""}`}
+                className={`text-sm text-neutral-600 ${columns ? "col-start-1 row-start-1" : ""}`}
               >
-                Fewer colors, simpler shapes, thicker lines.
+                For best embroidery quality, designs must have fewer colors, simple shapes, and
+                thicker lines.
               </p>
             </div>
             {/* The primary way on: back to the canvas to simplify the design. */}
@@ -631,19 +639,25 @@ function ComplexHelpContent({
               Back to customize
             </button>
           </div>
-          <p className="text-sm font-regular text-neutral-500">Examples:</p>
           {/* Slides on its own, smoothly and endlessly: the cards are laid out
             twice and the track (globals.css .marquee-track) moves by one set,
             so the loop has no seam. Each card carries its own right margin
             rather than a gap, keeping both sets the same width. Runs edge to
-            edge of the row (-mx-4). Pauses on hover. */}
+            edge of the row (-mx-4). Pauses on hover.
+            Held back at first: heavily blurred and still, under a "See
+            examples" button that brings them into focus and sets them going. */}
           <div
             className="marquee-pause relative -mx-4 overflow-hidden"
             style={{ maskImage: fade, WebkitMaskImage: fade }}
           >
             <div
-              className="marquee-track flex w-max"
-              style={{ animationDuration: `${STITCH_EXAMPLES.length * 4}s` }}
+              className="marquee-track flex w-max transition-[filter] duration-300 ease-out"
+              style={{
+                animationDuration: `${STITCH_EXAMPLES.length * 4}s`,
+                animationPlayState: examplesShown ? undefined : "paused",
+                filter: examplesShown ? "none" : `blur(${EXAMPLES_HIDDEN_BLUR_PX}px)`,
+              }}
+              aria-hidden={!examplesShown}
             >
               {[...STITCH_EXAMPLES, ...STITCH_EXAMPLES].map((ex, i) => (
                 <div
@@ -669,6 +683,17 @@ function ComplexHelpContent({
                 </div>
               ))}
             </div>
+            {!examplesShown && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={() => setExamplesShown(true)}
+                  className="h-9 cursor-pointer rounded-full border border-neutral-900 bg-white px-4 text-sm font-semibold text-neutral-900 transition-colors hover:bg-neutral-50"
+                >
+                  See examples
+                </button>
+              </div>
+            )}
           </div>
         </div>
         {/* One line: title | prices | button — at least 150px between the title
