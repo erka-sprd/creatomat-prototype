@@ -326,6 +326,11 @@ export default function CanvasBottomRow() {
             <TechniqueSwitcher value="standard" onChange={noop} embroiderySupported pinnedOpen />
           </Canvas>
         </Demo>
+        <Note>
+          Show the button from the start, also with nothing on the product. Today it only appears
+          once something is added: the available techniques are fetched only for views that
+          already carry a design. Fetch them for the product&rsquo;s views instead.
+        </Note>
         <p className="ho-caption">Product without embroidery</p>
         <Demo padding="p-3.5" className="overflow-x-auto">
           <Canvas padding="px-6 pt-[170px] pb-[46px]">

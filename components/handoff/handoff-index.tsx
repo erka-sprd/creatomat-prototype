@@ -11,6 +11,8 @@ type Entry = {
   summary: string
   /** What the document actually specifies, for scanning without opening it. */
   covers: string[]
+  /** When the document was first written (YYYY-MM-DD) — what the list is ordered by. */
+  created: string
   updated: string
   status: "live" | "planned"
 }
@@ -31,6 +33,7 @@ const ENTRIES: Entry[] = [
       "Size guide",
       "Discount calculator",
     ],
+    created: "2026-08-28",
     updated: "August 28, 2026",
     status: "live",
   },
@@ -40,6 +43,7 @@ const ENTRIES: Entry[] = [
     summary:
       "Bending a text along a baseline — where it is reached from, the panel it opens, and how its presets sit on img.ly's own text-on-path API.",
     covers: ["Editor bar", "Curve panel", "Presets", "img.ly mapping"],
+    created: "2026-09-03",
     updated: "September 3, 2026",
     status: "live",
   },
@@ -49,6 +53,7 @@ const ENTRIES: Entry[] = [
     summary:
       "Desktop's zoom, product views and print technique merged into one row under the canvas, in one style.",
     covers: ["One row", "Zoom", "Product views", "Print technique"],
+    created: "2026-10-23",
     updated: "October 23, 2026",
     status: "live",
   },
@@ -69,7 +74,8 @@ export default function HandoffIndex() {
       </p>
 
       <ul className="mt-11 mb-0 flex list-none flex-col gap-3 p-0">
-        {ENTRIES.map(entry => {
+        {/* Newest first, by when each was written — an update doesn't move it. */}
+        {[...ENTRIES].sort((a, b) => b.created.localeCompare(a.created)).map(entry => {
           const planned = entry.status === "planned"
           const card = (
             <>

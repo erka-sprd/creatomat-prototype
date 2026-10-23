@@ -87,6 +87,7 @@ export function MergedBottomRow({
   printTechnique,
   onPrintTechnique,
   embroiderySupported,
+  showTechnique = true,
 }: {
   zoom: number
   maxZoom: number
@@ -99,6 +100,8 @@ export function MergedBottomRow({
   printTechnique: "standard" | "embroidery"
   onPrintTechnique: (technique: "standard" | "embroidery") => void
   embroiderySupported: boolean
+  /** False where the technique isn't the user's to switch here — the row keeps its grid, so the views stay centred. */
+  showTechnique?: boolean
 }) {
   return (
     <div className="max-dlg:hidden pointer-events-none absolute inset-x-6 bottom-6 z-[5] grid grid-cols-[1fr_auto_1fr] items-end gap-3">
@@ -118,11 +121,13 @@ export function MergedBottomRow({
         )}
       </div>
       <div className="pointer-events-auto justify-self-start">
-        <TechniqueSwitcher
-          value={printTechnique}
-          onChange={onPrintTechnique}
-          embroiderySupported={embroiderySupported}
-        />
+        {showTechnique && (
+          <TechniqueSwitcher
+            value={printTechnique}
+            onChange={onPrintTechnique}
+            embroiderySupported={embroiderySupported}
+          />
+        )}
       </div>
     </div>
   )

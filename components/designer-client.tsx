@@ -20,7 +20,7 @@ export default function DesignerClient({
     embroidery = false,
     dtf = false,
     embroideryResizeGuide = false,
-    mergedDesigner = false,
+    mergedDesigner = true,
 }: {
     csMode?: boolean
     basketHypotheses?: boolean

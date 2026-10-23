@@ -69,7 +69,7 @@ import MobileActionHeader from "@/components/mobile/mobile-action-header"
 import MobileColorDrawer from "@/components/mobile/mobile-color-drawer"
 import SoldOutStrike from "@/components/sold-out-strike"
 import MobileDock from "@/components/mobile/mobile-dock"
-import EmbroideryLabel, {
+import {
   EmbroideryMaxSizeBadge,
   EmbroideryPreviewStatus,
   EmbroiderySizeBadge,
@@ -411,12 +411,12 @@ export default function Designer({
   embroidery = false,
   dtf = false,
   embroideryResizeGuide = false,
-  mergedDesigner = false,
+  mergedDesigner = true,
 }: {
   csMode?: boolean
   /** /add-to-basket-new-1: desktop size-dropdown hypotheses (H1–H4). */
   basketHypotheses?: boolean
-  /** ?embroidery=true: the embroidery version, marked by the vertical canvas label. */
+  /** ?embroidery=true: the embroidery version — the designer opens with embroidery as its technique. */
   embroidery?: boolean
   /**
    * ?dtf=true: the DTF version. Runs the embroidery preview flow — flatten,
@@ -434,10 +434,11 @@ export default function Designer({
    */
   embroideryResizeGuide?: boolean
   /**
-   * /merged-designer: desktop's bottom controls merged into one row under the
-   * canvas — horizontal zoom, a fixed-width product-views strip centred on the
-   * canvas, and the print technique switcher — in one shared style
-   * (MergedBottomRow).
+   * Desktop's bottom controls merged into one row under the canvas — zoom, a
+   * product-views strip centred on the canvas, and the print technique
+   * dropdown — in one shared style (MergedBottomRow). On by default on every
+   * designer page; false brings back the earlier upright zoom and centred
+   * view thumbnails.
    */
   mergedDesigner?: boolean
 }) {
@@ -6603,8 +6604,6 @@ export default function Designer({
                 onSelect={goToViewIndex}
               />
             )}
-
-            <EmbroideryLabel show={embroidery} />
             {/* While the stitched render is being generated — create-omat's
                 "Creating preview" pill at the top of the canvas. */}
             <EmbroideryPreviewStatus loading={embroideryLoading && !!designBbox} />
@@ -6668,8 +6667,10 @@ export default function Designer({
               />
             )}
 
-            {/* /merged-designer: zoom, product views and print technique in
-                one row under the canvas, in place of the controls below. */}
+            {/* Zoom, product views and print technique in one row under the
+                canvas, in place of the controls below. No technique dropdown
+                in the DTF version (its technique state stands for the patch
+                look) or in CS mode (set in the CS modal, as before). */}
             {mergedDesigner && (
               <MergedBottomRow
                 zoom={zoom}
@@ -6715,6 +6716,7 @@ export default function Designer({
                 printTechnique={printTechnique}
                 onPrintTechnique={setPrintTechnique}
                 embroiderySupported={embroiderySupported}
+                showTechnique={!dtf && !csMode}
               />
             )}
 
