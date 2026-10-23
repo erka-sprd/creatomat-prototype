@@ -38,10 +38,15 @@ export const TILE_THUMB_PX = TILE_PX - 2 * TILE_PADDING_PX
 const VISIBLE_TILES = 5.5
 // The hover close-up's preview, against the tile's.
 const PREVIEW_SCALE = 5
-// A tile's hover: the selected tile's grey.
-const TILE_HOVER = "hover:bg-neutral-150"
+// The hovers in the row — zoom buttons, the technique button and its menu
+// rows: neutral-100. The view tiles hover in their selected grey instead
+// (VIEW_TILE_HOVER).
+const TILE_HOVER = "hover:bg-neutral-100"
+const VIEW_TILE_HOVER = "hover:bg-neutral-150"
 // Between tiles.
 const TILE_GAP_PX = 2
+// How strongly the strip's cut-off end is blurred (ScrollBlur).
+const EDGE_BLUR_PX = 10
 // The selected tile: create-omat's neutral-150 (#E9E9E9).
 const TILE_ACTIVE = "bg-neutral-150"
 
@@ -134,7 +139,7 @@ function ZoomControl({
         type="button"
         aria-label={dir === 1 ? "Zoom in" : "Zoom out"}
         onClick={() => onStep(dir)}
-        className="flex size-9 cursor-pointer items-center justify-center rounded-full text-black transition-colors duration-300 hover:bg-neutral-100"
+        className={`flex size-9 cursor-pointer items-center justify-center rounded-full text-black transition-colors duration-300 ${TILE_HOVER}`}
       >
         <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
           <path
@@ -221,7 +226,7 @@ function ViewStrip({
         )}
       </div>
       <div className={`${BOX} relative overflow-hidden`}>
-        {canScrollLeft && <ScrollBlur dir="left" />}
+        {canScrollLeft && <ScrollBlur dir="left" blurPx={EDGE_BLUR_PX} />}
         <div
           ref={ref}
           onScroll={() => {
@@ -258,7 +263,7 @@ function ViewStrip({
                 // the pill's curve STRIP_PADDING_PX in. overflow-hidden keeps
                 // the thumbnail's square corners inside it.
                 className={`flex shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full transition-colors ${
-                  selected ? TILE_ACTIVE : `bg-white ${TILE_HOVER}`
+                  selected ? TILE_ACTIVE : `bg-white ${VIEW_TILE_HOVER}`
                 }`}
                 style={{ width: TILE_PX, height: TILE_PX }}
               >
@@ -274,7 +279,7 @@ function ViewStrip({
             )
           })}
         </div>
-        {canScrollRight && <ScrollBlur dir="right" />}
+        {canScrollRight && <ScrollBlur dir="right" blurPx={EDGE_BLUR_PX} />}
       </div>
       {/* Inside the pill's ends rather than half outside as on the colour
           row: the zoom and the switcher are only 12px away. */}
@@ -307,11 +312,18 @@ function TechniqueSwitcher({
   const current = embroiderySupported ? value : "standard"
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
+      {/* The pill holds the button STRIP_PADDING_PX in, as the views strip
+          holds its tiles — the button then greys like a tile on hover, and
+          while its menu is open. The menu lines up with the pill. */}
+      <Popover.Anchor asChild>
+        <div className={BOX} style={{ padding: STRIP_PADDING_PX }}>
       <Popover.Trigger asChild>
         <button
           type="button"
           aria-label={`Print technique: ${TECHNIQUE_LABEL[current]}`}
-          className={`${BOX} flex cursor-pointer items-center gap-2 px-4 text-sm font-semibold text-black transition-colors hover:bg-neutral-50`}
+          className={`flex h-full cursor-pointer items-center gap-2 rounded-full px-4 text-sm font-semibold text-black transition-colors ${TILE_HOVER} ${
+            open ? TILE_ACTIVE : ""
+          }`}
         >
           <span>{TECHNIQUE_LABEL[current]}</span>
           <svg
@@ -332,6 +344,8 @@ function TechniqueSwitcher({
           </svg>
         </button>
       </Popover.Trigger>
+        </div>
+      </Popover.Anchor>
       <Popover.Portal>
         <Popover.Content
           side="top"
@@ -353,7 +367,7 @@ function TechniqueSwitcher({
                 }}
                 className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm text-black transition-colors ${
                   selected ? "font-semibold" : ""
-                } ${unavailable ? "cursor-not-allowed text-neutral-400" : "cursor-pointer hover:bg-neutral-100"}`}
+                } ${unavailable ? "cursor-not-allowed text-neutral-400" : `cursor-pointer ${TILE_HOVER}`}`}
               >
                 <span>
                   {TECHNIQUE_LABEL[tech]}
