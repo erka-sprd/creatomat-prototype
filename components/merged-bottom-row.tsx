@@ -42,16 +42,20 @@ const VISIBLE_TILES = 5.5
 // The hover close-up's preview, against the tile's.
 const PREVIEW_SCALE = 5
 // The hovers in the row — zoom buttons, the technique button and its menu
-// rows: neutral-100. The view tiles hover in their selected grey instead
-// (VIEW_TILE_HOVER).
+// rows: neutral-100. The view tiles have their own (VIEW_TILE_*).
 const TILE_HOVER = "hover:bg-neutral-100"
-const VIEW_TILE_HOVER = "hover:bg-neutral-150"
+// A view tile: on the kit's lightest neutral (neutral-50), outlined 1px —
+// black when selected, the kit's neutral-200 on hover. Unselected tiles keep
+// a clear border, so nothing shifts when one shows.
+const VIEW_TILE_ACTIVE = "border border-black bg-[var(--sprd-neutral-50)]"
+const VIEW_TILE_IDLE =
+  "border border-transparent bg-white hover:border-[var(--sprd-neutral-200)] hover:bg-[var(--sprd-neutral-50)]"
 // Between tiles.
 const TILE_GAP_PX = 2
 // How strongly the strip's cut-off end is blurred (ScrollBlur).
 const EDGE_BLUR_PX = 10
-// The selected tile: create-omat's neutral-150 (#E9E9E9).
-const TILE_ACTIVE = "bg-neutral-150"
+// The technique button while its menu is open: its hover grey, held.
+const TILE_ACTIVE = "bg-neutral-100"
 
 // The zoom's tooltips: the existing zoom tooltip, moved above its button.
 const TOOLTIP =
@@ -284,7 +288,7 @@ function ViewStrip({
                 // the pill's curve STRIP_PADDING_PX in. overflow-hidden keeps
                 // the thumbnail's square corners inside it.
                 className={`flex shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full transition-colors ${
-                  selected ? TILE_ACTIVE : `bg-white ${VIEW_TILE_HOVER}`
+                  selected ? VIEW_TILE_ACTIVE : VIEW_TILE_IDLE
                 }`}
                 style={{ width: TILE_PX, height: TILE_PX }}
               >
