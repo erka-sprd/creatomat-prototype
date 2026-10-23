@@ -43,6 +43,15 @@ const ENTRIES: Entry[] = [
     updated: "September 3, 2026",
     status: "live",
   },
+  {
+    slug: "canvas-bottom-row",
+    title: "Canvas controls, in one row",
+    summary:
+      "Desktop's zoom, product views and print technique merged into one row under the canvas, in one style.",
+    covers: ["One row", "Zoom", "Product views", "Print technique"],
+    updated: "October 23, 2026",
+    status: "live",
+  },
 ]
 
 export default function HandoffIndex() {

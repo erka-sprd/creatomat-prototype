@@ -1,7 +1,7 @@
 "use client"
 
 import * as Popover from "@radix-ui/react-popover"
-import { useState, type ReactNode } from "react"
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
 
 // import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
 import {
@@ -50,6 +50,8 @@ const TILE_HOVER = "hover:bg-neutral-100"
 const VIEW_TILE_ACTIVE = "border border-black bg-[var(--sprd-neutral-50)]"
 const VIEW_TILE_IDLE =
   "border border-transparent bg-white hover:border-[var(--sprd-neutral-200)] hover:bg-[var(--sprd-neutral-50)]"
+// The hover state held (ViewStrip's pinnedHoverId).
+const VIEW_TILE_HOVERED = "border border-[var(--sprd-neutral-200)] bg-[var(--sprd-neutral-50)]"
 // Between tiles.
 const TILE_GAP_PX = 2
 // How strongly the strip's cut-off end is blurred (ScrollBlur).
@@ -128,7 +130,7 @@ export function MergedBottomRow({
 
 // The zoom, laid flat: minus, slider, plus — as long as the upright one
 // (180px), its slider the same 88px.
-function ZoomControl({
+export function ZoomControl({
   zoom,
   maxZoom,
   onStep,
@@ -208,20 +210,36 @@ function ZoomControl({
 // above it: the view's name on top, the view PREVIEW_SCALE times its tile's
 // size. The strip clips its tiles, so the preview sits outside it, and so do
 // the chevrons, over the pill's ends.
-function ViewStrip({
+export function ViewStrip({
   views,
   activeViewId,
   onSelect,
+  pinnedHoverId,
 }: {
   views: MergedRowView[]
   activeViewId: string | null
   onSelect: (id: string) => void
+  /**
+   * Holds one tile in its hover state, preview open — for the handoff, which
+   * shows the states side by side. The pointer then hovers nothing else.
+   */
+  pinnedHoverId?: string
 }) {
   const { ref, onScroll, canScrollLeft, canScrollRight, scrollBy } = useHorizontalOverflow(
     [views.length],
     COLOR_ROW_SCROLL_STEP_PX
   )
   const [hovered, setHovered] = useState<{ id: string; x: number } | null>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (!pinnedHoverId) return
+    const wrapper = wrapperRef.current
+    const tile = wrapper?.querySelector<HTMLElement>(`[data-view-id="${pinnedHoverId}"]`)
+    if (!wrapper || !tile) return
+    const t = tile.getBoundingClientRect()
+    const w = wrapper.getBoundingClientRect()
+    setHovered({ id: pinnedHoverId, x: t.left - w.left + t.width / 2 })
+  }, [pinnedHoverId, views.length])
   // The view the close-up last showed — kept while it fades out, so it doesn't
   // empty mid-animation.
   const [shown, setShown] = useState<{ id: string; x: number } | null>(null)
@@ -229,10 +247,10 @@ function ViewStrip({
   const shownView = views.find(v => v.id === shown?.id)
   const previewPx = TILE_THUMB_PX * PREVIEW_SCALE
   return (
-    <div className="relative">
+    <div ref={wrapperRef} className="relative">
       <div
         aria-hidden="true"
-        className={`pointer-events-none absolute bottom-full z-50 mb-2 -translate-x-1/2 origin-bottom transition-[opacity,scale] duration-150 ease-out ${
+        className={`pointer-events-none absolute bottom-full z-[100] mb-2 -translate-x-1/2 origin-bottom transition-[opacity,scale] duration-150 ease-out ${
           hovered ? "scale-100 opacity-100" : "scale-95 opacity-0"
         }`}
         style={{ left: shown?.x ?? 0 }}
@@ -257,7 +275,7 @@ function ViewStrip({
           ref={ref}
           onScroll={() => {
             onScroll()
-            setHovered(null)
+            if (!pinnedHoverId) setHovered(null)
           }}
           className="no-scrollbar flex h-full overflow-x-auto scroll-smooth"
           // Five and a half tiles, the gaps between them, and the padding.
@@ -272,24 +290,31 @@ function ViewStrip({
         >
           {views.map(view => {
             const selected = activeViewId === view.id
+            const pinned = pinnedHoverId === view.id
             return (
               <button
                 key={view.id}
                 type="button"
+                data-view-id={view.id}
                 aria-label={view.name}
                 aria-current={selected}
                 onClick={() => onSelect(view.id)}
-                onMouseEnter={e => {
-                  const tile = e.currentTarget.getBoundingClientRect()
-                  const strip = e.currentTarget.parentElement!.parentElement!.getBoundingClientRect()
-                  setHovered({ id: view.id, x: tile.left - strip.left + tile.width / 2 })
-                }}
-                onMouseLeave={() => setHovered(null)}
+                onMouseEnter={
+                  pinnedHoverId
+                    ? undefined
+                    : e => {
+                        const tile = e.currentTarget.getBoundingClientRect()
+                        const strip =
+                          e.currentTarget.parentElement!.parentElement!.getBoundingClientRect()
+                        setHovered({ id: view.id, x: tile.left - strip.left + tile.width / 2 })
+                      }
+                }
+                onMouseLeave={pinnedHoverId ? undefined : () => setHovered(null)}
                 // A circle, like the close-up — at the strip's ends it follows
                 // the pill's curve STRIP_PADDING_PX in. overflow-hidden keeps
                 // the thumbnail's square corners inside it.
                 className={`flex shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full transition-colors ${
-                  selected ? VIEW_TILE_ACTIVE : VIEW_TILE_IDLE
+                  selected ? VIEW_TILE_ACTIVE : pinned ? VIEW_TILE_HOVERED : VIEW_TILE_IDLE
                 }`}
                 style={{ width: TILE_PX, height: TILE_PX }}
               >
@@ -353,17 +378,69 @@ function TechniqueIcon({ tech }: { tech: "standard" | "embroidery" }) {
 // upward onto both — the chosen one ticked, as the designer's earlier
 // technique dropdown did (the menu at MENU_RADIUS, its rows at the tiles'
 // 6px). Embroidery is offered only where the product takes it.
-function TechniqueSwitcher({
+export function TechniqueSwitcher({
   value,
   onChange,
   embroiderySupported,
+  pinnedOpen = false,
 }: {
   value: "standard" | "embroidery"
   onChange: (technique: "standard" | "embroidery") => void
   embroiderySupported: boolean
+  /** Holds the menu open — for the handoff, which shows it without a click. */
+  pinnedOpen?: boolean
 }) {
-  const [open, setOpen] = useState(false)
+  const [openState, setOpenState] = useState(false)
+  const open = pinnedOpen || openState
+  const setOpen = (next: boolean) => {
+    if (!pinnedOpen) setOpenState(next)
+  }
   const current = embroiderySupported ? value : "standard"
+
+  const button = (
+    <button
+      type="button"
+      aria-label={`Print technique: ${TECHNIQUE_LABEL[current]}`}
+      className={`flex h-full cursor-pointer items-center gap-2 rounded-full px-4 text-sm font-semibold text-black transition-colors ${TILE_HOVER} ${
+        open ? TILE_ACTIVE : ""
+      }`}
+    >
+      <TechniqueIcon tech={current} />
+      <span className="whitespace-nowrap">{TECHNIQUE_LABEL[current]}</span>
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 12 12"
+        fill="none"
+        aria-hidden="true"
+        className={`text-neutral-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+      >
+        <path
+          d="M2.5 4.5L6 8L9.5 4.5"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  )
+  const menuClass = `w-52 bg-white p-1 shadow-lg outline-none ${MENU_RADIUS}`
+
+  // Held open (the handoff), the menu is laid out in the page, 8px above the
+  // pill, rather than floated in a portal — a floated menu is re-placed on
+  // every scroll and visibly trails the pill.
+  if (pinnedOpen) {
+    return (
+      <div className="relative">
+        <div className={`absolute bottom-full left-0 z-[100] mb-2 ${menuClass}`}>{menuRows()}</div>
+        <div className={BOX} style={{ padding: STRIP_PADDING_PX }}>
+          {button}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       {/* The pill holds the button STRIP_PADDING_PX in, as the views strip
@@ -371,34 +448,7 @@ function TechniqueSwitcher({
           while its menu is open. The menu lines up with the pill. */}
       <Popover.Anchor asChild>
         <div className={BOX} style={{ padding: STRIP_PADDING_PX }}>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          aria-label={`Print technique: ${TECHNIQUE_LABEL[current]}`}
-          className={`flex h-full cursor-pointer items-center gap-2 rounded-full px-4 text-sm font-semibold text-black transition-colors ${TILE_HOVER} ${
-            open ? TILE_ACTIVE : ""
-          }`}
-        >
-          <TechniqueIcon tech={current} />
-          <span>{TECHNIQUE_LABEL[current]}</span>
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 12 12"
-            fill="none"
-            aria-hidden="true"
-            className={`text-neutral-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-          >
-            <path
-              d="M2.5 4.5L6 8L9.5 4.5"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      </Popover.Trigger>
+          <Popover.Trigger asChild>{button}</Popover.Trigger>
         </div>
       </Popover.Anchor>
       <Popover.Portal>
@@ -406,51 +456,55 @@ function TechniqueSwitcher({
           side="top"
           align="start"
           sideOffset={8}
-          className={`z-[100] w-52 bg-white p-1 shadow-lg outline-none ${MENU_RADIUS}`}
+          className={`z-[100] ${menuClass}`}
         >
-          {(["standard", "embroidery"] as const).map(tech => {
-            const selected = current === tech
-            const unavailable = tech === "embroidery" && !embroiderySupported
-            return (
-              <button
-                key={tech}
-                type="button"
-                disabled={unavailable}
-                onClick={() => {
-                  onChange(tech)
-                  setOpen(false)
-                }}
-                className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm text-black transition-colors ${
-                  selected ? "font-semibold" : ""
-                } ${unavailable ? "cursor-not-allowed text-neutral-400" : `cursor-pointer ${TILE_HOVER}`}`}
-              >
-                <span className="flex items-center gap-2">
-                  <TechniqueIcon tech={tech} />
-                  <span>
-                    {TECHNIQUE_LABEL[tech]}
-                    {unavailable && (
-                      <span className="block text-xs font-normal">
-                        Not available for this product
-                      </span>
-                    )}
-                  </span>
-                </span>
-                {selected && (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path
-                      d="M5 12.5L10 17.5L19 7"
-                      stroke="currentColor"
-                      strokeWidth="2.2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                )}
-              </button>
-            )
-          })}
+          {menuRows()}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
   )
+
+  function menuRows() {
+    return (["standard", "embroidery"] as const).map(tech => {
+      const selected = current === tech
+      const unavailable = tech === "embroidery" && !embroiderySupported
+      return (
+        <button
+          key={tech}
+          type="button"
+          disabled={unavailable}
+          onClick={() => {
+            onChange(tech)
+            setOpen(false)
+          }}
+          className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm text-black transition-colors ${
+            selected ? "font-semibold" : ""
+          } ${unavailable ? "cursor-not-allowed text-neutral-400" : `cursor-pointer ${TILE_HOVER}`}`}
+        >
+          {/* Top-aligned: with the "not available" line under the label, the
+              20px icon stays level with the label's 20px line. */}
+          <span className="flex items-start gap-2">
+            <TechniqueIcon tech={tech} />
+            <span>
+              {TECHNIQUE_LABEL[tech]}
+              {unavailable && (
+                <span className="block text-xs font-normal">Not available for this product</span>
+              )}
+            </span>
+          </span>
+          {selected && (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M5 12.5L10 17.5L19 7"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </button>
+      )
+    })
+  }
 }
