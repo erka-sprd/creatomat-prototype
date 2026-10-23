@@ -19,11 +19,15 @@ export default function DesignerClient({
     basketHypotheses = false,
     embroidery = false,
     dtf = false,
+    embroideryResizeGuide = false,
+    mergedDesigner = false,
 }: {
     csMode?: boolean
     basketHypotheses?: boolean
     embroidery?: boolean
     dtf?: boolean
+    embroideryResizeGuide?: boolean
+    mergedDesigner?: boolean
 }) {
     return (
         <Designer
@@ -31,6 +35,8 @@ export default function DesignerClient({
             basketHypotheses={basketHypotheses}
             embroidery={embroidery}
             dtf={dtf}
+            embroideryResizeGuide={embroideryResizeGuide}
+            mergedDesigner={mergedDesigner}
         />
     )
 }

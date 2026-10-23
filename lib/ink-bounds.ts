@@ -12,7 +12,9 @@ export type InkRect = { l: number; t: number; r: number; b: number }
 // ---------------------------------------------------------------------------
 
 const ALPHA_THRESHOLD = 10 // same cut-off as the flatten pass
-const SAMPLE_PX = 256 // longest side the image is sampled at
+// Longest side the image is sampled at. Fine enough that a design placed or
+// resized exactly to the hoop frame by its ink also measures within it.
+const SAMPLE_PX = 1024
 
 const graphicInkCache = new Map<string, Promise<InkRect | null>>()
 

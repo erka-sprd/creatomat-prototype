@@ -133,8 +133,6 @@ export function EmbroideryPreviewStatus({ loading }: { loading: boolean }) {
       <div
         role="status"
         aria-hidden={!loading}
-        // The canvas blurs around it while it's up (CanvasHaloBlur).
-        data-canvas-halo="true"
         className={
           PILL +
           "gap-2 border border-neutral-200 bg-white px-4 py-2.5 text-neutral-700 " +
@@ -212,6 +210,7 @@ export function EmbroiderySizeBadge({
   offsetPx = 0,
   concealed = false,
   shakeSignal = 0,
+  combination = false,
   onHelp,
 }: {
   status: EmbroiderySizeStatus | null
@@ -219,6 +218,8 @@ export function EmbroiderySizeBadge({
   offsetPx?: number
   concealed?: boolean
   shakeSignal?: number
+  /** Several objects: too large reads as the combination being too large. */
+  combination?: boolean
   onHelp?: () => void
 }) {
   // Keep the last message on screen while the badge retracts, so it doesn't
@@ -238,9 +239,69 @@ export function EmbroiderySizeBadge({
           upward into the editor bar. Held to 30px, it keeps the one-line
           badge's top and grows downward. */}
       <div className="flex h-[30px] flex-col items-center">
-        <SizeBadgePill status={status ?? shown} hidden={!show} onHelp={onHelp} />
+        <SizeBadgePill
+          status={status ?? shown}
+          hidden={!show}
+          onHelp={onHelp}
+          label={
+            combination && (status ?? shown) === "too-large"
+              ? "Combination of designs too large for embroidery"
+              : undefined
+          }
+        />
       </div>
     </CanvasStatusSlot>
+  )
+}
+
+// "Max. size for embroidery" under an object whose resize ran into the hoop
+// frame (or whose move would pull a group past it): the warning pills' shape
+// in the selection handles' blue — it's guidance on the edit in hand, not a
+// warning about the design — popping in, scaling up from the top centre with
+// a slight overshoot, and shrinking back out. Stays mounted so both ways
+// animate; the parent places it (absolute, under the object).
+const MAX_SIZE_BADGE = {
+  icon: "!",
+  frame: "border-[#3355FF] text-[#3355FF]",
+  dot: "bg-[#3355FF]",
+}
+
+export function EmbroideryMaxSizeBadge({
+  show,
+  label = "Max. size for embroidery",
+  icon = MAX_SIZE_BADGE.icon,
+}: {
+  show: boolean
+  /** The limit it's about — "Min. size for embroidery" for a design's own minimum. */
+  label?: string
+  /** "✓" where the size is a good one rather than a stop ("Perfect size"). */
+  icon?: string
+}) {
+  const badge = MAX_SIZE_BADGE
+  return (
+    <div
+      role="status"
+      aria-hidden={!show}
+      // Its own font and style, set outright: under a text object it would
+      // otherwise take on that text's font, italics and alignment.
+      className={
+        "flex origin-top items-center gap-1.5 rounded-full border bg-white py-1.5 pr-3 pl-1.5 text-left font-sans not-italic transition-[opacity,scale] " +
+        `${badge.frame} ` +
+        (show
+          ? "scale-100 opacity-100 duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+          : "scale-75 opacity-0 duration-150 ease-in")
+      }
+    >
+      <span
+        aria-hidden="true"
+        className={`flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] leading-none font-bold text-white ${badge.dot}`}
+      >
+        {icon}
+      </span>
+      <span className="text-sm leading-none font-semibold whitespace-nowrap">
+        {label}
+      </span>
+    </div>
   )
 }
 
@@ -253,11 +314,14 @@ function SizeBadgePill({
   hidden = false,
   helpOpen = false,
   onHelp,
+  label,
 }: {
   status: EmbroiderySizeStatus
   hidden?: boolean
   helpOpen?: boolean
   onHelp?: () => void
+  /** In place of the status's own message. */
+  label?: string
 }) {
   const badge = SIZE_BADGE[status]
   const withHelp = isDesignIssue(status)
@@ -266,10 +330,6 @@ function SizeBadgePill({
       role="status"
       aria-hidden={hidden}
       data-thin-line-help={withHelp ? "true" : undefined}
-      // On the canvas, the canvas blurs around it while it's up
-      // (CanvasHaloBlur); the popover's copy is outside the canvas, so it
-      // never counts.
-      data-canvas-halo="true"
       className={
         // pl-1.5 matches py-1.5: the icon sits as far from the left edge as
         // from the top (the 16px icon is the first row's tallest item).
@@ -286,7 +346,9 @@ function SizeBadgePill({
         >
           {badge.icon}
         </span>
-        <span className="text-sm leading-none font-semibold whitespace-nowrap">{badge.label}</span>
+        <span className="text-sm leading-none font-semibold whitespace-nowrap">
+          {label ?? badge.label}
+        </span>
       </div>
       {withHelp && (
         <button

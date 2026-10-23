@@ -8,14 +8,16 @@ import { useEffect, useRef, type CSSProperties } from "react"
 // outline that follows every contour but the design's solid silhouette:
 // - its holes are filled (the counters of "e", "d", "o" are patch, not
 //   garment showing through);
-// - parts closer than BRIDGE_PX are joined (the letters of a word make one
+// - parts closer than BRIDGE_MM are joined (the letters of a word make one
 //   piece, not one patch each) — a morphological closing: grow, then shrink
 //   back by the same amount;
-// - and it reaches OFFSET_PX past the design all round, its corners rounded
+// - and it reaches OFFSET_MM past the design all round, its corners rounded
 //   as a cutter leaves them.
-// Distances are on screen, at zoom 1. The patch gets a slight emboss — light
-// along its top-left rim, shade along its bottom-right — and the design sits
-// on top, flat.
+// Distances are in millimetres on the garment, as a real patch's would be:
+// the same on every screen, and scaling with the zoom like the design, so the
+// patch keeps its proportions — zooming in looks closer at the same patch.
+// The patch gets a slight emboss — light along its top-left rim, shade along
+// its bottom-right — and the design sits on top, flat.
 //
 // Same contract as product-catalog-client's EmbroideryPreview: give it the
 // flattened design (`src`) and it calls `onRendered` with a PNG of the result.
@@ -23,10 +25,12 @@ import { useEffect, useRef, type CSSProperties } from "react"
 // past its edges — so `onRendered` also reports that margin (`pad`) as a
 // share of the design's width and height, for the overlay to widen by.
 
-const OFFSET_PX = 4
-const BRIDGE_PX = 5
-// Bevel depth, on screen.
-const BEVEL_PX = 1
+const OFFSET_MM = 6
+const BRIDGE_MM = 5
+// The patch's colour: the product colour's channels times this.
+const PATCH_SHADE = 0.93
+// Bevel depth.
+const BEVEL_MM = 0.3
 // Alpha above which a pixel of the design counts as design.
 const ALPHA_THRESHOLD = 10
 
@@ -111,7 +115,7 @@ function fillHoles(shape: Uint8Array, W: number, H: number) {
 export function DtfPatchPreview({
   src,
   color,
-  screenScale,
+  pxPerMm,
   maxSize = 620,
   onRendered,
   style,
@@ -119,8 +123,8 @@ export function DtfPatchPreview({
   src: string
   /** Product colour, as hex. */
   color: string
-  /** Pixels of `src` per on-screen pixel at zoom 1. */
-  screenScale: number
+  /** Pixels of `src` per millimetre on the garment. */
+  pxPerMm: number
   maxSize?: number
   onRendered?: (url: string, pad: DtfPatchPad) => void
   style?: CSSProperties
@@ -137,11 +141,11 @@ export function DtfPatchPreview({
       const fit = Math.min(maxSize / img.width, maxSize / img.height, 1)
       const w = Math.max(1, Math.round(img.width * fit))
       const h = Math.max(1, Math.round(img.height * fit))
-      // Render pixels per on-screen pixel, after the fit.
-      const px = Math.max(0.5, screenScale * fit)
-      const offset = Math.max(1, OFFSET_PX * px)
-      const bridge = BRIDGE_PX * px
-      const bevel = Math.max(1, BEVEL_PX * px)
+      // Render pixels per millimetre, after the fit.
+      const mm = pxPerMm * fit
+      const offset = Math.max(1, OFFSET_MM * mm)
+      const bridge = BRIDGE_MM * mm
+      const bevel = Math.max(1, BEVEL_MM * mm)
       // Room for the closing to grow into before it shrinks back, so the
       // canvas edge never clips it.
       const pad = Math.ceil(offset + bridge + 2)
@@ -175,9 +179,11 @@ export function DtfPatchPreview({
       const toShape = squaredDistances(shape, W, H)
       const patch = dctx.createImageData(W, H)
       const hex = color.replace("#", "")
-      const r = parseInt(hex.slice(0, 2), 16) || 0
-      const g = parseInt(hex.slice(2, 4), 16) || 0
-      const b = parseInt(hex.slice(4, 6), 16) || 0
+      // A shade under the product colour (PATCH_SHADE), so the patch reads as
+      // its own piece of material without standing apart from the garment.
+      const r = Math.round((parseInt(hex.slice(0, 2), 16) || 0) * PATCH_SHADE)
+      const g = Math.round((parseInt(hex.slice(2, 4), 16) || 0) * PATCH_SHADE)
+      const b = Math.round((parseInt(hex.slice(4, 6), 16) || 0) * PATCH_SHADE)
       for (let i = 0; i < W * H; i++) {
         const a = Math.min(1, Math.max(0, offset + 0.5 - Math.sqrt(toShape[i])))
         patch.data[i * 4] = r
@@ -215,8 +221,8 @@ export function DtfPatchPreview({
         ctx.drawImage(c, 0, 0)
         ctx.restore()
       }
-      rim(bevel, bevel, "rgba(255, 255, 255, 0.08)")
-      rim(-bevel, -bevel, "rgba(0, 0, 0, 0.15)")
+      rim(bevel, bevel, "rgba(255, 255, 255, 0.03)")
+      rim(-bevel, -bevel, "rgba(0, 0, 0, 0.05)")
 
       // The design, flat on top.
       ctx.drawImage(img, pad, pad, w, h)
@@ -227,7 +233,7 @@ export function DtfPatchPreview({
     return () => {
       cancelled = true
     }
-  }, [src, color, screenScale, maxSize])
+  }, [src, color, pxPerMm, maxSize])
 
   return <span aria-hidden="true" style={style} />
 }

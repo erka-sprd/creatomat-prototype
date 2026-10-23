@@ -102,6 +102,9 @@
   /* Designer mobile/desktop switch — same 1080px "dlg" breakpoint as
      production create-omat (BREAKPOINTS.dlg). Enables dlg:/max-dlg: variants. */
   --breakpoint-dlg: 1080px;
+  /* create-omat's own step between neutral-100 and -200 (src/app/globals.scss
+     @theme — not part of the component kit). Enables bg-neutral-150 etc. */
+  --color-neutral-150: #e9e9e9;
 
   /* 🌚 Box-shadows — copied verbatim from the Spreadshirt component kit preset
      (@sprd/sprd-component-kit/dist/preset/globals.css), so a shadow class name
@@ -204,6 +207,21 @@
 .hero-float-c {
   animation: hero-float-up 8.5s ease-in-out infinite;
   animation-delay: -4s;
+}
+
+/* A selection frame's colour (designer's SELECTION_TONE). Registered as a
+   colour so it can be transitioned on its own: the frame then eases from one
+   tone to the next, while appearing and disappearing stays instant. */
+@property --selection-tone {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: #3355ff;
+}
+
+/* The frame ring in that colour. Also what keeps the @property above in the
+   build: Tailwind drops a registration no stylesheet rule reads. */
+.selection-frame {
+  box-shadow: 0 0 0 1px var(--selection-tone);
 }
 
 /* Volume-discount quantity field: a short bright-red segment travels around the
