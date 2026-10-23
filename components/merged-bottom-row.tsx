@@ -110,7 +110,8 @@ export function MergedBottomRow({
         />
       </div>
       <div className="pointer-events-auto">
-        {views.length > 1 && (
+        {/* Shown for a single view too, so the row keeps its three parts. */}
+        {views.length > 0 && (
           <ViewStrip views={views} activeViewId={activeViewId} onSelect={onSelectView} />
         )}
       </div>
