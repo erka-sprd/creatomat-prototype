@@ -3,7 +3,7 @@
 import * as Popover from "@radix-ui/react-popover"
 import { useState, type ReactNode } from "react"
 
-import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
+// import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
 import {
   COLOR_ROW_SCROLL_STEP_PX,
   FloatingScrollChevron,
@@ -26,6 +26,9 @@ import {
 const BOX = "h-14 rounded-full bg-white shadow-xs"
 // The switcher's menu: a card, not a pill.
 const MENU_RADIUS = "rounded-[10px]"
+// Slack for "at the zoom's limit": the zoom eases between stops, so it lands a
+// hair off them.
+const ZOOM_EPSILON = 0.001
 // A view tile, TILE_GAP_PX apart, and how many fit before the strip
 // scrolls — five and a half, so the cut-off one says there are more.
 // The strip holds its tiles STRIP_PADDING_PX in from its edges — the editor
@@ -133,13 +136,20 @@ function ZoomControl({
   onChange: (value: number) => void
   onJump: (value: number) => void
 }) {
+  // A button that would do nothing — minus at the fitted view, plus at the
+  // closest zoom — is greyed out and disabled, its tooltip with it.
+  const atLimit = (dir: 1 | -1) =>
+    dir === 1 ? zoom >= maxZoom - ZOOM_EPSILON : zoom <= 1 + ZOOM_EPSILON
   const button = (dir: 1 | -1) => (
     <div className="group/tooltip relative flex">
       <button
         type="button"
         aria-label={dir === 1 ? "Zoom in" : "Zoom out"}
+        disabled={atLimit(dir)}
         onClick={() => onStep(dir)}
-        className={`flex size-9 cursor-pointer items-center justify-center rounded-full text-black transition-colors duration-300 ${TILE_HOVER}`}
+        className={`flex size-9 items-center justify-center rounded-full text-black transition-[color,background-color,opacity] duration-300 ${
+          atLimit(dir) ? "cursor-not-allowed opacity-30" : `cursor-pointer ${TILE_HOVER}`
+        }`}
       >
         <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
           <path
@@ -153,15 +163,26 @@ function ZoomControl({
           />
         </svg>
       </button>
-      <span className={`${TOOLTIP} group-hover/tooltip:opacity-100`}>
-        {dir === 1 ? "Zoom in" : "Zoom out"}
-      </span>
+      {!atLimit(dir) && (
+        <span className={`${TOOLTIP} group-hover/tooltip:opacity-100`}>
+          {dir === 1 ? "Zoom in" : "Zoom out"}
+        </span>
+      )}
     </div>
   )
   return (
-    <div className={`${BOX} flex w-[180px] items-center justify-between px-2`}>
+    // Slider commented out for now: just − and +, the pill hugging them. To
+    // bring it back, restore the WedgeSlider (and its import) and the pill's
+    // w-[180px] justify-between in place of gap-1.
+    <div className={`${BOX} flex items-center gap-1 px-2`}>
       {button(-1)}
-      <WedgeSlider
+      {/* How far into the zoom range it is — 0% fitted, 100% at the closest
+          zoom — in the kit's neutral-500. Fixed width and tabular figures, so
+          the buttons don't shift as it changes. */}
+      <span className="w-11 text-center text-sm font-semibold text-[var(--sprd-neutral-500)] tabular-nums select-none">
+        {Math.round(((zoom - 1) / (maxZoom - 1)) * 100)}%
+      </span>
+      {/* <WedgeSlider
         min={1}
         max={maxZoom}
         value={zoom}
@@ -169,7 +190,7 @@ function ZoomControl({
         width={88}
         jumpOnTrackClick
         onJump={onJump}
-      />
+      /> */}
       {button(1)}
     </div>
   )
@@ -294,6 +315,34 @@ function ViewStrip({
 }
 
 const TECHNIQUE_LABEL = { standard: "Standard print", embroidery: "Embroidery" } as const
+// The technique icons from mobile-dock-change's print technique switcher: a
+// drop of ink for standard print, needle and thread for embroidery.
+const TECHNIQUE_ICON = {
+  standard: "/icons/icon-droplet.svg",
+  embroidery: "/icons/icon-needle-embroidery.svg",
+} as const
+
+// Drawn as a mask in the text colour, so an unavailable option greys with its
+// label.
+function TechniqueIcon({ tech }: { tech: "standard" | "embroidery" }) {
+  const url = `url(${TECHNIQUE_ICON[tech]})`
+  return (
+    <span
+      aria-hidden="true"
+      className="size-5 shrink-0 bg-current"
+      style={{
+        maskImage: url,
+        WebkitMaskImage: url,
+        maskSize: "contain",
+        WebkitMaskSize: "contain",
+        maskRepeat: "no-repeat",
+        WebkitMaskRepeat: "no-repeat",
+        maskPosition: "center",
+        WebkitMaskPosition: "center",
+      }}
+    />
+  )
+}
 
 // The print technique as a dropdown: the box shows the current one, and opens
 // upward onto both — the chosen one ticked, as the designer's earlier
@@ -325,6 +374,7 @@ function TechniqueSwitcher({
             open ? TILE_ACTIVE : ""
           }`}
         >
+          <TechniqueIcon tech={current} />
           <span>{TECHNIQUE_LABEL[current]}</span>
           <svg
             width="12"
@@ -369,11 +419,16 @@ function TechniqueSwitcher({
                   selected ? "font-semibold" : ""
                 } ${unavailable ? "cursor-not-allowed text-neutral-400" : `cursor-pointer ${TILE_HOVER}`}`}
               >
-                <span>
-                  {TECHNIQUE_LABEL[tech]}
-                  {unavailable && (
-                    <span className="block text-xs font-normal">Not available for this product</span>
-                  )}
+                <span className="flex items-center gap-2">
+                  <TechniqueIcon tech={tech} />
+                  <span>
+                    {TECHNIQUE_LABEL[tech]}
+                    {unavailable && (
+                      <span className="block text-xs font-normal">
+                        Not available for this product
+                      </span>
+                    )}
+                  </span>
                 </span>
                 {selected && (
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
