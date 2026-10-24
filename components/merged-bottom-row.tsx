@@ -104,7 +104,12 @@ export function MergedBottomRow({
   showTechnique?: boolean
 }) {
   return (
-    <div className="max-dlg:hidden pointer-events-none absolute inset-x-6 bottom-6 z-[5] grid grid-cols-[1fr_auto_1fr] items-end gap-3">
+    // minmax(0, 1fr), not 1fr: a plain 1fr column won't shrink below its
+    // content, so a wider technique label ("Standard print" against
+    // "Embroidery") would widen its side and push the views off centre.
+    // With a zero minimum both sides stay equal, and a wider control just
+    // reaches further out from the views.
+    <div className="max-dlg:hidden pointer-events-none absolute inset-x-6 bottom-6 z-[5] grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-3">
       <div className="pointer-events-auto justify-self-end">
         <ZoomControl
           zoom={zoom}
