@@ -7231,7 +7231,8 @@ export default function Designer({
             </div>
           </div>
           {/* View selector — single rounded button + dropdown of all views.
-              /merged-designer has its own, in MergedBottomRow. */}
+              Only with mergedDesigner off; the bottom row (MergedBottomRow)
+              has its own. */}
           {productData && productData.views.length > 1 && !mergedDesigner && (
             <div
               data-view-dropdown

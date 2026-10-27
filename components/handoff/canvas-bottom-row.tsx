@@ -34,7 +34,7 @@ import {
 import { ParkedCursor } from "@/components/handoff/rail-replica"
 import { loadCatalog } from "@/lib/catalog"
 
-const PROTOTYPE = "https://creatomat-prototype.vercel.app/merged-designer"
+const PROTOTYPE = "https://creatomat-prototype.vercel.app/"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
 
 const LAST_UPDATED = "October 23, 2026 · 5:34 PM"
@@ -349,7 +349,7 @@ export default function CanvasBottomRow() {
       </Section>
 
       <HandoffFooter
-        source="source of truth: creatomat-prototype · /merged-designer"
+        source="source of truth: creatomat-prototype · /"
         updated={LAST_UPDATED}
       />
     </HandoffShell>

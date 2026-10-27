@@ -11,7 +11,7 @@ import {
   useHorizontalOverflow,
 } from "@/components/ui/horizontal-scroll"
 
-// /merged-designer's bottom row (desktop): three controls under the canvas in
+// The designer's bottom row (desktop): three controls under the canvas in
 // one style — the zoom, the product views and the print technique switcher.
 //
 // - A grid of 1fr | auto | 1fr, so the views sit exactly at the canvas's
