@@ -109,7 +109,8 @@ function useProductViews(id: string): Product {
 function LiveRow({ product }: { product: Product }) {
   const [zoom, setZoom] = useState(1)
   const [viewId, setViewId] = useState<string | null>(null)
-  const [technique, setTechnique] = useState<"standard" | "embroidery">("standard")
+  // Embroidery to start with: the shorter label keeps the row's two sides closer in width.
+  const [technique, setTechnique] = useState<"standard" | "embroidery">("embroidery")
   const activeId = viewId ?? product.views[0]?.id ?? null
   const active = product.views.find(v => v.id === activeId)
   // The designer's zoom stops, as + and − step through them.
