@@ -219,7 +219,10 @@ export default function CanvasBottomRow() {
           </BriefCard>
           <BriefCard tone="win" label="What win looks like">
             <ul>
-              <li>More sessions switch print technique, with no drop in zoom or view switching.</li>
+              <li>
+                More people switch to embroidery, and more embroidery orders come from it — with no
+                drop in zoom or view switching.
+              </li>
             </ul>
           </BriefCard>
           <BriefCard tone="result" label="Result">
