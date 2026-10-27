@@ -217,8 +217,8 @@ export function ZoomControl({
 // scrolling sideways when there are more than fit — with the product colour
 // row's chevrons and a blur at the cut-off end. The tiles — the views' close-
 // ups — are circles, hovered and selected alike. Hovering one opens a preview
-// above it: the view's name on top, the view PREVIEW_SCALE times its tile's
-// size. The strip clips its tiles, so the preview sits outside it, and so do
+// above it: the view PREVIEW_SCALE times its tile's size, its name underneath.
+// The strip clips its tiles, so the preview sits outside it, and so do
 // the chevrons, over the pill's ends.
 export function ViewStrip({
   views,
@@ -267,15 +267,16 @@ export function ViewStrip({
       >
         {shownView && (
           <div className="flex flex-col items-center gap-2 rounded-[16px] bg-white p-3 shadow-xl">
-            <span className="text-[12px] font-semibold tracking-[0.1em] text-black uppercase">
-              {shownView.name}
-            </span>
             <div
               className="relative overflow-hidden rounded-[12px]"
               style={{ width: previewPx, height: previewPx }}
             >
               {shownView.thumb(previewPx)}
             </div>
+            {/* The view's name under its preview. */}
+            <span className="text-[12px] font-semibold tracking-[0.1em] text-black uppercase">
+              {shownView.name}
+            </span>
           </div>
         )}
       </div>
