@@ -17,14 +17,12 @@ const Designer = dynamic(() => import("@/components/designer"), {
 export default function DesignerClient({
     csMode = false,
     basketHypotheses = false,
-    embroidery = false,
     dtf = false,
     embroideryResizeGuide = false,
     mergedDesigner = true,
 }: {
     csMode?: boolean
     basketHypotheses?: boolean
-    embroidery?: boolean
     dtf?: boolean
     embroideryResizeGuide?: boolean
     mergedDesigner?: boolean
@@ -33,7 +31,6 @@ export default function DesignerClient({
         <Designer
             csMode={csMode}
             basketHypotheses={basketHypotheses}
-            embroidery={embroidery}
             dtf={dtf}
             embroideryResizeGuide={embroideryResizeGuide}
             mergedDesigner={mergedDesigner}

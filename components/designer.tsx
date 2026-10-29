@@ -413,7 +413,6 @@ function clampEmbroideryBbox(b: DesignBbox, hoopFrame: number | null): DesignBbo
 export default function Designer({
   csMode = false,
   basketHypotheses = false,
-  embroidery = false,
   dtf = false,
   embroideryResizeGuide = false,
   mergedDesigner = true,
@@ -421,8 +420,6 @@ export default function Designer({
   csMode?: boolean
   /** /add-to-basket-new-1: desktop size-dropdown hypotheses (H1–H4). */
   basketHypotheses?: boolean
-  /** ?embroidery=true: the embroidery version — the designer opens with embroidery as its technique. */
-  embroidery?: boolean
   /**
    * ?dtf=true: the DTF version. Runs the embroidery preview flow — flatten,
    * "Creating preview", reveal — but renders the design as a patch
@@ -1268,11 +1265,10 @@ export default function Designer({
   const [embroideryRenderStale, setEmbroideryRenderStale] = useState(false)
 
   // Print technique (only relevant for embroidery-suitable products). The
-  // ?embroidery=true version starts on embroidery, so designs show the stitched
-  // preview without the (gated-off) technique selector. The ?dtf=true version
-  // rides on the same technique for its preview flow (see the `dtf` prop).
+  // ?dtf=true version starts on embroidery and rides on it for its preview
+  // flow (see the `dtf` prop).
   const [printTechnique, setPrintTechnique] = useState<"standard" | "embroidery">(
-    embroidery || dtf ? "embroidery" : "standard"
+    dtf ? "embroidery" : "standard"
   )
   const [printTechniqueOpen, setPrintTechniqueOpen] = useState(false)
   const [printTechniqueMenuOpen, setPrintTechniqueMenuOpen] = useState(false)
