@@ -398,7 +398,7 @@ function TechniqueIcon({ tech }: { tech: "standard" | "embroidery" }) {
 export function TechniqueLabel({ value }: { value: "standard" | "embroidery" }) {
   return (
     <div className="h-14 rounded-full bg-white/50" style={{ padding: STRIP_PADDING_PX }}>
-      <div className="flex h-full items-center gap-2 px-4 text-sm font-semibold text-neutral-600">
+      <div className="flex h-full items-center gap-2 px-4 text-sm font-semibold text-[var(--sprd-neutral-600)]">
         <TechniqueIcon tech={value} />
         <span className="whitespace-nowrap">{TECHNIQUE_LABEL[value]}</span>
       </div>
