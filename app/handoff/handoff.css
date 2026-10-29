@@ -262,3 +262,66 @@
 .ho-prose > p.ho-caption {
     margin-top: 36px;
 }
+
+/* ---------------------------------------------------------------------------
+   Index card pictures (components/handoff/handoff-card-art.tsx).
+   Canvas row, one 6s loop: scattered, the zoom lies down beside the views,
+   print technique arrives, the row holds, and it scatters again. Without
+   motion the row is shown gathered — the change, not the problem.
+--------------------------------------------------------------------------- */
+@keyframes ho-art-zoom {
+    0%,
+    14% {
+        translate: -33px -12px;
+        rotate: -90deg;
+    }
+    34%,
+    86% {
+        translate: 0 0;
+        rotate: 0deg;
+    }
+    100% {
+        translate: -33px -12px;
+        rotate: -90deg;
+    }
+}
+@keyframes ho-art-technique {
+    0%,
+    36% {
+        opacity: 0;
+        translate: 14px 0;
+    }
+    52%,
+    86% {
+        opacity: 1;
+        translate: 0 0;
+    }
+    100% {
+        opacity: 0;
+        translate: 14px 0;
+    }
+}
+.ho-art-zoom {
+    animation: ho-art-zoom 6s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+.ho-art-technique {
+    animation: ho-art-technique 6s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+/* A changed number rises into place. */
+@keyframes ho-art-tick {
+    from {
+        opacity: 0;
+        translate: 0 5px;
+    }
+}
+.ho-art-tick {
+    display: inline-block;
+    animation: ho-art-tick 260ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+    .ho-art-zoom,
+    .ho-art-technique,
+    .ho-art-tick {
+        animation: none;
+    }
+}
