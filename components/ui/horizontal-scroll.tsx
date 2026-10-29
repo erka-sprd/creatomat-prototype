@@ -158,9 +158,11 @@ export function ScrollBlur({
 }) {
   const mask = `linear-gradient(to ${dir === "left" ? "right" : "left"}, #000, transparent)`
   return (
+    // Rounded on its outer side: a parent's rounded overflow clip doesn't cut
+    // a backdrop blur, so a pill's end would otherwise show it square.
     <div
       aria-hidden="true"
-      className={`pointer-events-none absolute top-0 z-[10] h-full ${dir === "left" ? "left-0" : "right-0"}`}
+      className={`pointer-events-none absolute top-0 z-[10] h-full ${dir === "left" ? "left-0 rounded-l-full" : "right-0 rounded-r-full"}`}
       style={{
         width: widthPx,
         backdropFilter: `blur(${blurPx}px)`,

@@ -54,6 +54,10 @@ const VIEW_TILE_IDLE =
 const VIEW_TILE_HOVERED = "border border-[var(--sprd-neutral-200)] bg-[var(--sprd-neutral-50)]"
 // Between tiles.
 const TILE_GAP_PX = 2
+// The strip's widest: five and a half tiles, the gaps between them, and the
+// padding.
+const STRIP_MAX_PX =
+  TILE_PX * VISIBLE_TILES + TILE_GAP_PX * Math.floor(VISIBLE_TILES) + 2 * STRIP_PADDING_PX
 // How strongly the strip's cut-off end is blurred (ScrollBlur).
 const EDGE_BLUR_PX = 10
 // The technique button while its menu is open: its hover grey, held.
@@ -88,6 +92,7 @@ export function MergedBottomRow({
   onPrintTechnique,
   embroiderySupported,
   showTechnique = true,
+  staticTechnique = false,
 }: {
   zoom: number
   maxZoom: number
@@ -102,14 +107,18 @@ export function MergedBottomRow({
   embroiderySupported: boolean
   /** False where the technique isn't the user's to switch here — the row keeps its grid, so the views stay centred. */
   showTechnique?: boolean
+  /** Names the current technique instead of offering the dropdown. */
+  staticTechnique?: boolean
 }) {
   return (
-    // minmax(0, 1fr), not 1fr: a plain 1fr column won't shrink below its
-    // content, so a wider technique label ("Standard print" against
-    // "Embroidery") would widen its side and push the views off centre.
-    // With a zero minimum both sides stay equal, and a wider control just
-    // reaches further out from the views.
-    <div className="max-dlg:hidden pointer-events-none absolute inset-x-6 bottom-6 z-[5] grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-3">
+    // The equal side columns keep the views at the canvas centre whatever the
+    // zoom and the technique button measure. They never go below their
+    // controls, so on a narrow canvas only the strip gives way: its
+    // fit-content column shrinks and the strip scrolls.
+    <div
+      className="max-dlg:hidden pointer-events-none absolute inset-x-6 bottom-6 z-[5] grid items-end gap-3"
+      style={{ gridTemplateColumns: `1fr fit-content(${STRIP_MAX_PX}px) 1fr` }}
+    >
       <div className="pointer-events-auto justify-self-end">
         <ZoomControl
           zoom={zoom}
@@ -119,14 +128,15 @@ export function MergedBottomRow({
           onJump={onZoomJump}
         />
       </div>
-      <div className="pointer-events-auto">
+      <div className="pointer-events-auto min-w-0">
         {/* Shown for a single view too, so the row keeps its three parts. */}
         {views.length > 0 && (
           <ViewStrip views={views} activeViewId={activeViewId} onSelect={onSelectView} />
         )}
       </div>
       <div className="pointer-events-auto justify-self-start">
-        {showTechnique && (
+        {showTechnique && staticTechnique && <TechniqueLabel value={printTechnique} />}
+        {showTechnique && !staticTechnique && (
           <TechniqueSwitcher
             value={printTechnique}
             onChange={onPrintTechnique}
@@ -268,7 +278,7 @@ export function ViewStrip({
         {shownView && (
           <div className="flex flex-col items-center gap-2 rounded-[16px] bg-white p-3 shadow-xl">
             <div
-              className="relative overflow-hidden rounded-[12px]"
+              className={`relative ${shownView.photo ? "overflow-hidden rounded-[12px]" : ""}`}
               style={{ width: previewPx, height: previewPx }}
             >
               {shownView.thumb(previewPx)}
@@ -280,7 +290,10 @@ export function ViewStrip({
           </div>
         )}
       </div>
-      <div className={`${BOX} relative overflow-hidden`}>
+      {/* The cap sits on the pill, not on the scroller inside it: a
+          percentage cap there doesn't hold where the pill sizes to its
+          content (outside the row's grid), and the pill ran on past it. */}
+      <div className={`${BOX} relative overflow-hidden`} style={{ maxWidth: STRIP_MAX_PX }}>
         {canScrollLeft && <ScrollBlur dir="left" blurPx={EDGE_BLUR_PX} />}
         <div
           ref={ref}
@@ -289,15 +302,7 @@ export function ViewStrip({
             if (!pinnedHoverId) setHovered(null)
           }}
           className="no-scrollbar flex h-full overflow-x-auto scroll-smooth"
-          // Five and a half tiles, the gaps between them, and the padding.
-          style={{
-            padding: STRIP_PADDING_PX,
-            gap: TILE_GAP_PX,
-            maxWidth:
-              TILE_PX * VISIBLE_TILES +
-              TILE_GAP_PX * Math.floor(VISIBLE_TILES) +
-              2 * STRIP_PADDING_PX,
-          }}
+          style={{ padding: STRIP_PADDING_PX, gap: TILE_GAP_PX }}
         >
           {views.map(view => {
             const selected = activeViewId === view.id
@@ -330,9 +335,11 @@ export function ViewStrip({
                 style={{ width: TILE_PX, height: TILE_PX }}
               >
                 {/* A photo view (close-up, neck label) is cut to a circle,
-                    so the square photo reads as round as the tile. */}
+                    so the square photo reads as round as the tile. Product
+                    views are not clipped, so a light product's shadow is not
+                    cut off where the garment meets the box edge. */}
                 <div
-                  className={`relative overflow-hidden ${view.photo ? "rounded-full" : ""}`}
+                  className={`relative ${view.photo ? "overflow-hidden rounded-full" : ""}`}
                   style={{ width: TILE_THUMB_PX, height: TILE_THUMB_PX }}
                 >
                   {view.thumb(TILE_THUMB_PX)}
@@ -382,6 +389,20 @@ function TechniqueIcon({ tech }: { tech: "standard" | "embroidery" }) {
         WebkitMaskPosition: "center",
       }}
     />
+  )
+}
+
+// The print technique as plain text: the same pill and its contents as the
+// dropdown's button, minus the chevron, the hover, the menu and the shadow,
+// on a see-through white, its text greyed.
+export function TechniqueLabel({ value }: { value: "standard" | "embroidery" }) {
+  return (
+    <div className="h-14 rounded-full bg-white/50" style={{ padding: STRIP_PADDING_PX }}>
+      <div className="flex h-full items-center gap-2 px-4 text-sm font-semibold text-neutral-600">
+        <TechniqueIcon tech={value} />
+        <span className="whitespace-nowrap">{TECHNIQUE_LABEL[value]}</span>
+      </div>
+    </div>
   )
 }
 

@@ -37,7 +37,7 @@ import { loadCatalog } from "@/lib/catalog"
 const PROTOTYPE = "https://creatomat-prototype.vercel.app/"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
 
-const LAST_UPDATED = "October 23, 2026 · 5:34 PM"
+const LAST_UPDATED = "October 29, 2026 · 9:31 AM"
 
 /** The designer's zoom range, as components/designer.tsx sets it. */
 const MAX_ZOOM = 15
@@ -52,6 +52,7 @@ const NAV: NavItem[] = [
   { id: "s1", mark: "§1", label: "Zoom" },
   { id: "s2", mark: "§2", label: "Product views" },
   { id: "s3", mark: "§3", label: "Print technique" },
+  { id: "s4", mark: "§4", label: "Print technique, static" },
 ]
 
 const noop = () => {}
@@ -106,11 +107,20 @@ function useProductViews(id: string): Product {
 /* ------------------------------------------------------------------ demos */
 
 /** The whole row on a canvas, live: zoom, pick a view, switch technique. */
-function LiveRow({ product }: { product: Product }) {
+function LiveRow({
+  product,
+  staticTechnique = false,
+}: {
+  product: Product
+  /** The technique named, not switchable — standard print (§4). */
+  staticTechnique?: boolean
+}) {
   const [zoom, setZoom] = useState(1)
   const [viewId, setViewId] = useState<string | null>(null)
   // Embroidery to start with: the shorter label keeps the row's two sides closer in width.
-  const [technique, setTechnique] = useState<"standard" | "embroidery">("embroidery")
+  const [technique, setTechnique] = useState<"standard" | "embroidery">(
+    staticTechnique ? "standard" : "embroidery"
+  )
   const activeId = viewId ?? product.views[0]?.id ?? null
   const active = product.views.find(v => v.id === activeId)
   // The designer's zoom stops, as + and − step through them.
@@ -136,6 +146,7 @@ function LiveRow({ product }: { product: Product }) {
         printTechnique={technique}
         onPrintTechnique={setTechnique}
         embroiderySupported={product.embroidery}
+        staticTechnique={staticTechnique}
       />
     </div>
   )
@@ -345,6 +356,18 @@ export default function CanvasBottomRow() {
               pinnedOpen
             />
           </Canvas>
+        </Demo>
+      </Section>
+
+      {/* -------------------------------------------------------------- §4 */}
+      <Section id="s4">
+        <Kicker>§4 · Print technique, static</Kicker>
+        <SectionHead title="Print technique - static, name and icon" />
+        <p>Not a dropdown: it only names the current technique</p>
+        <Demo padding="p-3.5" className="overflow-x-auto">
+          <div className="min-w-[600px]">
+            <LiveRow product={tshirt} staticTechnique />
+          </div>
         </Demo>
       </Section>
 
