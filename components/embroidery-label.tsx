@@ -123,24 +123,92 @@ const PILL = "flex items-center rounded-full transition-all duration-300 ease-ou
 const visibility = (show: boolean) =>
   show ? "translate-y-0 opacity-100" : "-translate-y-3 opacity-0"
 
+const PREVIEW_STATUS_CREATING = "Creating preview..."
+const PREVIEW_STATUS_CHECKING = "Checking quality..."
+// How the pill's time is shared: "Creating preview..." types in, holds and is
+// deleted in the first 65%; "Checking quality..." types in during the rest.
+const PREVIEW_STATUS_CREATING_SHARE = 0.65
+// Within the first statement's share: the part spent typing and deleting it
+// (half each, at one speed, as react-type-animation does); the rest it holds.
+const CREATING_TYPING_SHARE = 0.75
+// Within the second statement's share: the part spent typing it, so it rests
+// complete for a moment before the pill retracts.
+const CHECKING_TYPING_SHARE = 0.8
+
+// The status text as typed, like create-omat's add-to-basket loader
+// (AnimatedLoader, react-type-animation) — but timed to `durationMs`, the time
+// the pill is sure to be up, so both statements make it in: the frames are
+// laid out up front and each set at its own time from the start, so they
+// don't drift. Restarts each time `active` turns on; kept as it is while it
+// turns off, so the pill doesn't empty out as it retracts.
+function typedPreviewStatusFrames(durationMs: number): { at: number; text: string }[] {
+  const creatingMs = durationMs * PREVIEW_STATUS_CREATING_SHARE
+  const checkingMs = durationMs - creatingMs
+  const first = PREVIEW_STATUS_CREATING
+  const second = PREVIEW_STATUS_CHECKING
+  const firstCharMs = (creatingMs * CREATING_TYPING_SHARE) / (2 * first.length)
+  const secondCharMs = (checkingMs * CHECKING_TYPING_SHARE) / second.length
+  const frames: { at: number; text: string }[] = []
+  for (let i = 1; i <= first.length; i++) {
+    frames.push({ at: i * firstCharMs, text: first.slice(0, i) })
+  }
+  // Deleting ends exactly where the first share does.
+  for (let i = first.length - 1; i >= 0; i--) {
+    frames.push({ at: creatingMs - i * firstCharMs, text: first.slice(0, i) })
+  }
+  for (let i = 1; i <= second.length; i++) {
+    frames.push({ at: creatingMs + i * secondCharMs, text: second.slice(0, i) })
+  }
+  return frames
+}
+
+function useTypedPreviewStatus(active: boolean, durationMs: number) {
+  const [text, setText] = useState("")
+  useEffect(() => {
+    if (!active) return
+    setText("")
+    const timers = typedPreviewStatusFrames(durationMs).map(frame =>
+      window.setTimeout(() => setText(frame.text), frame.at)
+    )
+    return () => timers.forEach(t => window.clearTimeout(t))
+  }, [active, durationMs])
+  return text
+}
+
 // create-omat's preview-generation status pill. create-omat also docks it under
 // the editor bar while an element is selected; here the preview only renders
 // once nothing is selected, so it appears as the editor bar leaves — at its own
 // spot, without travelling there from the bar.
-export function EmbroideryPreviewStatus({ loading }: { loading: boolean }) {
+// Dressed as the intro loader (.preview-status-glow); the status is typed in
+// and out as on create-omat's add to basket (useTypedPreviewStatus). The pill
+// is centred in its slot and the text centred in the pill, so it grows from
+// the centre as letters arrive and shrinks back to it as they go.
+// `durationMs`: the time the pill is sure to stay up (the designer's minimum
+// loader time) — both statements are typed within it.
+export function EmbroideryPreviewStatus({
+  loading,
+  durationMs,
+}: {
+  loading: boolean
+  durationMs: number
+}) {
+  const text = useTypedPreviewStatus(loading, durationMs)
   return (
     <CanvasStatusSlot>
       <div
         role="status"
         aria-hidden={!loading}
+        aria-label={text.startsWith("Checking") ? PREVIEW_STATUS_CHECKING : PREVIEW_STATUS_CREATING}
         className={
-          PILL +
-          "gap-2 border border-neutral-200 bg-white px-4 py-2.5 text-neutral-700 " +
-          visibility(loading)
+          PILL + "preview-status-glow gap-2 px-4 py-2.5 text-neutral-700 " + visibility(loading)
         }
       >
-        <span className="text-sm leading-none font-semibold tracking-[0.1em] whitespace-nowrap uppercase">
-          Creating preview
+        <span className="text-center text-sm leading-none font-semibold whitespace-nowrap">
+          {text}
+          {/* The typing cursor, as react-type-animation draws it. */}
+          <span aria-hidden="true" className="animate-[curve-caret-blink_1s_infinite]">
+            |
+          </span>
         </span>
         <span
           aria-hidden="true"

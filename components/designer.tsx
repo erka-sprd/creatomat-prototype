@@ -159,7 +159,7 @@ const DESKTOP_VIEW_SWITCHER: "thumbs" | "dropdown" = "thumbs"
 const SHOW_PRINT_TECHNIQUE_SELECTOR: boolean = false
 // Shortest time the embroidery "Creating preview" loader stays up for a changed
 // design, so a fast render doesn't flash it by unseen.
-const EMBROIDERY_MIN_LOADER_MS = 1800
+const EMBROIDERY_MIN_LOADER_MS = 3500
 
 // Monotonic unique id — Date.now() alone collides when two elements are created
 // in the same millisecond (e.g. uploading/placing several at once).
@@ -297,7 +297,12 @@ const isLightProductColor = (hex?: string): boolean => {
 // Shadow for white/near-white product images. Sharp and tight: small blur (low
 // "spread"), a small vertical offset, and a touch more opacity so it stays
 // visible on the light (#F4F4F4) tile. Tweak the values here.
-const LIGHT_PRODUCT_IMAGE_SHADOW = "drop-shadow(0px 0px 1px rgba(0, 0, 0, 0.55))"
+// `scale` is for an image drawn inside a scaled-down box (ViewDesignThumb): the
+// blur is scaled up by the inverse so it still lands at 1px on screen.
+// Same subtle shadow on the colour swatches and the view thumbnails.
+const lightProductImageShadow = (scale = 1) =>
+  `drop-shadow(0px 0px ${1 / scale}px rgba(0, 0, 0, 0.35))`
+const LIGHT_PRODUCT_IMAGE_SHADOW = lightProductImageShadow()
 
 // The mocked design-issue warnings apply to these designs only: thin lines to
 // the pink cat, too complex to the mountain lake (next to it in the panel).
@@ -1463,6 +1468,19 @@ export default function Designer({
   const newElementHoopFrame =
     effectivePrintTechnique === "embroidery" ? embroideryHoopFrame : null
 
+  // With embroidery selected, every new design or text is placed unselected, so
+  // the stitched preview — and the embroidery checks behind "Creating preview"
+  // — run straight away instead of waiting for a deselect. Selecting it
+  // afterwards works as usual.
+  const previewOnAdd = () => effectivePrintTechnique === "embroidery"
+  // In place of selecting the new element: nothing selected or in editing, so
+  // an element still selected from before can't hold the preview back either.
+  const clearSelectionForPreview = () => {
+    setSelectedTextId(null)
+    setSelectedGraphicId(null)
+    setEditingTextId(null)
+  }
+
   const addTextElement = () => {
     if (!currentPrintAreaId) return
     const id = uid("text")
@@ -1562,9 +1580,12 @@ export default function Designer({
         fontFamily: DEFAULT_FONT_FAMILY,
       },
     ])
+    // Decided now, while the technique is the one the text was added under.
+    const previewFirst = previewOnAdd()
     // Defer to next tick so the document click handler (firing in the same
     // event's bubble phase) doesn't clear the selection we're about to set.
     setTimeout(() => {
+      if (previewFirst) return clearSelectionForPreview()
       setSelectedTextId(id)
       // Desktop drops straight into typing. Mobile does not: a new text is
       // selected, which is what raises the editor bar over it — the same thing
@@ -1902,8 +1923,10 @@ export default function Designer({
         { id, printAreaId, src, x, y, width, height, z: nextZ(), isAi: isAiImage(src) },
       ])
       setActivePanel(null)
+      const previewFirst = previewOnAdd()
       // Defer so the same click's document handler doesn't clear the new selection.
       setTimeout(() => {
+        if (previewFirst) return clearSelectionForPreview()
         setSelectedGraphicId(id)
         setSelectedTextId(null)
       }, 0)
@@ -3548,6 +3571,8 @@ export default function Designer({
   // (z goes up), which changes nothing visible unless the order between
   // elements actually changes.
   const designZs = [...new Set(designEls.map(e => e.z))].sort((a, b) => a - b)
+  // The topmost element's z — the loading scan layer sits just above it.
+  const designMaxZ = designZs[designZs.length - 1] ?? 0
   const zRank = (z: number) => designZs.indexOf(z)
   const elementSelected = !!selectedTextId || !!selectedGraphicId
   const embroiderySignature = JSON.stringify({
@@ -6450,6 +6475,29 @@ export default function Designer({
                       }}
                     />
                   )}
+                  {/* While "Creating preview" runs: a band of light sweeps over
+                      the design (.embroidery-scan), the design itself untouched
+                      underneath. Masked by the flattened design — cropped to
+                      designBbox, so it lines up — so the light only falls on the
+                      design's own pixels, never on the product. Above every
+                      element (their z keeps climbing), clicks pass through. */}
+                  {embroideryLoading && designBbox && designDataUrl && (
+                    <div
+                      aria-hidden="true"
+                      className="embroidery-scan pointer-events-none absolute"
+                      style={{
+                        left: `${designBbox.x * 100}%`,
+                        top: `${designBbox.y * 100}%`,
+                        width: `${designBbox.w * 100}%`,
+                        height: `${designBbox.h * 100}%`,
+                        zIndex: designMaxZ + 1,
+                        maskImage: `url(${designDataUrl})`,
+                        WebkitMaskImage: `url(${designDataUrl})`,
+                        maskSize: "100% 100%",
+                        WebkitMaskSize: "100% 100%",
+                      }}
+                    />
+                  )}
                   {/* Design exceeds the hoop frame: an orange frame around the
                       object(s), alongside the "Design too large" badge. With the
                       stitched preview up it frames the objects; for several
@@ -6606,7 +6654,10 @@ export default function Designer({
             )}
             {/* While the stitched render is being generated — create-omat's
                 "Creating preview" pill at the top of the canvas. */}
-            <EmbroideryPreviewStatus loading={embroideryLoading && !!designBbox} />
+            <EmbroideryPreviewStatus
+              loading={embroideryLoading && !!designBbox}
+              durationMs={EMBROIDERY_MIN_LOADER_MS}
+            />
             {/* Too large for the hoop frame, or a good size again after that
                 warning — stacked under the editor bar or the loader while
                 either holds the spot, then sliding up into it. Rendered first:
@@ -6702,6 +6753,7 @@ export default function Designer({
                           graphicElements={graphicElements.filter(g => g.printAreaId === viewPaId)}
                           displaySize={liveCanvasContentSize / zoom}
                           size={size}
+                          lightProduct={isLightProductColor(currentAppearance?.color)}
                         />
                       ),
                   }
@@ -7431,6 +7483,7 @@ export default function Designer({
                                 graphicElements={viewGraphics}
                                 displaySize={liveCanvasContentSize / zoom}
                                 size={44}
+                                lightProduct={isLightProductColor(currentAppearance?.color)}
                               />
                             )}
                           </div>
@@ -9405,6 +9458,7 @@ function ViewDesignThumb({
   graphicElements,
   displaySize,
   size,
+  lightProduct = false,
 }: {
   image: string
   overlay: { left: number; top: number; width: number; height: number } | null
@@ -9426,11 +9480,21 @@ function ViewDesignThumb({
   graphicElements: { id: string; x: number; y: number; z: number; width: number; height: number; src: string; rotation?: number }[]
   displaySize: number
   size: number
+  // White / near-white product: shadow the product image only, never the
+  // design on top of it — same rule as the colour swatches.
+  lightProduct?: boolean
 }) {
   const hasDesign =
     overlay && displaySize > 0 && (textElements.length > 0 || graphicElements.length > 0)
   if (!hasDesign) {
-    return <img src={image} alt="" className="h-full w-full object-contain" />
+    return (
+      <img
+        src={image}
+        alt=""
+        className="h-full w-full object-contain"
+        style={lightProduct ? { filter: LIGHT_PRODUCT_IMAGE_SHADOW } : undefined}
+      />
+    )
   }
   const scale = size / displaySize
   return (
@@ -9449,6 +9513,7 @@ function ViewDesignThumb({
         src={image}
         alt=""
         className="pointer-events-none h-full w-full object-contain select-none"
+        style={lightProduct ? { filter: lightProductImageShadow(scale) } : undefined}
       />
       <div
         style={{

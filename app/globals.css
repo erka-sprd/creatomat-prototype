@@ -820,3 +820,71 @@ body.designer-mobile [contenteditable="true"] {
   user-select: text;
   -webkit-touch-callout: default;
 }
+
+/* Embroidery "Creating preview" pill: the intro loader's frosted glass — mostly
+   translucent white with faint washes of the createomat red, blue and green —
+   with the washes travelling left to right. The washes sit in one 200%-wide
+   tile repeated sideways, so sliding it a full tile (-200%) loops without a
+   seam. */
+.preview-status-glow {
+  /* The intro loader frame's background, layer for layer (designer.tsx,
+     "Frosted-glass frame"). */
+  background-color: rgba(255, 255, 255, 0.72);
+  background-image:
+    radial-gradient(120% 120% at 0% 0%, rgba(220, 38, 38, 0.08), transparent 58%),
+    radial-gradient(120% 120% at 100% 12%, rgba(77, 82, 210, 0.08), transparent 58%),
+    radial-gradient(120% 120% at 55% 120%, rgba(22, 163, 74, 0.08), transparent 58%);
+  background-size: 200% 100%;
+  background-repeat: repeat-x;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  animation: preview-status-glow 3s linear infinite;
+}
+@keyframes preview-status-glow {
+  from {
+    background-position: 0% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .preview-status-glow {
+    animation: none;
+  }
+}
+
+/* Over the design while "Creating preview" runs: a soft band of light sweeps
+   across it left to right, again and again, as if the design were being
+   scanned — lighter shades only, the design itself untouched underneath (the
+   element is masked to the design's shape in designer.tsx). The band sits in a
+   250%-wide background, so from 100% to 0% it travels in from beyond the left
+   edge and out beyond the right one. */
+.embroidery-scan {
+  background-image: linear-gradient(
+    100deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.15) 43%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0.15) 57%,
+    transparent 65%
+  );
+  background-size: 250% 100%;
+  background-repeat: no-repeat;
+  animation: embroidery-scan 1.4s ease-in-out infinite;
+}
+@keyframes embroidery-scan {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .embroidery-scan {
+    animation: none;
+    background-image: none;
+  }
+}
