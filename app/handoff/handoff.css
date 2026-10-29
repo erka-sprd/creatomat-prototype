@@ -23,6 +23,8 @@
     --ho-thread: #c4462a;
     --ho-thread-ink: #a63a1f;
     --ho-thread-soft: #f7e6e0;
+    /* Two steps lighter than -soft: the selected nav item's ground. */
+    --ho-thread-faint: #fbf2ef;
     --ho-slate: #33384a;
     --ho-hit-ink: #35509e;
     --ho-hit-soft: #e6ecf8;

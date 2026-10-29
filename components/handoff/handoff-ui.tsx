@@ -16,9 +16,19 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
+import {
+  ArtFrame,
+  CARD_CLASS,
+  ENTRIES,
+  TRAY_CLASS,
+  TrayLip,
+  trayStyle,
+  type Entry,
+} from "@/components/handoff/handoff-entries"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 
 /* ------------------------------------------------------------------ inline */
@@ -337,17 +347,167 @@ export function CodeTipProvider({
 
 export type NavItem = { id: string; mark: string; label: string }
 
+// How far the picture shrinks as it scrolls away, on top of fading out.
+const NAV_ART_SHRINK = 0.3
+// …and how blurred it is by the time it's gone.
+const NAV_ART_BLUR_PX = 12
+// How blurred the title is as it starts to come in.
+const NAV_TITLE_BLUR_PX = 6
+
+// What every document is, over its title — on the page and in the nav card.
+const EYEBROW = "Developer handoff"
+const EYEBROW_CLASS =
+  "m-0 font-[family-name:var(--ho-mono)] tracking-[0.12em] text-[var(--ho-thread-ink)] uppercase"
+
 /**
- * Fixed left nav + content column. Under 900px the nav becomes a sticky chip
- * bar, which is why the sections carry a larger scroll margin there.
+ * The top of the nav card. At first the document's index-card picture;
+ * scrolling collapses it pixel for pixel, shrinking toward its centre, fading
+ * and blurring as it goes, so the nav below rises with the page. In its place
+ * the document's title grows in, coming into focus as the picture leaves it.
+ */
+function NavHead({ entry }: { entry: Entry }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const innerRef = useRef<HTMLDivElement>(null)
+  const titleRef = useRef<HTMLDivElement>(null)
+  const titleInnerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    const inner = innerRef.current
+    const title = titleRef.current
+    const titleInner = titleInnerRef.current
+    if (!el || !inner || !title || !titleInner) return
+    let frame = 0
+    const fade = () => {
+      frame = 0
+      const full = inner.offsetHeight
+      const p = Math.min(1, Math.max(0, window.scrollY / full))
+      el.style.height = `${full * (1 - p)}px`
+      inner.style.opacity = String(1 - p)
+      inner.style.scale = String(1 - NAV_ART_SHRINK * p)
+      // Keep its centre on the middle of what's left, not clipped at the bottom.
+      inner.style.translate = `0 ${(-full * p) / 2}px`
+      inner.style.filter = p ? `blur(${NAV_ART_BLUR_PX * p}px)` : ""
+      title.style.height = `${titleInner.offsetHeight * p}px`
+      titleInner.style.opacity = String(p)
+      titleInner.style.filter = p < 1 ? `blur(${NAV_TITLE_BLUR_PX * (1 - p)}px)` : ""
+    }
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(fade)
+    }
+    fade()
+    window.addEventListener("scroll", onScroll, { passive: true })
+    window.addEventListener("resize", onScroll)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener("scroll", onScroll)
+      window.removeEventListener("resize", onScroll)
+    }
+  }, [])
+
+  return (
+    <>
+      <div ref={ref} className="shrink-0 overflow-hidden max-[900px]:hidden" aria-hidden="true">
+        <div ref={innerRef} className="origin-center pb-4">
+          <ArtFrame entry={entry} className="py-6" />
+        </div>
+      </div>
+      {/* The page's own h1 says it already; this is a reminder, not a heading. */}
+      <div
+        ref={titleRef}
+        className="h-0 shrink-0 overflow-hidden max-[900px]:hidden"
+        aria-hidden="true"
+      >
+        <div ref={titleInnerRef} className="px-3.5 pt-2 pb-3 opacity-0">
+          <p className={`${EYEBROW_CLASS} mb-1 text-[11px]`}>{EYEBROW}</p>
+          {/* MADE Outer Sans ships Medium and Black only — Medium here. */}
+          <p className="m-0 font-display text-[17px] leading-tight font-medium">{entry.title}</p>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// Where the shell stops being two columns — matches the max-[900px] variants.
+const SHELL_COLUMNS_QUERY = "(min-width: 901px)"
+// The back link's height plus the gap under it (h-6 + pb-3).
+const BACK_ROW_PX = 36
+
+/**
+ * "All handoffs", above the nav card. Over the first BACK_ROW_PX of scroll it
+ * collapses, fading and blurring like the picture below it. Under 900px it
+ * sits in the page's flow, where collapsing would shove the document, so it
+ * stays put.
+ */
+function BackButton() {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    const link = el?.firstElementChild as HTMLElement | null
+    if (!el || !link) return
+    const columns = window.matchMedia(SHELL_COLUMNS_QUERY)
+    let frame = 0
+    const fade = () => {
+      frame = 0
+      const p = columns.matches ? Math.min(1, Math.max(0, window.scrollY / BACK_ROW_PX)) : 0
+      el.style.height = columns.matches ? `${BACK_ROW_PX * (1 - p)}px` : ""
+      el.style.overflow = p ? "hidden" : ""
+      el.style.visibility = p === 1 ? "hidden" : ""
+      link.style.opacity = p ? String(1 - p) : ""
+      link.style.filter = p ? `blur(${NAV_ART_BLUR_PX * p}px)` : ""
+    }
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(fade)
+    }
+    fade()
+    window.addEventListener("scroll", onScroll, { passive: true })
+    window.addEventListener("resize", onScroll)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener("scroll", onScroll)
+      window.removeEventListener("resize", onScroll)
+    }
+  }, [])
+
+  return (
+    <div ref={ref} className="flex-none pb-3 max-[900px]:mt-6 max-[900px]:pb-0">
+      <a
+        href="/handoff"
+        className="inline-flex h-6 items-center gap-1 text-[14px] font-medium tracking-[0.08em] text-[var(--ho-muted)] uppercase no-underline transition-colors hover:text-[var(--ho-ink)]"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          className="size-4 flex-none"
+        >
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+        All handoffs
+      </a>
+    </div>
+  )
+}
+
+/**
+ * Left nav + content column. The nav sits in its document's index card — same
+ * tray, same date on its lip — which sticks to the top of the viewport. Under
+ * 900px the card dissolves and the nav becomes a sticky chip bar, which is why
+ * the sections carry a larger scroll margin there.
  */
 export function HandoffShell({
-  navTitle,
+  slug,
   items,
   links,
   children,
 }: {
-  navTitle: string
+  /** The document's index entry — its card holds the nav. */
+  slug: string
   items: NavItem[]
   links: { label: string; href: string }[]
   children: ReactNode
@@ -376,56 +536,97 @@ export function HandoffShell({
     }
   }, [items])
 
+  // Whether the nav has items below its fold — then its foot fades out, so
+  // the cut reads as "more below" rather than as the end of the list.
+  const navRef = useRef<HTMLElement>(null)
+  const [moreBelow, setMoreBelow] = useState(false)
+  useEffect(() => {
+    const nav = navRef.current
+    if (!nav) return
+    const check = () => setMoreBelow(nav.scrollHeight - nav.scrollTop - nav.clientHeight > 1)
+    check()
+    nav.addEventListener("scroll", check, { passive: true })
+    // The nav's height changes as the picture above it collapses.
+    const observer = new ResizeObserver(check)
+    observer.observe(nav)
+    return () => {
+      nav.removeEventListener("scroll", check)
+      observer.disconnect()
+    }
+  }, [])
+
+  const entry = ENTRIES.find(e => e.slug === slug)
+  if (!entry) throw new Error(`No handoff entry for "${slug}" in handoff-entries.tsx`)
+
   return (
-    <div className="mx-auto grid max-w-[950px] grid-cols-[208px_minmax(0,1fr)] gap-12 max-[900px]:block">
-      <nav
-        aria-label="Sections"
-        className="ho-noscrollbar sticky top-0 max-h-[100dvh] self-start overflow-y-auto pt-[68px] pb-10 max-[900px]:z-[80] max-[900px]:mx-[-22px] max-[900px]:flex max-[900px]:max-h-none max-[900px]:items-center max-[900px]:gap-0.5 max-[900px]:overflow-x-auto max-[900px]:overflow-y-hidden max-[900px]:border-b max-[900px]:border-[var(--ho-line)] max-[900px]:bg-[var(--ho-ground)] max-[900px]:px-[22px] max-[900px]:py-2.5"
-      >
-        <p className="mb-3.5 font-[family-name:var(--ho-mono)] text-[12px] tracking-[0.14em] text-[var(--ho-thread-ink)] uppercase max-[900px]:hidden">
-          {navTitle}
-        </p>
-        {items.map(item => {
-          const on = active === item.id
-          return (
-            <a
-              key={item.id}
-              href={`#${item.id}`}
-              className={`-ml-3.5 flex items-baseline gap-2.5 rounded-r-lg border-l-2 py-2 pr-3 pl-3.5 text-[14px] no-underline transition-colors max-[900px]:m-0 max-[900px]:flex-none max-[900px]:rounded-full max-[900px]:border-l-0 max-[900px]:px-3 max-[900px]:py-1.5 max-[900px]:whitespace-nowrap ${
-                on
-                  ? "border-[var(--ho-thread-ink)] font-semibold text-[var(--ho-thread-ink)] max-[900px]:bg-[var(--ho-thread-soft)]"
-                  : "border-transparent text-[var(--ho-muted)] hover:bg-black/[0.03] hover:text-[var(--ho-ink)]"
-              }`}
+    <div className="mx-auto grid max-w-[1030px] grid-cols-[312px_minmax(0,1fr)] gap-12 max-[900px]:block">
+      {/* Under 900px the column, tray and card dissolve (display: contents),
+          so the chip bar sticks to the page as before. */}
+      <div className="sticky top-6 mt-[60px] flex max-h-[calc(100dvh-48px)] flex-col self-start max-[900px]:contents">
+        <BackButton />
+        <div
+          className={`${TRAY_CLASS} min-h-0 max-[900px]:contents`}
+          style={trayStyle(entry)}
+        >
+          <div className={`${CARD_CLASS} min-h-0 max-[900px]:contents`}>
+            <NavHead entry={entry} />
+            <nav
+              ref={navRef}
+              aria-label="Sections"
+              className={`${
+                moreBelow
+                  ? "[mask-image:linear-gradient(to_bottom,black_calc(100%-48px),transparent)]"
+                  : ""
+              } ho-noscrollbar flex min-h-0 flex-col gap-0.5 overflow-y-auto pb-1 max-[900px]:sticky max-[900px]:top-0 max-[900px]:z-[80] max-[900px]:mx-[-22px] max-[900px]:flex-row max-[900px]:items-center max-[900px]:overflow-x-auto max-[900px]:overflow-y-hidden max-[900px]:border-b max-[900px]:border-[var(--ho-line)] max-[900px]:bg-[var(--ho-ground)] max-[900px]:px-[22px] max-[900px]:py-2.5`}
             >
-              <span
-                className={`min-w-5 font-[family-name:var(--ho-mono)] text-[12px] transition-colors ${
-                  on ? "text-[var(--ho-thread-ink)]" : "text-[var(--ho-line-strong)]"
-                }`}
+              {items.map(item => {
+                const on = active === item.id
+                return (
+                  <a
+                    key={item.id}
+                    href={`#${item.id}`}
+                    className={`flex items-baseline gap-2.5 rounded-lg px-3.5 py-2 text-[14px] no-underline transition-colors max-[900px]:flex-none max-[900px]:rounded-full max-[900px]:px-3 max-[900px]:py-1.5 max-[900px]:whitespace-nowrap ${
+                      on
+                        ? "bg-[var(--ho-thread-faint)] font-semibold text-[var(--ho-thread-ink)]"
+                        : "text-[var(--ho-muted)] hover:bg-black/[0.03] hover:text-[var(--ho-ink)]"
+                    }`}
+                  >
+                    <span
+                      className={`min-w-5 font-[family-name:var(--ho-mono)] text-[12px] transition-colors ${
+                        on ? "text-[var(--ho-thread-ink)]" : "text-[var(--ho-line-strong)]"
+                      }`}
+                    >
+                      {item.mark}
+                    </span>
+                    {item.label}
+                  </a>
+                )
+              })}
+            </nav>
+          </div>
+          {/* The outside links, in a card of their own under the sections. */}
+          <div className={`${CARD_CLASS} mt-1.5 flex-none gap-1.5 max-[900px]:hidden`}>
+            {links.map(l => (
+              <a
+                key={l.href}
+                href={l.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-baseline gap-2.5 rounded-lg px-3.5 py-2 text-[14px] text-[var(--ho-muted)] no-underline transition-colors hover:bg-black/[0.03] hover:text-[var(--ho-ink)]"
               >
-                {item.mark}
-              </span>
-              {item.label}
-            </a>
-          )
-        })}
-        <div className="mt-[22px] flex flex-col gap-1.5 border-t border-[var(--ho-line)] pt-4 max-[900px]:hidden">
-          {links.map(l => (
-            <a
-              key={l.href}
-              href={l.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="-ml-3.5 flex items-baseline gap-2.5 rounded-r-lg border-l-2 border-transparent py-2 pr-3 pl-3.5 text-[14px] text-[var(--ho-muted)] no-underline transition-colors hover:bg-black/[0.03] hover:text-[var(--ho-ink)]"
-            >
-              <span className="min-w-5 font-[family-name:var(--ho-mono)] text-[12px] text-[var(--ho-line-strong)]">
-                ↗
-              </span>
-              {l.label}
-            </a>
-          ))}
+                <span className="min-w-5 font-[family-name:var(--ho-mono)] text-[12px] text-[var(--ho-line-strong)]">
+                  ↗
+                </span>
+                {l.label}
+              </a>
+            ))}
+          </div>
+          <TrayLip entry={entry} className="max-[900px]:hidden" />
         </div>
-      </nav>
-      <div className="min-w-0 max-w-[660px] max-[900px]:mx-auto">{children}</div>
+      </div>
+      <div className="min-w-0 max-w-[660px] max-[900px]:mx-auto">
+        {children}
+      </div>
     </div>
   )
 }
@@ -433,12 +634,10 @@ export function HandoffShell({
 /* --------------------------------------------------------------- header/foot */
 
 export function HandoffHeader({
-  eyebrow,
   title,
   lede,
   actions,
 }: {
-  eyebrow: string
   title: string
   /** Optional — a title that already says it needs no second sentence. */
   lede?: ReactNode
@@ -446,10 +645,9 @@ export function HandoffHeader({
 }) {
   return (
     <header className="pt-[60px] pb-9">
-      <p className="mb-[18px] font-[family-name:var(--ho-mono)] text-[14px] tracking-[0.12em] text-[var(--ho-thread-ink)] uppercase">
-        {eyebrow}
-      </p>
-      <h1 className="mb-4 text-[clamp(30px,5.5vw,44px)] leading-[1.05] font-[680] tracking-[-0.02em] text-balance">
+      <p className={`${EYEBROW_CLASS} mb-1.5 text-[14px]`}>{EYEBROW}</p>
+      {/* MADE Outer Sans ships Medium and Black only — Medium here. */}
+      <h1 className="mb-4 font-display text-[clamp(30px,5.5vw,44px)] leading-[1.05] font-medium tracking-[-0.02em] text-balance">
         {title}
       </h1>
       {lede && (
@@ -476,11 +674,12 @@ export function HandoffHeader({
   )
 }
 
-export function HandoffFooter({ source, updated }: { source: string; updated: string }) {
+/** Closes the document. When it was updated lives on the nav card's lip. */
+export function HandoffEnd() {
   return (
-    <footer className="mt-1 flex flex-wrap justify-between gap-2 border-t-2 border-dashed border-[var(--ho-line-strong)] pt-6 font-[family-name:var(--ho-mono)] text-[14px] text-[var(--ho-muted)]">
-      <span>{source}</span>
-      <span>Last updated: {updated}</span>
-    </footer>
+    // The sections' own dashed rule, run out to both edges either side.
+    <p className="mt-1 mb-0 flex items-center gap-4 font-[family-name:var(--ho-mono)] text-[14px] whitespace-nowrap text-[var(--ho-muted)] before:flex-1 before:border-t-2 before:border-dashed before:border-[var(--ho-line-strong)] before:content-[''] after:flex-1 after:border-t-2 after:border-dashed after:border-[var(--ho-line-strong)] after:content-['']">
+      End of the handoff
+    </p>
   )
 }

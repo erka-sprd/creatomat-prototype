@@ -17,7 +17,7 @@ import {
   Demo,
   DemoNote,
   FileLinks,
-  HandoffFooter,
+  HandoffEnd,
   HandoffHeader,
   HandoffShell,
   Kicker,
@@ -38,8 +38,6 @@ import { TEXT_CURVES, type TextCurveId } from "@/lib/text-path"
 
 const PROTOTYPE = "https://creatomat-prototype.vercel.app/"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
-
-const LAST_UPDATED = "September 3, 2026 · 3:56 PM"
 
 /** The face a new text arrives in, and what these specimens are set in. */
 const FONT = "Lobster Two"
@@ -590,7 +588,7 @@ export default function CurveTextHandoff() {
 
   return (
     <HandoffShell
-      navTitle="NAVIGATION"
+      slug="curve-text"
       items={NAV}
       links={[
         { label: "Prototype", href: PROTOTYPE },
@@ -598,7 +596,6 @@ export default function CurveTextHandoff() {
       ]}
     >
       <HandoffHeader
-        eyebrow="handoff"
         title="Curve text"
         lede="Bending a text along a baseline — where it is reached from, what it offers, and how those options sit on img.ly's own text-on-path API."
         actions={[
@@ -660,7 +657,7 @@ export default function CurveTextHandoff() {
         </Demo>
       </Section>
 
-      <HandoffFooter source="source of truth: creatomat-prototype · lib/text-path.ts" updated={LAST_UPDATED} />
+      <HandoffEnd />
     </HandoffShell>
   )
 }

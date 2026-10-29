@@ -11,7 +11,7 @@ import {
   Brief,
   BriefCard,
   Demo,
-  HandoffFooter,
+  HandoffEnd,
   HandoffHeader,
   HandoffShell,
   Kicker,
@@ -42,8 +42,6 @@ import {
 const PROTOTYPE = "https://creatomat-prototype.vercel.app/add-to-basket-new-1"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
 
-const LAST_UPDATED = "October 2, 2026 · 1:04 PM"
-
 /** The quantities §6 shows the hint at — every state it has. */
 const TIER_STATES = [
   { quantity: 0, note: "nothing chosen" },
@@ -70,7 +68,7 @@ export default function BulkPurchaseRework() {
 
   return (
     <HandoffShell
-      navTitle="NAVIGATION"
+      slug="bulk-purchase-rework"
       items={NAV}
       links={[
         { label: "Prototype", href: PROTOTYPE },
@@ -78,7 +76,6 @@ export default function BulkPurchaseRework() {
       ]}
     >
       <HandoffHeader
-        eyebrow="handoff"
         title="Bulk purchase rail, reworked"
         actions={[
           { label: "See prototype", href: PROTOTYPE },
@@ -280,10 +277,7 @@ export default function BulkPurchaseRework() {
         </Demo>
       </Section>
 
-      <HandoffFooter
-        source="source of truth: creatomat-prototype · /add-to-basket-new-1"
-        updated={LAST_UPDATED}
-      />
+      <HandoffEnd />
     </HandoffShell>
   )
 }

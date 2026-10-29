@@ -15,7 +15,7 @@ import {
   Brief,
   BriefCard,
   Demo,
-  HandoffFooter,
+  HandoffEnd,
   HandoffHeader,
   HandoffShell,
   Kicker,
@@ -36,8 +36,6 @@ import { loadCatalog } from "@/lib/catalog"
 
 const PROTOTYPE = "https://creatomat-prototype.vercel.app/"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
-
-const LAST_UPDATED = "October 29, 2026 · 9:31 AM"
 
 /** The designer's zoom range, as components/designer.tsx sets it. */
 const MAX_ZOOM = 15
@@ -188,7 +186,7 @@ export default function CanvasBottomRow() {
 
   return (
     <HandoffShell
-      navTitle="NAVIGATION"
+      slug="canvas-bottom-row"
       items={NAV}
       links={[
         { label: "Prototype", href: PROTOTYPE },
@@ -196,7 +194,6 @@ export default function CanvasBottomRow() {
       ]}
     >
       <HandoffHeader
-        eyebrow="handoff"
         title="Canvas controls, in one row"
         actions={[
           { label: "See prototype", href: PROTOTYPE },
@@ -371,10 +368,7 @@ export default function CanvasBottomRow() {
         </Demo>
       </Section>
 
-      <HandoffFooter
-        source="source of truth: creatomat-prototype · /"
-        updated={LAST_UPDATED}
-      />
+      <HandoffEnd />
     </HandoffShell>
   )
 }

@@ -12,6 +12,7 @@ components, icons, fonts, catalogue data and pricing code.
 app/handoff/page.tsx                    index of documents
 app/handoff/<slug>/page.tsx             one document (server, exports metadata)
 app/handoff/handoff.css                 --ho-* tokens, demo keyframes
+components/handoff/handoff-entries.tsx  the documents' list: title, picture, tint, updated
 components/handoff/handoff-index.tsx    the index list
 components/handoff/handoff-ui.tsx       shell, nav, section chrome, code-tip drawer
 components/handoff/rail-replica.tsx     the product replicas and their demos
@@ -124,7 +125,9 @@ When a section shows a sequence rather than a state:
 
 ## Before handing it over
 
-- Refresh `LAST_UPDATED` in the document component.
+- Refresh the document's `updated` date and time in
+  `components/handoff/handoff-entries.tsx` — the nav card's lip and the index
+  card both show it.
 - `./node_modules/.bin/next build` from the repo root (the working directory can
   drift — check `pwd`).
 - Never commit or push unless asked in that moment.
