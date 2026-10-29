@@ -58,7 +58,7 @@ export default function HandoffIndex() {
               ) : (
                 <a
                   href={`/handoff/${entry.slug}`}
-                  className={`${TRAY_CLASS} h-full no-underline transition-[translate,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(26,24,19,0.08)]`}
+                  className={`${TRAY_CLASS} h-full no-underline transition-[translate,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(0,0,0,0.08)]`}
                   style={tray}
                 >
                   {card}
@@ -75,7 +75,7 @@ export default function HandoffIndex() {
           href="https://github.com/erka-sprd/creatomat-prototype"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-[var(--ho-thread-ink)] underline"
+          className="text-green-700 underline"
         >
           creatomat-prototype
         </a>

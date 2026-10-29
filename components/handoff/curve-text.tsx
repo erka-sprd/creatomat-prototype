@@ -43,9 +43,9 @@ const REPO = "https://github.com/erka-sprd/creatomat-prototype"
 const FONT = "Lobster Two"
 
 const NAV: NavItem[] = [
-  { id: "s1", mark: "§1", label: "Editor bar" },
-  { id: "s2", mark: "§2", label: "Curve panel" },
-  { id: "s3", mark: "§3", label: "img.ly mapping" },
+  { id: "s1", mark: "1", label: "Editor bar" },
+  { id: "s2", mark: "2", label: "Curve panel" },
+  { id: "s3", mark: "3", label: "img.ly mapping" },
 ]
 
 /* -------------------------------------------------------------- §1 specimen */
@@ -294,7 +294,7 @@ function WidthBracket({ label }: { label: string }) {
   return (
     <div
       aria-hidden
-      className="absolute top-full left-0 mt-3.5 flex w-full items-center text-[var(--ho-thread-ink)]"
+      className="absolute top-full left-0 mt-3.5 flex w-full items-center text-green-700"
     >
       <span className="h-3 w-0.5 shrink-0 bg-current" />
       <span className="h-0.5 flex-1 bg-current" />
@@ -513,7 +513,7 @@ function PlatformSwitch({
           onClick={() => onChange(option)}
           className={`cursor-pointer rounded-full px-3.5 py-1 font-[family-name:var(--ho-mono)] text-[12px] capitalize transition-colors ${
             value === option
-              ? "bg-[var(--ho-thread-ink)] text-white"
+              ? "bg-green-700 text-white"
               : "text-[var(--ho-muted)] hover:text-[var(--ho-ink)]"
           }`}
         >
@@ -599,7 +599,7 @@ export default function CurveTextHandoff() {
         title="Curve text"
         lede="Bending a text along a baseline — where it is reached from, what it offers, and how those options sit on img.ly's own text-on-path API."
         actions={[
-          { label: "See prototype", href: PROTOTYPE },
+          { label: "See prototype", href: PROTOTYPE, live: true },
           { label: "See repo", href: REPO, ghost: true },
         ]}
       />

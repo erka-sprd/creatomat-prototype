@@ -4,7 +4,7 @@
  * Shared chrome for the handoff documents under /handoff.
  *
  * Two typographic worlds live on these pages and must stay distinguishable:
- * the document (paper ground, mono kickers, thread-red accent — the `ho-`
+ * the document (grey ground, mono kickers, Tailwind green accent — the `ho-`
  * tokens in app/handoff/handoff.css) and the product replicas inside it, which
  * are pasted out of components/designer.tsx and keep the app's own classes.
  * Nothing here styles a replica.
@@ -15,6 +15,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -39,13 +40,13 @@ export function Tok({
   neutral = false,
 }: {
   children: ReactNode
-  /** Neutral slate rather than thread red — for values, not API surface. */
+  /** Neutral slate rather than the accent — for values, not API surface. */
   neutral?: boolean
 }) {
   return (
     <code
-      className={`rounded-[5px] bg-[#efece4] px-1.5 py-px font-[family-name:var(--ho-mono)] text-[13px] whitespace-nowrap ${
-        neutral ? "text-[var(--ho-slate)]" : "text-[var(--ho-thread-ink)]"
+      className={`rounded-[5px] bg-[var(--ho-chip)] px-1.5 py-px font-[family-name:var(--ho-mono)] text-[13px] whitespace-nowrap ${
+        neutral ? "text-[var(--ho-slate)]" : "text-green-700"
       }`}
     >
       {children}
@@ -94,7 +95,7 @@ export function FileLinks({ files }: { files: { label: string; href: string }[] 
           href={f.href}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-md border border-[var(--ho-line)] bg-[var(--ho-paper)] px-2.5 py-1 font-[family-name:var(--ho-mono)] text-[12px] text-[var(--ho-thread-ink)] transition-colors after:text-[11px] after:opacity-70 after:content-['↗'] hover:bg-[#e9e0d0] hover:underline"
+          className="inline-flex items-center gap-1.5 rounded-md border border-[var(--ho-line)] bg-[var(--ho-paper)] px-2.5 py-1 font-[family-name:var(--ho-mono)] text-[12px] text-green-700 transition-colors after:text-[11px] after:opacity-70 after:content-['↗'] hover:bg-[var(--ho-chip-hover)] hover:underline"
         >
           {f.label}
         </a>
@@ -117,7 +118,7 @@ export function Demo({
 }) {
   return (
     <div
-      className={`mt-1.5 rounded-[18px] border border-[var(--ho-line)] bg-[var(--ho-paper)] ${padding} ${className}`}
+      className={`mt-1.5 rounded-[18px] bg-[var(--ho-specimen)] ${padding} ${className}`}
     >
       {children}
     </div>
@@ -146,14 +147,10 @@ export function Note({ children }: { children: ReactNode }) {
 
 /* ------------------------------------------------------------------- brief */
 
-/** The four cards that open a document: why, what we think, how we will know. */
-const BRIEF_TONES = {
-  problem: { bg: "#F6D8D0", ink: "#7B1D10" },
-  hypothesis: { bg: "#FBEBC6", ink: "#7A5514" },
-  win: { bg: "#DCF4C2", ink: "#2F5A1B" },
-  result: { bg: "#C9E6FC", ink: "#123B66" },
-} as const
-
+/**
+ * The four cards that open a document: why, what we think, how we will know.
+ * One white card, a section each, all in black — the icon tells them apart.
+ */
 const BRIEF_ICONS = {
   problem: "M16 19v-1a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v1M10 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6M19 8v3M19 14v.5",
   hypothesis: "M9 18h6M10 21h4M12 3a6 6 0 0 1 4 10.5c-.6.6-1 1.3-1 2.1v.4H9v-.4c0-.8-.4-1.5-1-2.1A6 6 0 0 1 12 3Z",
@@ -166,18 +163,17 @@ export function BriefCard({
   label,
   children,
 }: {
-  tone: keyof typeof BRIEF_TONES
+  tone: keyof typeof BRIEF_ICONS
   label: string
   children: ReactNode
 }) {
-  const { bg, ink } = BRIEF_TONES[tone]
   return (
-    <div className="rounded-2xl px-7 py-6" style={{ background: bg, color: ink }}>
+    <div className="px-7 py-6">
       <div className="flex gap-4">
         <svg
           viewBox="0 0 24 24"
           aria-hidden
-          className="mt-0.5 size-6 shrink-0 opacity-60"
+          className="mt-0.5 size-6 shrink-0"
           fill="none"
           stroke="currentColor"
           strokeWidth="1.6"
@@ -190,7 +186,8 @@ export function BriefCard({
           <p className="font-[family-name:var(--ho-mono)] text-[15px] font-bold tracking-[0.06em] uppercase">
             {label}
           </p>
-          <div className="mt-4 font-[family-name:var(--ho-mono)] text-[15px] leading-[1.6] [&_li]:mb-1 [&_ul]:list-disc [&_ul]:pl-5">
+          {/* Body copy, as in the sections below: the page's font at 16px. */}
+          <div className="mt-4 text-[16px] [&_li]:mb-1 [&_ul]:list-disc [&_ul]:pl-5">
             {children}
           </div>
         </div>
@@ -200,7 +197,11 @@ export function BriefCard({
 }
 
 export function Brief({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col gap-2.5">{children}</div>
+  return (
+    <div className="flex flex-col divide-y divide-dashed divide-[var(--ho-line)] rounded-2xl bg-[var(--ho-paper)] text-[var(--ho-ink)]">
+      {children}
+    </div>
+  )
 }
 
 /* ----------------------------------------------------------------- sections */
@@ -265,6 +266,15 @@ const TipContext = createContext<{
   tips: Record<string, CodeTip>
 } | null>(null)
 
+/**
+ * The page's buttons: black-and-white pills, mono caps. SOLID is the main
+ * action, OUTLINE the quieter one.
+ */
+const BUTTON =
+  "inline-flex cursor-pointer items-center gap-2 rounded-full border font-[family-name:var(--ho-mono)] font-semibold tracking-[0.08em] uppercase no-underline transition-colors"
+const BUTTON_SOLID = "border-black bg-black text-white hover:bg-neutral-800"
+const BUTTON_OUTLINE = "border-black bg-white text-black hover:bg-neutral-100"
+
 /** Opens the drawer for one tip. Rendered by SectionHead. */
 export function CodeTipButton({ tipKey }: { tipKey: string }) {
   const ctx = useContext(TipContext)
@@ -273,7 +283,7 @@ export function CodeTipButton({ tipKey }: { tipKey: string }) {
     <button
       type="button"
       onClick={() => ctx.open(tipKey)}
-      className="inline-flex flex-none cursor-pointer items-center gap-2 rounded-full bg-black px-4 py-[7px] pl-3 font-[family-name:var(--ho-mono)] text-[13px] font-semibold text-white transition-[translate] duration-150 hover:-translate-y-px"
+      className={`${BUTTON} ${BUTTON_SOLID} flex-none px-3.5 py-[7px] text-[12px]`}
     >
       <svg
         viewBox="0 0 24 24"
@@ -283,7 +293,7 @@ export function CodeTipButton({ tipKey }: { tipKey: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         aria-hidden="true"
-        className="block size-3.5 flex-none text-[#2ec95f]"
+        className="block size-3.5 flex-none"
       >
         <path d="M16 18l6-6-6-6M8 6l-6 6 6 6" />
       </svg>
@@ -321,7 +331,7 @@ export function CodeTipProvider({
         >
           {tip && (
             <>
-              <p className="font-[family-name:var(--ho-mono)] text-[11.5px] tracking-[0.14em] text-[var(--ho-thread-ink)] uppercase">
+              <p className="font-[family-name:var(--ho-mono)] text-[11.5px] tracking-[0.14em] text-green-700 uppercase">
                 code tip
               </p>
               <SheetTitle className="mt-2 mb-3 text-[20px] font-bold text-[var(--ho-slate)]">
@@ -357,7 +367,7 @@ const NAV_TITLE_BLUR_PX = 6
 // What every document is, over its title — on the page and in the nav card.
 const EYEBROW = "Developer handoff"
 const EYEBROW_CLASS =
-  "m-0 font-[family-name:var(--ho-mono)] tracking-[0.12em] text-[var(--ho-thread-ink)] uppercase"
+  "m-0 font-[family-name:var(--ho-mono)] tracking-[0.12em] text-indigo-600 uppercase"
 
 /**
  * The top of the nav card. At first the document's index-card picture;
@@ -428,6 +438,9 @@ function NavHead({ entry }: { entry: Entry }) {
   )
 }
 
+// How long a nav click holds the scroll spy off, where scrollend is missing.
+const NAV_CLICK_LOCK_MS = 1200
+
 // Where the shell stops being two columns — matches the max-[900px] variants.
 const SHELL_COLUMNS_QUERY = "(min-width: 901px)"
 // The back link's height plus the gap under it (h-6 + pb-3).
@@ -494,6 +507,48 @@ function BackButton() {
   )
 }
 
+// How far down the page before "back to top" shows — past the header.
+const TO_TOP_AFTER_PX = 400
+
+/**
+ * Back to the top: a round button pinned outside the layout, 24px in from the
+ * viewport's right and bottom. It fades in once there's somewhere to go back
+ * to; the page's smooth scroll carries the nav card's picture back with it.
+ */
+function ToTopButton() {
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    const check = () => setShown(window.scrollY > TO_TOP_AFTER_PX)
+    check()
+    window.addEventListener("scroll", check, { passive: true })
+    return () => window.removeEventListener("scroll", check)
+  }, [])
+
+  return (
+    <button
+      type="button"
+      aria-label="Back to top"
+      onClick={() => window.scrollTo({ top: 0 })}
+      className={`fixed right-6 bottom-6 z-[90] flex size-11 cursor-pointer items-center justify-center rounded-full bg-black text-white transition-[opacity,translate,background-color] duration-300 hover:bg-neutral-800 ${
+        shown ? "opacity-100" : "pointer-events-none translate-y-2 opacity-0"
+      }`}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className="size-5"
+      >
+        <path d="M12 19V5M5 12l7-7 7 7" />
+      </svg>
+    </button>
+  )
+}
+
 /**
  * Left nav + content column. The nav sits in its document's index card — same
  * tray, same date on its lip — which sticks to the top of the viewport. Under
@@ -513,12 +568,17 @@ export function HandoffShell({
   children: ReactNode
 }) {
   const [active, setActive] = useState(items[0]?.id ?? "")
+  // Set while a nav click's smooth scroll is under way: the clicked item is
+  // already active, and the spy holds off so the highlight doesn't step
+  // through every section the page glides past.
+  const clickLockRef = useRef<string | null>(null)
 
   useEffect(() => {
     // A scroll spy rather than IntersectionObserver: sections here are taller
     // than the viewport, so "which heading did I last pass" is the question,
     // and a third-of-viewport line answers it directly.
     const spy = () => {
+      if (clickLockRef.current) return
       const line = window.innerHeight * 0.33
       let best = items[0]?.id ?? ""
       for (const item of items) {
@@ -555,6 +615,41 @@ export function HandoffShell({
     }
   }, [])
 
+  const onNavClick = (id: string) => {
+    setActive(id)
+    clickLockRef.current = id
+    const release = () => {
+      window.removeEventListener("scrollend", release)
+      window.clearTimeout(fallback)
+      clickLockRef.current = null
+    }
+    window.addEventListener("scrollend", release)
+    // Safari has no scrollend yet; long enough for any smooth scroll here.
+    const fallback = window.setTimeout(release, NAV_CLICK_LOCK_MS)
+  }
+
+  // The active item's ground is one element that slides to whichever item is
+  // active, rather than each item switching its own background on and off.
+  const highlightRef = useRef<HTMLSpanElement>(null)
+  useLayoutEffect(() => {
+    const nav = navRef.current
+    const highlight = highlightRef.current
+    if (!nav || !highlight) return
+    const place = () => {
+      const link = nav.querySelector<HTMLElement>(`[data-nav="${active}"]`)
+      if (!link) return
+      highlight.style.top = `${link.offsetTop}px`
+      highlight.style.left = `${link.offsetLeft}px`
+      highlight.style.width = `${link.offsetWidth}px`
+      highlight.style.height = `${link.offsetHeight}px`
+    }
+    place()
+    // First placement lands without a slide; every move after it glides.
+    requestAnimationFrame(() => highlight.classList.add("ho-nav-glide"))
+    window.addEventListener("resize", place)
+    return () => window.removeEventListener("resize", place)
+  }, [active])
+
   const entry = ENTRIES.find(e => e.slug === slug)
   if (!entry) throw new Error(`No handoff entry for "${slug}" in handoff-entries.tsx`)
 
@@ -577,23 +672,30 @@ export function HandoffShell({
                 moreBelow
                   ? "[mask-image:linear-gradient(to_bottom,black_calc(100%-48px),transparent)]"
                   : ""
-              } ho-noscrollbar flex min-h-0 flex-col gap-0.5 overflow-y-auto pb-1 max-[900px]:sticky max-[900px]:top-0 max-[900px]:z-[80] max-[900px]:mx-[-22px] max-[900px]:flex-row max-[900px]:items-center max-[900px]:overflow-x-auto max-[900px]:overflow-y-hidden max-[900px]:border-b max-[900px]:border-[var(--ho-line)] max-[900px]:bg-[var(--ho-ground)] max-[900px]:px-[22px] max-[900px]:py-2.5`}
+              } ho-noscrollbar relative flex min-h-0 flex-col gap-0.5 overflow-y-auto pb-1 max-[900px]:sticky max-[900px]:top-0 max-[900px]:z-[80] max-[900px]:mx-[-22px] max-[900px]:flex-row max-[900px]:items-center max-[900px]:overflow-x-auto max-[900px]:overflow-y-hidden max-[900px]:border-b max-[900px]:border-[var(--ho-line)] max-[900px]:bg-[var(--ho-ground)] max-[900px]:px-[22px] max-[900px]:py-2.5`}
             >
+              <span
+                ref={highlightRef}
+                aria-hidden="true"
+                className="absolute rounded-lg bg-neutral-100 max-[900px]:rounded-full"
+              />
               {items.map(item => {
                 const on = active === item.id
                 return (
                   <a
                     key={item.id}
                     href={`#${item.id}`}
-                    className={`flex items-baseline gap-2.5 rounded-lg px-3.5 py-2 text-[14px] no-underline transition-colors max-[900px]:flex-none max-[900px]:rounded-full max-[900px]:px-3 max-[900px]:py-1.5 max-[900px]:whitespace-nowrap ${
+                    data-nav={item.id}
+                    onClick={() => onNavClick(item.id)}
+                    className={`relative flex items-center gap-2.5 rounded-lg px-3.5 py-2 text-[14px] no-underline transition-colors duration-300 max-[900px]:flex-none max-[900px]:rounded-full max-[900px]:px-3 max-[900px]:py-1.5 max-[900px]:whitespace-nowrap ${
                       on
-                        ? "bg-[var(--ho-thread-faint)] font-semibold text-[var(--ho-thread-ink)]"
-                        : "text-[var(--ho-muted)] hover:bg-black/[0.03] hover:text-[var(--ho-ink)]"
+                        ? "font-semibold text-black"
+                        : "text-[var(--ho-muted)] hover:bg-neutral-100 hover:text-[var(--ho-ink)]"
                     }`}
                   >
                     <span
-                      className={`min-w-5 font-[family-name:var(--ho-mono)] text-[12px] transition-colors ${
-                        on ? "text-[var(--ho-thread-ink)]" : "text-[var(--ho-line-strong)]"
+                      className={`min-w-5 font-[family-name:var(--ho-mono)] text-[12px] transition-colors duration-300 ${
+                        on ? "text-black" : "text-[var(--ho-muted)]"
                       }`}
                     >
                       {item.mark}
@@ -612,9 +714,9 @@ export function HandoffShell({
                 href={l.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-baseline gap-2.5 rounded-lg px-3.5 py-2 text-[14px] text-[var(--ho-muted)] no-underline transition-colors hover:bg-black/[0.03] hover:text-[var(--ho-ink)]"
+                className="flex items-baseline gap-2.5 rounded-lg px-3.5 py-2 text-[14px] text-[var(--ho-muted)] no-underline transition-colors hover:bg-neutral-100 hover:text-[var(--ho-ink)]"
               >
-                <span className="min-w-5 font-[family-name:var(--ho-mono)] text-[12px] text-[var(--ho-line-strong)]">
+                <span className="min-w-5 font-[family-name:var(--ho-mono)] text-[12px] text-[var(--ho-muted)]">
                   ↗
                 </span>
                 {l.label}
@@ -627,6 +729,7 @@ export function HandoffShell({
       <div className="min-w-0 max-w-[660px] max-[900px]:mx-auto">
         {children}
       </div>
+      <ToTopButton />
     </div>
   )
 }
@@ -641,7 +744,8 @@ export function HandoffHeader({
   title: string
   /** Optional — a title that already says it needs no second sentence. */
   lede?: ReactNode
-  actions: { label: string; href: string; ghost?: boolean }[]
+  /** `live`: a pulsing dot before the label — the link goes to something running. */
+  actions: { label: string; href: string; ghost?: boolean; live?: boolean }[]
 }) {
   return (
     <header className="pt-[60px] pb-9">
@@ -660,13 +764,16 @@ export function HandoffHeader({
             href={a.href}
             target="_blank"
             rel="noopener noreferrer"
-            className={`inline-flex cursor-pointer items-center gap-2.5 rounded-full border border-[var(--ho-thread-ink)] px-5 py-[11px] font-[family-name:var(--ho-mono)] text-[15px] font-semibold no-underline transition-colors ${
-              a.ghost
-                ? "bg-transparent text-[var(--ho-thread-ink)] hover:bg-[var(--ho-thread-soft)]"
-                : "bg-[var(--ho-thread-ink)] text-white hover:bg-[#8f3319]"
-            }`}
+            className={`${BUTTON} ${a.ghost ? BUTTON_OUTLINE : BUTTON_SOLID} px-5 py-[11px] text-[14px]`}
           >
             {a.label}
+            {a.live && (
+              // After the label, 14px from it: the button's gap-2 (8px) plus ml-1.5.
+              <span aria-hidden="true" className="relative ml-1.5 flex size-2 flex-none">
+                <span className="ho-live-ping absolute inset-0 rounded-full bg-indigo-400" />
+                <span className="relative size-2 rounded-full bg-indigo-600" />
+              </span>
+            )}
           </a>
         ))}
       </div>

@@ -80,7 +80,7 @@ export const ENTRIES: Entry[] = [
     problem:
       "“How much do I save if I order more? What does one shirt really cost me?” — the discounts and the per-item price are hard to find and hard to work out.",
     created: "2026-08-28",
-    updated: { date: "October 29, 2026", time: "12:01 PM" },
+    updated: { date: "October 29, 2026", time: "12:54 PM" },
     status: "live",
     tint: TINTS.red,
   },
@@ -91,7 +91,7 @@ export const ENTRIES: Entry[] = [
     problem:
       "“I want my text in an arc, like on a team or college shirt.” — there's no way to bend a text in the designer.",
     created: "2026-09-03",
-    updated: { date: "October 29, 2026", time: "12:01 PM" },
+    updated: { date: "October 29, 2026", time: "12:54 PM" },
     status: "live",
     tint: TINTS.indigo,
   },
@@ -102,7 +102,7 @@ export const ENTRIES: Entry[] = [
     problem:
       "“Where do I switch to embroidery?” — the canvas controls are scattered across its corners, and print technique has no clear place among them.",
     created: "2026-10-23",
-    updated: { date: "October 29, 2026", time: "12:01 PM" },
+    updated: { date: "October 29, 2026", time: "12:54 PM" },
     status: "live",
     tint: TINTS.mauve,
   },
@@ -112,7 +112,7 @@ export const ENTRIES: Entry[] = [
 // lip underneath — the index card, and the document's nav column.
 export const TRAY_CLASS = "flex flex-col rounded-[24px] border p-1.5 pb-0"
 export const CARD_CLASS =
-  "flex flex-col rounded-[18px] bg-[var(--ho-paper)] p-2.5 shadow-[0_2px_10px_rgba(26,24,19,0.06)]"
+  "flex flex-col rounded-[18px] bg-[var(--ho-paper)] p-2.5 shadow-[0_2px_10px_rgba(0,0,0,0.06)]"
 
 export function trayStyle(entry: Entry) {
   return { background: entry.tint.tray, borderColor: entry.tint.line }

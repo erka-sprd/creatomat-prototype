@@ -50,7 +50,7 @@ function Labelled({
         className={`self-start rounded-full px-3 py-1 font-[family-name:var(--ho-mono)] text-[12px] font-bold ${
           tone === "old"
             ? "bg-[var(--ho-ground)] text-[var(--ho-muted)]"
-            : "bg-[var(--ho-thread-soft)] text-[var(--ho-thread-ink)]"
+            : "bg-green-100 text-green-700"
         }`}
       >
         {label}

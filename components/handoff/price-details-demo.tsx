@@ -26,7 +26,7 @@ export function PriceDetailsDemo() {
       <button
         type="button"
         onClick={() => setCompareOpen(true)}
-        className="mb-8 cursor-pointer rounded-full border border-[var(--ho-line)] bg-[var(--ho-ground)] px-4 py-2 font-[family-name:var(--ho-mono)] text-[13px] font-bold text-[var(--ho-thread-ink)] transition-colors hover:border-[var(--ho-thread-ink)]"
+        className="mb-8 cursor-pointer rounded-full border border-[var(--ho-line)] bg-[var(--ho-ground)] px-4 py-2 font-[family-name:var(--ho-mono)] text-[13px] font-bold text-green-700 transition-colors hover:border-green-700"
       >
         Compare with the old version
       </button>

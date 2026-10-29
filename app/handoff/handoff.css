@@ -1,31 +1,36 @@
 /* ---------------------------------------------------------------------------
    Handoff documents — /handoff/*
    ---------------------------------------------------------------------------
-   A reading surface, deliberately apart from the product UI it specifies: warm
-   paper ground, a single thread-red accent, mono kickers. The product replicas
-   inside it use the app's own tokens and classes, so the two never blur into
-   each other.
+   A reading surface, deliberately apart from the product UI it specifies: a
+   flat grey ground, hard black rules, Tailwind's green as the one accent, mono
+   kickers. The product replicas inside it use the app's own tokens and
+   classes, so the two never blur into each other.
 
-   Tokens only. Everything else is Tailwind, so the replicas can be pasted
-   straight out of components/designer.tsx and keep working.
+   Neutral tokens only — the accent is Tailwind's green, used as classes.
+   Everything else is Tailwind too, so the replicas can be pasted straight out
+   of components/designer.tsx and keep working.
 --------------------------------------------------------------------------- */
 
 /* On :root, not on .handoff: the code-tip drawer and any other Radix content is
    portalled to <body>, outside the page wrapper, and would otherwise resolve
    none of these. */
 :root {
-    --ho-ground: #f7f6f2;
+    --ho-ground: #ededea;
     --ho-paper: #ffffff;
-    --ho-ink: #1a1813;
-    --ho-muted: #5c5a52;
-    --ho-line: #e0ded6;
-    --ho-line-strong: #d3d0c5;
-    --ho-thread: #c4462a;
-    --ho-thread-ink: #a63a1f;
-    --ho-thread-soft: #f7e6e0;
-    /* Two steps lighter than -soft: the selected nav item's ground. */
-    --ho-thread-faint: #fbf2ef;
-    --ho-slate: #33384a;
+    --ho-ink: #000000;
+    --ho-muted: #4d4d4d;
+    --ho-line: #d4d4d0;
+    /* Section rules: one tone darker than the ground, no more. */
+    --ho-line-strong: #d9d9d4;
+    /* The accent is Tailwind's own green, used as classes in the components:
+       green-400 for fills and highlights, green-700 for text on white,
+       green-100 for a pale ground. */
+    /* An inline token's ground, and a quiet control's hover. */
+    --ho-chip: #e4e4e0;
+    --ho-chip-hover: #d8d8d3;
+    --ho-slate: #1f1f1f;
+    /* The demos' white frame. */
+    --ho-specimen: #ffffff;
     --ho-hit-ink: #35509e;
     --ho-hit-soft: #e6ecf8;
     --ho-hit-line: #ccd7ef;
@@ -38,10 +43,29 @@
     color: var(--ho-ink);
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
+}
+/* The page scrolls the document, not .handoff, so smooth scrolling has to sit
+   on <html> — only on handoff pages. A nav click then glides rather than
+   jumps, and the nav card's picture, title and back link, all driven by the
+   scroll position, collapse along with it instead of snapping. */
+html:has(.handoff) {
     scroll-behavior: smooth;
 }
+
+/* The nav's active ground, gliding from item to item — added after its first
+   placement, so the page doesn't open on it sliding in. */
+.ho-nav-glide {
+    transition-property: top, left, width, height;
+    transition-duration: 450ms;
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
 @media (prefers-reduced-motion: reduce) {
-    .handoff {
+    .ho-nav-glide {
+        transition: none;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    html:has(.handoff) {
         scroll-behavior: auto;
     }
 }
@@ -325,5 +349,27 @@
     .ho-art-technique,
     .ho-art-tick {
         animation: none;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   The "See prototype" button's live dot. Tailwind's animate-ping, at half the
+   speed (2s, not 1s) and twice the reach (scale 4, not 2).
+--------------------------------------------------------------------------- */
+@keyframes ho-live-ping {
+    75%,
+    100% {
+        scale: 4;
+        opacity: 0;
+    }
+}
+.ho-live-ping {
+    opacity: 0.75;
+    animation: ho-live-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .ho-live-ping {
+        animation: none;
+        opacity: 0;
     }
 }

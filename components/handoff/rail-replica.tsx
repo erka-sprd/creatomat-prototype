@@ -1617,7 +1617,7 @@ function StagedRail({
             {sheetNote && open && (
               <div
                 aria-hidden
-                className="absolute bottom-full left-full mb-1 ml-4 flex w-8 flex-col items-center text-[var(--ho-thread-ink)]"
+                className="absolute bottom-full left-full mb-1 ml-4 flex w-8 flex-col items-center text-green-700"
                 style={{ height: sheetHeight }}
               >
                 <span className="h-0.5 w-3 shrink-0 bg-current" />

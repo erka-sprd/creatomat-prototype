@@ -22,7 +22,8 @@ components/handoff/<slug>.tsx           the document body (client)
 ## The document
 
 Two typographic worlds share the page and must stay distinguishable: the
-document (paper ground, mono kickers, thread-red accent — the `--ho-*` tokens)
+document (grey ground, mono kickers, Tailwind green accent — the `--ho-*`
+tokens plus `green-400` / `green-700` / `green-100` classes)
 and the product replicas inside it, which keep the app's own classes. Never
 style a replica with document tokens, and never let document CSS reach into one.
 

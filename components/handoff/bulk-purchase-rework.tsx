@@ -52,15 +52,15 @@ const TIER_STATES = [
 
 const NAV: NavItem[] = [
   { id: "brief", mark: "◆", label: "Problem & Hypotheses" },
-  { id: "live", mark: "◉", label: "Layout shift" },
-  { id: "s1", mark: "§1", label: "Product title" },
-  { id: "s2", mark: "§2", label: "Details link" },
-  { id: "s3", mark: "§3", label: "Stock signals" },
-  { id: "s4", mark: "§4", label: "Size & basket" },
-  { id: "s5", mark: "§5", label: "Price & discount" },
-  { id: "s6", mark: "§6", label: "Discount tiers" },
-  { id: "s7", mark: "§7", label: "Size guide" },
-  { id: "s8", mark: "§8", label: "Calculator" },
+  { id: "live", mark: "1", label: "Layout shift" },
+  { id: "s1", mark: "2", label: "Product title" },
+  { id: "s2", mark: "3", label: "Details link" },
+  { id: "s3", mark: "4", label: "Stock signals" },
+  { id: "s4", mark: "5", label: "Size & basket" },
+  { id: "s5", mark: "6", label: "Price & discount" },
+  { id: "s6", mark: "7", label: "Discount tiers" },
+  { id: "s7", mark: "8", label: "Size guide" },
+  { id: "s8", mark: "9", label: "Calculator" },
 ]
 
 export default function BulkPurchaseRework() {
@@ -78,7 +78,7 @@ export default function BulkPurchaseRework() {
       <HandoffHeader
         title="Bulk purchase rail, reworked"
         actions={[
-          { label: "See prototype", href: PROTOTYPE },
+          { label: "See prototype", href: PROTOTYPE, live: true },
           { label: "See repo", href: REPO, ghost: true },
         ]}
       />
@@ -120,6 +120,7 @@ export default function BulkPurchaseRework() {
 
       {/* ------------------------------------------------------------ live */}
       <Section id="live">
+        <Kicker>§1 · Layout shift</Kicker>
         <SectionHead title="Layout shift" />
         {/* The rail is 470px wide whatever the page is; on a narrow screen the
             demo scrolls sideways rather than squeezing it out of spec. */}

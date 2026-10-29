@@ -46,11 +46,11 @@ const UNISEX_HOODIE_ID = "1047" // Unisex Hoodie — has a Close-up view
 
 const NAV: NavItem[] = [
   { id: "brief", mark: "◆", label: "Problem & Hypotheses" },
-  { id: "live", mark: "◉", label: "One row" },
-  { id: "s1", mark: "§1", label: "Zoom" },
-  { id: "s2", mark: "§2", label: "Product views" },
-  { id: "s3", mark: "§3", label: "Print technique" },
-  { id: "s4", mark: "§4", label: "Print technique, static" },
+  { id: "live", mark: "1", label: "One row" },
+  { id: "s1", mark: "2", label: "Zoom" },
+  { id: "s2", mark: "3", label: "Product views" },
+  { id: "s3", mark: "4", label: "Print technique" },
+  { id: "s4", mark: "5", label: "Print technique, static" },
 ]
 
 const noop = () => {}
@@ -196,7 +196,7 @@ export default function CanvasBottomRow() {
       <HandoffHeader
         title="Canvas controls, in one row"
         actions={[
-          { label: "See prototype", href: PROTOTYPE },
+          { label: "See prototype", href: PROTOTYPE, live: true },
           { label: "See repo", href: REPO, ghost: true },
         ]}
       />
@@ -242,6 +242,7 @@ export default function CanvasBottomRow() {
 
       {/* ------------------------------------------------------------ live */}
       <Section id="live">
+        <Kicker>§1 · One row</Kicker>
         <SectionHead title="One row - zoom, product views, print technique" />
         <p>Live: zoom, pick a view, switch the technique</p>
         <Demo padding="p-3.5" className="overflow-x-auto">
@@ -257,7 +258,7 @@ export default function CanvasBottomRow() {
 
       {/* -------------------------------------------------------------- §1 */}
       <Section id="s1">
-        <Kicker>§1 · Zoom</Kicker>
+        <Kicker>§2 · Zoom</Kicker>
         <SectionHead title="Zoom - minus, percentage, plus" />
         <p>0% fitted, 100% at the closest zoom. A button that can&rsquo;t act is greyed out</p>
         <Demo padding="p-3.5" className="overflow-x-auto">
@@ -284,7 +285,7 @@ export default function CanvasBottomRow() {
 
       {/* -------------------------------------------------------------- §2 */}
       <Section id="s2">
-        <Kicker>§2 · Product views</Kicker>
+        <Kicker>§3 · Product views</Kicker>
         <SectionHead title="Product views - circles, preview on hover" />
         <p>Selected, hovered with its preview, and default</p>
         {/* Room above the strip for the preview, which opens upward. The §2
@@ -329,7 +330,7 @@ export default function CanvasBottomRow() {
 
       {/* -------------------------------------------------------------- §3 */}
       <Section id="s3">
-        <Kicker>§3 · Print technique</Kicker>
+        <Kicker>§4 · Print technique</Kicker>
         <SectionHead title="Print technique - dropdown with icons" />
         <p>Opens upward, the current one ticked</p>
         {/* Room above the button for the menu. */}
@@ -358,7 +359,7 @@ export default function CanvasBottomRow() {
 
       {/* -------------------------------------------------------------- §4 */}
       <Section id="s4">
-        <Kicker>§4 · Print technique, static</Kicker>
+        <Kicker>§5 · Print technique, static</Kicker>
         <SectionHead title="Print technique - static, name and icon" />
         <p>Not a dropdown: it only names the current technique</p>
         <Demo padding="p-3.5" className="overflow-x-auto">
