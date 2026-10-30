@@ -72,9 +72,12 @@ import MobileDock from "@/components/mobile/mobile-dock"
 import {
   EmbroideryMaxSizeBadge,
   EmbroideryPreviewStatus,
+  EmbroideryIssueDock,
   EmbroiderySizeBadge,
+  SWAP_DELAY_MS,
   ThinLineHelpPopover,
   type EmbroideryDesignIssue,
+  type StandardPrintSwitch,
   type EmbroiderySizeStatus,
 } from "@/components/embroidery-label"
 import MobileEditSheet from "@/components/mobile/mobile-edit-sheet"
@@ -314,15 +317,9 @@ const COMPLEX_GRAPHIC_SRC = "/img/graphics/graphics2.png"
 // outlines need 4 cm.
 const DESIGN_MIN_MM: Record<string, number> = {
   "/img/graphics/graphics9.png": 40,
-  // The rose: its minimum is so close to its maximum (12.0 cm on the T-shirt)
-  // that it isn't resized at all (EMBROIDERY_PERFECT_RANGE).
+  // The rose.
   "/img/graphics/graphics11.png": 100,
 }
-// When a design's minimum is within this share of its maximum (9.6 cm against
-// 8.0 cm, say), resizing it isn't offered: it stays at the maximum, and
-// trying shows "Perfect size for embroidery" instead of the min/max stops.
-// A hair over the example's own ratio, so it counts as inside.
-const EMBROIDERY_PERFECT_RANGE = 1 - 8.0 / 9.6 + 0.005
 const designMinMm = (src: string | undefined) =>
   src ? (Object.entries(DESIGN_MIN_MM).find(([s]) => src.endsWith(s))?.[1] ?? null) : null
 
@@ -345,6 +342,9 @@ const HOOP_GUIDE_BLUR_TRANSITION = `filter ${HOOP_GUIDE_BLUR_MS}ms ease-out`
 const HOOP_RESIZE_FIT_TOLERANCE = 0.01
 // How long "Max. size for embroidery" stays after the resize is released.
 const EMBROIDERY_MAX_SIZE_LINGER_MS = 1000
+// How long the green "good size" badge stays once a lone design is brought
+// down to the hoop frame from past it.
+const RECOVERED_GOOD_SIZE_MS = 2000
 // Its exit animation (EmbroideryMaxSizeBadge's duration-150).
 const EMBROIDERY_MAX_SIZE_EXIT_MS = 150
 // The bounce an object gives when its resize runs into the hoop frame: up to
@@ -357,8 +357,9 @@ const HOOP_SLOT_MIN = 0.25
 // How far inside the hoop frame a group is held (hoopGroupMetrics), as a share
 // of it.
 const HOOP_GROUP_MARGIN = 0.005
-const EMBROIDERY_MAX_BOUNCE_SCALE = 1.07
-const EMBROIDERY_MAX_BOUNCE_MS = 360
+// The bounce at the design's minimum size: how far it gives, and for how long.
+const EMBROIDERY_MIN_BOUNCE_SCALE = 0.93
+const EMBROIDERY_MIN_BOUNCE_MS = 360
 
 // Selection frame / corner handle / text-edit edge colours per state: the
 // gizmo blue, the too-large orange and the fits-the-hoop green. Literal class
@@ -1182,15 +1183,10 @@ export default function Designer({
   // Id of the AI graphic that was just snapped back to its maximum size — drives
   // the notice above the object.
   const [aiSizeCappedId, setAiSizeCappedId] = useState<string | null>(null)
-  // Id of the object whose resize just ran into the hoop frame (maxScale) —
-  // drives the "Max. size for embroidery" notice under it.
+  // Id of the object whose resize just ran into its own smallest stitchable
+  // size (hardMinScale) — drives the "Min. size for embroidery" notice under
+  // it. There's no maximum: the hoop guide shows the hoop-frame size instead.
   const [embroideryMaxSizeId, setEmbroideryMaxSizeId] = useState<string | null>(null)
-  // Which limit that notice is about: the hoop frame ("max") or the design's
-  // own smallest stitchable size ("min"). Kept after the notice leaves, so it
-  // doesn't change wording on its way out.
-  const [embroiderySizeLimit, setEmbroiderySizeLimit] = useState<
-    "max" | "min" | "perfect" | null
-  >(null)
   const graphicElementRefs = useRef<Record<string, HTMLElement>>({})
   // Monotonic stacking counter shared across texts and graphics. Every new or
   // freshly-selected element gets the next value so it renders on top.
@@ -1385,23 +1381,14 @@ export default function Designer({
     // object fills the hoop frame. The resize snaps to it and draws it as the
     // green hoop guide. null outside embroidery or without a hoop frame.
     hoopScale: number | null
-    // Embroidery flow, without ?resize=guide: the largest size scale an object
-    // (alone or in a group) may grow to — where it fills the hoop frame, or
-    // its starting size if it was already past that. null when unlimited.
-    maxScale: number | null
-    // Whether reaching maxScale shows "Max. size for embroidery".
-    maxSizeNotice: boolean
-    // Whether the drag is currently pushing against maxScale — the bounce
-    // plays each time it starts to.
-    atMax: boolean
-    // A design's own minimum, held during the drag like the maximum: the size
-    // scale where it reaches its smallest stitchable size (designMinMm).
-    // null for designs without one.
+    // A design's own minimum, held during the drag: the size scale where it
+    // reaches its smallest stitchable size (designMinMm). null for designs
+    // without one. There's no maximum — growing past the hoop frame is
+    // allowed, and the guide and the too-large warning say so.
     hardMinScale: number | null
+    // Whether the drag is currently pushing against hardMinScale — the bounce
+    // plays each time it starts to.
     atMin: boolean
-    // Its minimum and maximum lie within EMBROIDERY_PERFECT_RANGE of each
-    // other: the object isn't resized, but kept at its maximum.
-    sizeLocked: boolean
     // Embroidery flow: the smallest size scale allowed — where the object's
     // shorter side reaches EMBROIDERY_MIN_SIDE_MM. 0 outside embroidery.
     minScale: number
@@ -2375,6 +2362,7 @@ export default function Designer({
     const onDocClick = (e: MouseEvent) => {
       // A drag / resize / pan just ended — ignore the click it produced.
       if (suppressClickRef.current) return
+      if (selectionLockedRef.current) return
       const target = e.target as HTMLElement | null
       if (!target) return
       if (
@@ -2515,45 +2503,28 @@ export default function Designer({
                 )
               : Math.max(MIN_TEXT_FONT_SIZE, rs.initialFontSize * rawScale) /
                 rs.initialFontSize
-          // The maximum, unlike the general minimum, holds during the drag: the
-          // object stops at the hoop-frame size and the notice says why. So does
-          // a design's own minimum (hardMinScale), below which its lines would
-          // be too thin to stitch.
-          let sizeScale =
-            rs.maxScale !== null ? Math.min(unclampedScale, rs.maxScale) : unclampedScale
-          if (rs.hardMinScale !== null) sizeScale = Math.max(sizeScale, rs.hardMinScale)
-          // Running into a limit, the object gives a little — past it and back
-          // — so the stop reads as a wall, not a glitch.
-          const bounce = (to: number) =>
-            (rs.kind === "graphic" ? graphicElementRefs : textElementRefs).current[rs.id]?.animate(
-              [{ scale: "1" }, { scale: String(to) }, { scale: "1" }],
-              { duration: EMBROIDERY_MAX_BOUNCE_MS, easing: "ease-out" }
-            )
-          if (rs.sizeLocked && rs.maxScale !== null) {
-            // Too little room between its minimum and maximum to be worth
-            // resizing: it stays at the maximum, and trying says so — once,
-            // with a bounce, as the drag starts.
-            sizeScale = rs.maxScale
-            if (!rs.atMax) bounce(EMBROIDERY_MAX_BOUNCE_SCALE)
-            rs.atMax = true
-            setEmbroiderySizeLimit("perfect")
-            setEmbroideryMaxSizeId(rs.id)
-          } else {
-            const atMax = rs.maxScale !== null && unclampedScale >= rs.maxScale
-            const atMin = rs.hardMinScale !== null && unclampedScale <= rs.hardMinScale
-            if (atMax && !rs.atMax) bounce(EMBROIDERY_MAX_BOUNCE_SCALE)
-            if (atMin && !rs.atMin) bounce(2 - EMBROIDERY_MAX_BOUNCE_SCALE)
-            rs.atMax = atMax
-            rs.atMin = atMin
-            // The notice shows while the drag pushes past a limit, and goes the
-            // moment it comes back within. The max one for a lone object only
-            // (in a group the combination's warning speaks for the size); the
-            // min one always — nothing else would explain the stop.
-            if (rs.maxScale !== null || rs.hardMinScale !== null) {
-              const limit = atMax && rs.maxSizeNotice ? "max" : atMin ? "min" : null
-              setEmbroiderySizeLimit(limit)
-              setEmbroideryMaxSizeId(limit ? rs.id : null)
+          // No maximum: growing past the hoop frame is allowed, and the hoop
+          // guide and the too-large warning say what that means. A design's own
+          // minimum (hardMinScale) does hold during the drag — below it its
+          // lines would be too thin to stitch.
+          let sizeScale = unclampedScale
+          if (rs.hardMinScale !== null) {
+            sizeScale = Math.max(sizeScale, rs.hardMinScale)
+            const atMin = unclampedScale <= rs.hardMinScale
+            // Running into it, the object gives a little — past it and back —
+            // so the stop reads as a wall, not a glitch.
+            if (atMin && !rs.atMin) {
+              ;(rs.kind === "graphic" ? graphicElementRefs : textElementRefs).current[
+                rs.id
+              ]?.animate(
+                [{ scale: "1" }, { scale: String(EMBROIDERY_MIN_BOUNCE_SCALE) }, { scale: "1" }],
+                { duration: EMBROIDERY_MIN_BOUNCE_MS, easing: "ease-out" }
+              )
             }
+            rs.atMin = atMin
+            // The notice shows while the drag pushes past the minimum, and goes
+            // the moment it comes back within.
+            setEmbroideryMaxSizeId(atMin ? rs.id : null)
           }
           rs.lastSizeScale = sizeScale
           setResizeHoopGuide(
@@ -2809,8 +2780,14 @@ export default function Designer({
   // size (guide smaller than it): an object at or under the maximum — snapped
   // onto it included — needs no guide. resizeHoopGuide itself stays live
   // either way — it drives the frame's green/orange verdict (resizeFitsHoop).
-  const hoopGuideShown = (id: string) =>
-    resizeHoopGuide?.id === id && resizeHoopGuide.ratio < 1 - HOOP_RESIZE_FIT_TOLERANCE
+  // At rest, a lone object measured too large (e.g. just switched to
+  // embroidery) shows the guide too, before any resize; a resize's own guide
+  // takes over from it.
+  const activeHoopGuide = () => resizeHoopGuide ?? restHoopGuide
+  const hoopGuideShown = (id: string) => {
+    const guide = activeHoopGuide()
+    return guide?.id === id && guide.ratio < 1 - HOOP_RESIZE_FIT_TOLERANCE
+  }
   const hoopGuideBlurs = hoopGuideShown
 
   // A box (x, y, w, h) — fractions of whatever it's drawn in — scaled by
@@ -2889,33 +2866,27 @@ export default function Designer({
 
   // A lone object's guide, inside its own box (so it rotates with it).
   const renderHoopGuide = (id: string) => {
-    if (!resizeHoopGuide || !hoopGuideShown(id)) return null
+    const guide = activeHoopGuide()
+    if (!guide || !hoopGuideShown(id)) return null
     return hoopGuideShapes(
       id,
-      resizeHoopGuide.corner,
+      guide.corner,
       { x: 0, y: 0, w: 1, h: 1 },
-      resizeHoopGuide.ratio,
+      guide.ratio,
       "z-20"
     )
   }
 
-  // "Max. size for embroidery" under an object whose resize hit the hoop
-  // frame, in the rotate/move handles' spot (hidden during the resize; z-40
-  // over them once they're back). Mounted for every lone embroidery object so
-  // it can pop in and out.
+  // "Min. size for embroidery" under an object whose resize hit its own
+  // minimum, in the rotate/move handles' spot (hidden during the resize; z-40
+  // over them once they're back). Mounted for every embroidery object so it
+  // can pop in and out.
   const renderEmbroideryMaxSizeNotice = (id: string) =>
     newElementHoopFrame !== null && (
       <div className="pointer-events-none absolute top-full left-1/2 z-40 mt-5 -translate-x-1/2">
         <EmbroideryMaxSizeBadge
           show={embroideryMaxSizeId === id}
-          label={
-            embroiderySizeLimit === "perfect"
-              ? "Perfect size for embroidery"
-              : embroiderySizeLimit === "min"
-                ? "Min. size for embroidery"
-                : "Max. size for embroidery"
-          }
-          icon={embroiderySizeLimit === "perfect" ? "✓" : undefined}
+          label="Min. size for embroidery"
         />
       </div>
     )
@@ -2987,11 +2958,10 @@ export default function Designer({
       }
     }
     const lone = visibleTextElements.length + visibleGraphicElements.length === 1
-    // How far this object can grow before it fills the hoop frame — embroidery,
-    // alone or in a group (the group as a whole is judged by liveGroupBox).
-    // Measured by its ink, as the too-large check is (designBbox), so a
-    // graphic's transparent margins don't stop it short; its box if that's
-    // unknown. The ink scales with the object about the pinned corner, so the
+    // The size scale at which this object fills the hoop frame — where its
+    // guide sits and its resize snaps. Measured by its ink, as the too-large
+    // check is (designBbox), so a graphic's transparent margins don't count;
+    // its box if that's unknown. The ink scales with the object about the pinned corner, so the
     // ratio holds.
     const fillScale = (() => {
       if (newElementHoopFrame === null) return null
@@ -3011,7 +2981,6 @@ export default function Designer({
         ? embroideryHoopFillScale((ink.r - ink.l) / baseW, (ink.b - ink.t) / baseH, newElementHoopFrame)
         : embroideryHoopFillScale(initialWidthPct / 100, initialHeightPct / 100, newElementHoopFrame)
     })()
-    const maxScale = !embroideryResizeGuide && fillScale !== null ? Math.max(1, fillScale) : null
     // The design's own minimum, by its longer side. One already under it
     // can't shrink any further, but may grow.
     const hardMinScale = (() => {
@@ -3024,11 +2993,6 @@ export default function Designer({
       )
       return longerMm > 0 ? Math.min(1, minMm / longerMm) : null
     })()
-    // So little between its minimum and maximum that resizing isn't worth it.
-    const sizeLocked =
-      maxScale !== null &&
-      hardMinScale !== null &&
-      (maxScale - hardMinScale) / maxScale <= EMBROIDERY_PERFECT_RANGE
     setResizeCorner(corner)
     resizeStateRef.current = {
       kind,
@@ -3059,22 +3023,19 @@ export default function Designer({
       // It measures the object's box, as it always has.
       // Lone objects only: with several, the group's frame turns orange or
       // green (liveGroupBox).
+      // Without ?resize=guide, every lone object gets it, by its ink: there's
+      // no maximum, so the guide shows the hoop-frame size whenever the object
+      // grows past it, and the resize snaps onto that size on the way.
       hoopScale:
         embroideryResizeGuide && embroiderySizeWarned && lone && fillScale !== null
           ? embroideryHoopFillScale(initialWidthPct / 100, initialHeightPct / 100, newElementHoopFrame)
-          : null,
-      // Otherwise no object can be enlarged past the hoop frame, alone or in a
-      // group. One already past it (placed that size) can't grow any further,
-      // but may shrink. Whether the group as a whole fits is left to its frame
-      // and warning (groupTooLarge).
-      maxScale,
-      // "Max. size for embroidery" for a lone object only; in a group the
-      // combination's warning speaks for the size, so the stop just bounces.
-      maxSizeNotice: lone,
-      atMax: false,
+          : !embroideryResizeGuide && lone && fillScale !== null
+            ? fillScale
+            : null,
+      // A group grows freely too; whether it fits is left to its frame and
+      // warning (groupTooLarge).
       hardMinScale,
       atMin: false,
-      sizeLocked,
       minScale: (() => {
         const boundary = productData?.printAreas.find(pa => pa.id === currentPrintAreaId)?.boundary
         if (effectivePrintTechnique !== "embroidery" || dtf || !boundary) return 0
@@ -3561,6 +3522,17 @@ export default function Designer({
   // translation (single element, or whole design) leaves it unchanged — used to
   // decide when the stitched render actually needs regenerating.
   const designEls = [...visibleTextElements, ...visibleGraphicElements]
+  const isCombination = designEls.length > 1
+  // A lone design being moved (not resized) is shown plainly: no hoop guide,
+  // arrow, blur or warning colours until it's let go. The size warning stays
+  // up, and no editor bar comes in its place.
+  const movingLoneDesign = draggingElId !== null && !isCombination
+  // A design too large for the hoop frame — set further down, once the live
+  // group verdict is known. Size comes first: no "Creating preview", no
+  // stitched render and no design check, just the warning over the design.
+  const tooLargeRef = useRef(false)
+  // Whether the selection may not be dropped — set with sizeBadgeStatus below.
+  const selectionLockedRef = useRef(false)
   const designMinX = designEls.length ? Math.min(...designEls.map(e => e.x)) : 0
   const designMinY = designEls.length ? Math.min(...designEls.map(e => e.y)) : 0
   // Stacking as a rank, not the raw z: selecting brings an element to the front
@@ -3613,8 +3585,22 @@ export default function Designer({
     if (!shouldEmbroider) {
       setEmbroideryShown(false)
       setEmbroideryLoading(false)
-      // An unfinished hold restarts on the next reveal, so the loader always
-      // gets its full minimum on screen rather than the time left over.
+      // Selected or edited mid-check: the check runs on in the background —
+      // its hold keeps counting (and the render keeps going) — but nothing
+      // shows until the design is let go, when the loader is back for any time
+      // still left, or the result shows straight away. Changing the design in
+      // the meantime makes a new signature, so a new check on deselect.
+      // Outside embroidery, though, an unfinished check is dropped.
+      if (effectivePrintTechnique !== "embroidery" || !designBbox) {
+        setEmbroideryHold(h => (h && !h.done ? null : h))
+      }
+      return
+    }
+    // Left as it is under the warning: a combination framed by the live group
+    // verdict, a lone object with its hoop guide.
+    if (tooLargeRef.current) {
+      setEmbroideryShown(false)
+      setEmbroideryLoading(false)
       setEmbroideryHold(h => (h && !h.done ? null : h))
       return
     }
@@ -3688,14 +3674,14 @@ export default function Designer({
     setResizeFitAfterRelease(null)
   }, [designBbox])
 
-  // Set the first time the too-large badge shows with the stitched preview —
-  // the session's first warning waits for the preview. From then on the
-  // warning shows straight away, a design that fits again earns the green
-  // "good size" badge, and resizes get the hoop guide.
+  // Set the first time the design is measured too large — no preview is made
+  // for it, the warning shows straight away. From then on a design that fits
+  // again earns the green "good size" badge, and resizes get the hoop guide.
   const [embroiderySizeWarned, setEmbroiderySizeWarned] = useState(false)
+  // Too large warns without a preview, so it counts as soon as it's measured.
   useEffect(() => {
-    if (embroideryShown && embroideryTooLarge) setEmbroiderySizeWarned(true)
-  }, [embroideryShown, embroideryTooLarge])
+    if (embroideryTooLarge) setEmbroiderySizeWarned(true)
+  }, [embroideryTooLarge])
 
   // Several objects, live: whenever the stitched preview isn't up to frame them
   // — one of them selected, moved or resized, and through "Creating preview"
@@ -3714,11 +3700,10 @@ export default function Designer({
   const liveGroupWanted =
     effectivePrintTechnique === "embroidery" &&
     !embroideryShown &&
-    // Also with the thin-line warning up, so the combination gets its frame.
-    // Without ?resize=guide always: a group isn't held within the hoop frame
-    // the way a lone object is, so its frame and verdict follow every move.
-    (embroiderySizeWarned || thinLineWarning || !embroideryResizeGuide) &&
-    visibleTextElements.length + visibleGraphicElements.length > 1
+    // Always: a group isn't held within the hoop frame the way a lone object
+    // is, so the moment a move takes it past the frame, the size warning
+    // takes over from the check and the preview.
+    isCombination
   const restFrameWanted =
     effectivePrintTechnique === "embroidery" &&
     embroideryShown &&
@@ -3809,9 +3794,69 @@ export default function Designer({
       gy + gh / 2
     )
   }
+  // Switched to embroidery with a lone design past the hoop frame: it's
+  // selected for the user, ready to resize. Decided on the first measurement
+  // after the switch (designBbox is cleared outside embroidery, so that one
+  // is fresh) — see the effects below the guide.
+  const prevTechniqueRef = useRef(effectivePrintTechnique)
+  const [selectOnMeasure, setSelectOnMeasure] = useState(false)
+  // The corner the resting guide points from: the last corner handle hovered
+  // (or pressed — a press hovers first), so it shows what dragging that handle
+  // would do; bottom-right until then.
+  const [guideCorner, setGuideCorner] = useState<{
+    id: string
+    corner: "nw" | "ne" | "sw" | "se"
+  } | null>(null)
+  // A lone object past the hoop frame: its guide at the hoop-frame size, from
+  // that corner. Measured from the object as it is now — its ink,
+  // unrotated, as the guide sits in its own box — so the guide holds the hoop
+  // frame's size while the object shrinks towards it, and goes once it fits.
+  const restHoopGuide = (() => {
+    const [el] = designEls
+    if (effectivePrintTechnique !== "embroidery" || designEls.length !== 1 || !el) return null
+    if (movingLoneDesign) return null
+    // Not before the design is measured too large and, just after a switch to
+    // embroidery, selected: the guide arrives in the same frame as the
+    // selection and the warning (whose effects run off that measurement).
+    if (!embroideryTooLarge || selectOnMeasure) return null
+    const baseW = printAreaPxSize.width / zoom
+    const baseH = printAreaPxSize.height / zoom
+    if (baseW <= 1 || baseH <= 1) return null
+    const text = visibleTextElements.find(t => t.id === el.id)
+    const ink = text
+      ? (() => {
+          const px = textInkPx(text)
+          return px ? { w: (px.r - px.l) / baseW, h: (px.b - px.t) / baseH } : null
+        })()
+      : (() => {
+          const g = visibleGraphicElements.find(g => g.id === el.id)
+          if (!g) return null
+          const f = graphicInk[g.src] ?? { l: 0, t: 0, r: 1, b: 1 }
+          return { w: ((f.r - f.l) * g.width) / 100, h: ((f.b - f.t) * g.height) / 100 }
+        })()
+    if (!ink) return null
+    const ratio = embroideryHoopFillScale(ink.w, ink.h, newElementHoopFrame)
+    const corner = guideCorner?.id === el.id ? guideCorner.corner : "se"
+    return ratio < 1 ? { id: el.id, corner, ratio } : null
+  })()
+  useEffect(() => {
+    if (prevTechniqueRef.current !== "embroidery" && effectivePrintTechnique === "embroidery") {
+      setSelectOnMeasure(true)
+    }
+    prevTechniqueRef.current = effectivePrintTechnique
+  }, [effectivePrintTechnique])
+  useEffect(() => {
+    if (!selectOnMeasure || !designBbox) return
+    setSelectOnMeasure(false)
+    const [el] = designEls
+    if (!embroideryTooLarge || designEls.length !== 1 || !el) return
+    const isText = visibleTextElements.some(t => t.id === el.id)
+    setSelectedTextId(isText ? el.id : null)
+    setSelectedGraphicId(isText ? null : el.id)
+  }, [selectOnMeasure, designBbox, embroideryTooLarge])
   // The ink of every object in the print area but `exceptId`, as one rect —
   // what the rest of a group spans. null when there's nothing else.
-  const otherObjectsInk = (exceptId: string | null, baseW: number, baseH: number) => {
+  const otherObjectsInk =(exceptId: string | null, baseW: number, baseH: number) => {
     const rects = [
       ...visibleTextElements
         .filter(t => t.id !== exceptId)
@@ -3927,6 +3972,8 @@ export default function Designer({
     liveGroupTooLarge !== null && (embroideryTooLarge || liveGroupTooLarge || groupExceeded)
       ? liveGroupTooLarge
       : null
+  // Read by the preview effect, which runs after this render.
+  tooLargeRef.current = embroideryTooLarge || (isCombination && liveGroupTooLarge === true)
 
   // Badge on the canvas: over the hoop frame, or back within it after a warning.
   // Stays up throughout — stacked under the editor bar while an element is
@@ -3945,8 +3992,7 @@ export default function Designer({
           : "good"
       : effectivePrintTechnique === "embroidery" && designBbox
       ? embroideryTooLarge
-        ? // The first warning of the session waits for the stitched preview;
-          // after that it stays up through loader and selection alike.
+        ? // Up as soon as it's measured, and through selection after.
           embroiderySizeWarned || embroideryShown
           ? "too-large"
           : null
@@ -4015,13 +4061,18 @@ export default function Designer({
   // whichever object of the design is selected.
   // While "Max. size for embroidery" shows, the frame wears its blue —
   // whatever the status — and only then eases to the status colour.
-  const selectionTone: "blue" | "orange" | "green" = embroideryMaxSizeTone
+  // A lone object's green lasts as long as its "good size" badge
+  // (singleRecovered), then eases back to blue with it.
+  const [singleRecovered, setSingleRecovered] = useState(false)
+  const selectionTone: "blue" | "orange" | "green" = embroideryMaxSizeTone || movingLoneDesign
     ? "blue"
     : thinLineShown
     ? "orange"
     : resizeFitsHoop !== null
       ? resizeFitsHoop
-        ? "green"
+        ? singleRecovered
+          ? "green"
+          : "blue"
         : "orange"
       : groupTooLarge !== null
         ? groupTooLarge
@@ -4048,12 +4099,53 @@ export default function Designer({
   // the last issue verdict — may no longer hold, so none of them shows until
   // the result is in (too large, or the issue again).
   const designCheckPending = hasThinLineDesign && embroideryLoading
+  // An added design is placed where the combination still fits, so there's
+  // nothing to confirm: no green badge until the combination has been too
+  // large again.
+  const [goodSizeMuted, setGoodSizeMuted] = useState(false)
+  const designCount = designEls.length
+  const prevDesignCountRef = useRef(designCount)
+  useEffect(() => {
+    if (designCount > prevDesignCountRef.current) setGoodSizeMuted(true)
+    prevDesignCountRef.current = designCount
+    setSingleRecovered(false)
+  }, [designCount])
+  useEffect(() => {
+    if (embroiderySizeStatus === "too-large") setGoodSizeMuted(false)
+  }, [embroiderySizeStatus])
+  // Only coming back from too large: a lone design resized within the hoop
+  // frame all along has nothing to confirm.
+  const wasTooLargeRef = useRef(false)
+  if (embroiderySizeStatus === "too-large") wasTooLargeRef.current = true
+  useEffect(() => {
+    if (!isCombination && resizeFitsHoop === true && wasTooLargeRef.current) {
+      setSingleRecovered(true)
+      wasTooLargeRef.current = false
+    }
+  }, [isCombination, resizeFitsHoop])
+  useEffect(() => {
+    if (embroideryShown || embroiderySizeStatus === "too-large") setSingleRecovered(false)
+  }, [embroideryShown, embroiderySizeStatus])
+  // Said once, then it eases out (the badge's own exit).
+  useEffect(() => {
+    if (!singleRecovered) return
+    const timer = setTimeout(() => setSingleRecovered(false), RECOVERED_GOOD_SIZE_MS)
+    return () => clearTimeout(timer)
+  }, [singleRecovered])
   // The green badge gives way to the thin-line warning the moment it arrives.
+  // A lone design is held to the max. design size, so it's only green when
+  // brought back within the hoop frame from past it.
   const sizeBadgeStatus = designCheckPending
     ? null
-    : embroiderySizeStatus === "good" && thinLineShown
+    : embroiderySizeStatus === "good" &&
+        (thinLineShown || (!isCombination && !singleRecovered) || goodSizeMuted)
       ? null
       : embroiderySizeStatus
+  // A lone design (text or graphic) under "Design too large for embroidery"
+  // stays selected: tapping away doesn't deselect it until it fits. Read by
+  // the deselect handlers, so a ref.
+  selectionLockedRef.current =
+    !isCombination && sizeBadgeStatus === "too-large" && (!!selectedTextId || !!selectedGraphicId)
   // A warning on the canvas means the design can't be embroidered as it is, so
   // add to basket is refused — and each try shakes the warning
   // (embroideryShakeSignal) instead.
@@ -4061,9 +4153,20 @@ export default function Designer({
   // A selected design gets no editor bar while a warning is up (any but the
   // green badge) — the warning holds the top of the canvas instead. A
   // selected text keeps its bar regardless.
-  const graphicEditorBarShown = !!selectedGraphicId && !selectedText && !embroideryBlocksBasket
+  // While a resize is held with a size message up — too large, or the green
+  // "good size" it snaps to — no editor bar either: it comes once the handle
+  // is let go.
+  const sizeMessageResize = resizingElId !== null && sizeBadgeStatus !== null
+  const graphicEditorBarShown =
+    !!selectedGraphicId && !selectedText && !embroideryBlocksBasket && !sizeMessageResize
   // What the canvas badges stack under while it holds the top spot.
-  const editorBarShown = graphicEditorBarShown || !!selectedText
+  // A text keeps its bar, except while it's moved under the size warning, or
+  // resized with a size message up.
+  const textEditorBarShown =
+    !!selectedText &&
+    !(movingLoneDesign && sizeBadgeStatus === "too-large") &&
+    !sizeMessageResize
+  const editorBarShown = graphicEditorBarShown || textEditorBarShown
   const embroideryBadgeStack = editorBarShown
     ? ("editor-bar" as const)
     : embroideryLoading && designBbox
@@ -4765,6 +4868,16 @@ export default function Designer({
     BASE_PRICE + printAreaTotal(decoratedPrintAreaIdList, "standard")
   const embroideryUnitPrice =
     BASE_PRICE + printAreaTotal(decoratedPrintAreaIdList, "embroidery")
+  // The design issue on show, once its check is done — on the badge at the
+  // top, or in the bottom row's place (EmbroideryIssueDock) — and its way
+  // out: switching to standard print, which drops the warning with the
+  // embroidery.
+  const designIssueWarning = thinLineShown && !designCheckPending ? designIssue : null
+  const standardPrintSwitch: StandardPrintSwitch = {
+    price: `${formatEUR(standardPrintUnitPrice)} €`,
+    embroideryPrice: `${formatEUR(embroideryUnitPrice)} €`,
+    onSwitch: () => setPrintTechnique("standard"),
+  }
   const [pendingStandardAdd, setPendingStandardAdd] = useState(false)
   const addAsStandardPrint = () => {
     setThinLineHelpOpen(false)
@@ -5529,7 +5642,7 @@ export default function Designer({
                 if (suppressClickRef.current) return
                 if (e.target !== e.currentTarget) return
                 if (activePanel) setActivePanel(null)
-                setSelectedTextId(null)
+                if (!selectionLockedRef.current) setSelectedTextId(null)
                 setTextColorPanelOpen(false)
                 setFontPanelOpen(false)
                 setCurvePanelOpen(false)
@@ -6088,6 +6201,7 @@ export default function Designer({
                                 <span
                                   key={corner}
                                   style={{ cursor }} onPointerDown={e => startResize(e, el, corner)}
+                                  onPointerEnter={() => setGuideCorner({ id: el.id, corner })}
                                   className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
                                 />
                               )
@@ -6232,6 +6346,7 @@ export default function Designer({
                               <span
                                 key={corner}
                                 style={{ cursor }} onPointerDown={e => startResize(e, el, corner)}
+                                onPointerEnter={() => setGuideCorner({ id: el.id, corner })}
                                 className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
                               />
                             )
@@ -6324,7 +6439,8 @@ export default function Designer({
                             <span
                               key={corner}
                               style={{ cursor }} onPointerDown={e => startResize(e, el, corner, "graphic")}
-                              className={`absolute ${pos} ${cursor} block size-[15px] touch-none rounded-full border-2 ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
+                              onPointerEnter={() => setGuideCorner({ id: el.id, corner })}
+                              className={`absolute ${pos} ${cursor} z-30 block size-[15px] touch-none rounded-full border-2 ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
                             />
                           )
                         })}
@@ -6662,20 +6778,24 @@ export default function Designer({
             <EmbroiderySizeBadge
               status={sizeBadgeStatus}
               stack={embroideryBadgeStack}
-              combination={visibleTextElements.length + visibleGraphicElements.length > 1}
+              combination={isCombination}
               // Shakes only on a refused add to basket — which only happens
               // while a warning shows, so never as the green badge.
               shakeSignal={embroideryShakeSignal}
             />
-            {/* Thin-line warning: arrives in the badge spot with its "See
-                options" row under the message, replacing the green size badge.
-                Shakes when add to basket is refused. */}
+            {/* Thin-line / too-complex warning: arrives in the badge spot with
+                the switch to standard print under the message, replacing the
+                green size badge. Switching drops the warning with the
+                embroidery. Shakes when add to basket is refused. In the merged
+                designer it lives at the bottom on desktop instead
+                (EmbroideryIssueDock), so here it's mobile only. */}
             <EmbroiderySizeBadge
-              status={thinLineShown && !designCheckPending ? designIssue : null}
+              status={designIssueWarning}
               stack={embroideryBadgeStack}
               concealed={thinLineHelpOpen || thinLineHelpPresent}
               shakeSignal={embroideryShakeSignal}
-              onHelp={() => setThinLineHelpOpen(true)}
+              standardSwitch={standardPrintSwitch}
+              className={mergedDesigner ? "dlg:hidden" : ""}
             />
             <ThinLineHelpPopover
               issue={designIssue ?? "thin-line"}
@@ -6765,6 +6885,17 @@ export default function Designer({
                 onPrintTechnique={setPrintTechnique}
                 embroiderySupported={embroiderySupported}
                 showTechnique={!dtf && !csMode}
+                hidden={designIssueWarning !== null}
+                swapDelayMs={SWAP_DELAY_MS}
+              />
+            )}
+            {/* The design-issue warning in the bottom row's place (desktop),
+                swapping with it. */}
+            {mergedDesigner && (
+              <EmbroideryIssueDock
+                issue={designIssueWarning}
+                shakeSignal={embroideryShakeSignal}
+                standardSwitch={standardPrintSwitch}
               />
             )}
 
@@ -7198,7 +7329,7 @@ export default function Designer({
                 layout is untouched there). */}
             <div className="contents max-dlg:hidden">
             <EditorBar
-              show={!!selectedText}
+              show={textEditorBarShown}
               fontSize={selectedText?.fontSize ?? 32}
               fontFamily={selectedText?.fontFamily ?? DEFAULT_FONT_FAMILY}
               color={selectedText?.color ?? "#000000"}
@@ -9328,6 +9459,7 @@ export default function Designer({
           setMobileSizeSheetOpen(true)
         }}
         onUnselect={() => {
+          if (selectionLockedRef.current) return
           setSelectedTextId(null)
           setSelectedGraphicId(null)
         }}

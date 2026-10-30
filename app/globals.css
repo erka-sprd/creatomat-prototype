@@ -821,36 +821,40 @@ body.designer-mobile [contenteditable="true"] {
   -webkit-touch-callout: default;
 }
 
-/* Embroidery "Creating preview" pill: the intro loader's frosted glass — mostly
-   translucent white with faint washes of the createomat red, blue and green —
-   with the washes travelling left to right. The washes sit in one 200%-wide
-   tile repeated sideways, so sliding it a full tile (-200%) loops without a
-   seam. */
-.preview-status-glow {
-  /* The intro loader frame's background, layer for layer (designer.tsx,
-     "Frosted-glass frame"). */
-  background-color: rgba(255, 255, 255, 0.72);
-  background-image:
-    radial-gradient(120% 120% at 0% 0%, rgba(220, 38, 38, 0.08), transparent 58%),
-    radial-gradient(120% 120% at 100% 12%, rgba(77, 82, 210, 0.08), transparent 58%),
-    radial-gradient(120% 120% at 55% 120%, rgba(22, 163, 74, 0.08), transparent 58%);
-  background-size: 200% 100%;
-  background-repeat: repeat-x;
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  animation: preview-status-glow 3s linear infinite;
+/* "Creating preview": a short line circles the pill on its border, in
+   Spreadshirt's main gradient (the component kit's red → indigo → green, as on
+   its gradient button), fading in at its tail. Built like .sprd-spin-border: a
+   rotating conic gradient masked down to a ring over the pill's 1px border. */
+.preview-status-ring {
+  position: relative;
 }
-@keyframes preview-status-glow {
-  from {
-    background-position: 0% 0;
-  }
-  to {
-    background-position: -200% 0;
-  }
+.preview-status-ring::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  padding: 1.5px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--sprd-spin-angle),
+    transparent 0deg 270deg,
+    #dc2626 300deg,
+    #4d52d2 330deg,
+    #16a34a 358deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: sprd-border-spin 2s linear infinite;
+  pointer-events: none;
 }
 @media (prefers-reduced-motion: reduce) {
-  .preview-status-glow {
+  .preview-status-ring::before {
     animation: none;
   }
 }

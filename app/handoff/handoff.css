@@ -352,6 +352,159 @@ html:has(.handoff) {
     }
 }
 
+/* Contact, one 5.5s loop: the menu drops open under the pill, the chevron
+   flips with it, both hold, and it closes. Without motion it is shown open. */
+@keyframes ho-art-menu {
+    0%,
+    20% {
+        opacity: 0;
+        scale: 0.96;
+        translate: 0 -4px;
+    }
+    30%,
+    80% {
+        opacity: 1;
+        scale: 1;
+        translate: 0 0;
+    }
+    90%,
+    100% {
+        opacity: 0;
+        scale: 0.96;
+        translate: 0 -4px;
+    }
+}
+@keyframes ho-art-chev {
+    0%,
+    20% {
+        rotate: 0deg;
+    }
+    30%,
+    80% {
+        rotate: 180deg;
+    }
+    90%,
+    100% {
+        rotate: 0deg;
+    }
+}
+.ho-art-menu {
+    animation: ho-art-menu 5.5s ease-out infinite;
+}
+.ho-art-chev {
+    animation: ho-art-chev 5.5s cubic-bezier(0.32, 0.72, 0, 1) infinite;
+}
+
+/* Zoom, one 7s loop: plus three times, the handle easing up a stop each time
+   and the product growing with it; then minus once, and back to fitted. The
+   buttons flash their hover grey as they are pressed. */
+@keyframes ho-art-zoom-thumb {
+    0%,
+    12% {
+        translate: -50% 0;
+    }
+    18%,
+    32% {
+        translate: -50% -9px;
+    }
+    38%,
+    52% {
+        translate: -50% -21px;
+    }
+    58%,
+    76% {
+        translate: -50% -33px;
+    }
+    86%,
+    100% {
+        translate: -50% 0;
+    }
+}
+@keyframes ho-art-zoom-shirt {
+    0%,
+    12% {
+        scale: 1;
+    }
+    18%,
+    32% {
+        scale: 1.35;
+    }
+    38%,
+    52% {
+        scale: 1.75;
+    }
+    58%,
+    76% {
+        scale: 2.2;
+    }
+    86%,
+    100% {
+        scale: 1;
+    }
+}
+@keyframes ho-art-zoom-plus {
+    0%,
+    10%,
+    16%,
+    30%,
+    36%,
+    50%,
+    56%,
+    100% {
+        background-color: transparent;
+    }
+    12%,
+    14%,
+    32%,
+    34%,
+    52%,
+    54% {
+        background-color: #f5f5f5;
+    }
+}
+@keyframes ho-art-zoom-minus {
+    0%,
+    74%,
+    80%,
+    100% {
+        background-color: transparent;
+    }
+    76%,
+    78% {
+        background-color: #f5f5f5;
+    }
+}
+.ho-art-zoom-thumb {
+    animation: ho-art-zoom-thumb 7s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.ho-art-zoom-shirt {
+    animation: ho-art-zoom-shirt 7s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.ho-art-zoom-plus {
+    animation: ho-art-zoom-plus 7s linear infinite;
+}
+.ho-art-zoom-minus {
+    animation: ho-art-zoom-minus 7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .ho-art-menu,
+    .ho-art-chev,
+    .ho-art-zoom-thumb,
+    .ho-art-zoom-shirt,
+    .ho-art-zoom-plus,
+    .ho-art-zoom-minus {
+        animation: none;
+    }
+    .ho-art-menu {
+        opacity: 1;
+        scale: 1;
+        translate: 0 0;
+    }
+    .ho-art-chev {
+        rotate: 180deg;
+    }
+}
+
 /* ---------------------------------------------------------------------------
    The "See prototype" button's live dot. Tailwind's animate-ping, at half the
    speed (2s, not 1s) and twice the reach (scale 4, not 2).

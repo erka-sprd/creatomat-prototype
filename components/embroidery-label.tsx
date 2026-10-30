@@ -77,31 +77,39 @@ const STACK_PX: Record<CanvasStatusStack, [number, number]> = {
 // each increase shakes the badge once (.embroidery-shake), by remounting the
 // wrapper on a new key. Only an increase does — a badge that appears, hides
 // or changes message never shakes on its own.
-function CanvasStatusSlot({
-  children,
-  stack = null,
-  offsetPx = 0,
-  concealed = false,
-  shakeSignal = 0,
-}: {
-  children: ReactNode
-  stack?: CanvasStatusStack | null
-  offsetPx?: number
-  concealed?: boolean
-  shakeSignal?: number
-}) {
-  const [mobile, desktop] = stack ? STACK_PX[stack] : [0, 0]
-  const extra = offsetPx
+function useShakes(shakeSignal: number) {
   const [shakes, setShakes] = useState(0)
   const lastSignal = useRef(shakeSignal)
   useEffect(() => {
     if (shakeSignal > lastSignal.current) setShakes(n => n + 1)
     lastSignal.current = shakeSignal
   }, [shakeSignal])
+  return shakes
+}
+
+function CanvasStatusSlot({
+  children,
+  stack = null,
+  offsetPx = 0,
+  concealed = false,
+  shakeSignal = 0,
+  className = "",
+}: {
+  children: ReactNode
+  stack?: CanvasStatusStack | null
+  offsetPx?: number
+  concealed?: boolean
+  shakeSignal?: number
+  className?: string
+}) {
+  const [mobile, desktop] = stack ? STACK_PX[stack] : [0, 0]
+  const extra = offsetPx
+  const shakes = useShakes(shakeSignal)
   return (
     <div
       className={
-        "pointer-events-none absolute top-17 left-1/2 z-4 flex -translate-x-1/2 translate-y-(--slot-y) items-center transition-transform duration-300 ease-out select-none dlg:top-6 dlg:h-12 dlg:translate-y-(--slot-y-dlg)" +
+        "pointer-events-none absolute top-17 left-1/2 z-4 flex -translate-x-1/2 translate-y-(--slot-y) items-center transition-transform duration-300 ease-out select-none dlg:top-6 dlg:h-12 dlg:translate-y-(--slot-y-dlg) " +
+        className +
         (concealed ? " invisible" : "")
       }
       style={
@@ -123,8 +131,30 @@ const PILL = "flex items-center rounded-full transition-all duration-300 ease-ou
 const visibility = (show: boolean) =>
   show ? "translate-y-0 opacity-100" : "-translate-y-3 opacity-0"
 
-const PREVIEW_STATUS_CREATING = "Creating preview..."
-const PREVIEW_STATUS_CHECKING = "Checking quality..."
+// The pill's two statements per language. create-omat already translates
+// "creating-preview"; "Checking quality" has no key there yet, so those are
+// placeholders. The prototype is English-only — `?lang=de|fi|es` swaps them in
+// to check the fixed width and the font fit with longer languages.
+type PreviewStatements = { creating: string; checking: string }
+const PREVIEW_STATEMENTS: Record<string, PreviewStatements> = {
+  en: { creating: "Creating preview...", checking: "Checking quality..." },
+  de: { creating: "Vorschau erstellen...", checking: "Qualität wird geprüft..." },
+  fi: { creating: "Esikatselun luominen...", checking: "Laatua tarkistetaan..." },
+  es: { creating: "Creación de vista previa...", checking: "Comprobando la calidad..." },
+}
+function usePreviewStatements(): PreviewStatements {
+  const [lang, setLang] = useState("en")
+  useEffect(() => {
+    setLang(new URLSearchParams(window.location.search).get("lang") ?? "en")
+  }, [])
+  return PREVIEW_STATEMENTS[lang] ?? PREVIEW_STATEMENTS.en
+}
+// The pill's type size, and the least it may shrink to when the longer
+// statement wouldn't fit the canvas otherwise (px).
+const PREVIEW_STATUS_FONT_PX = 14
+const PREVIEW_STATUS_MIN_FONT_PX = 10
+// Kept clear between the pill and the canvas edges (px, both sides together).
+const PREVIEW_STATUS_EDGE_PX = 32
 // How the pill's time is shared: "Creating preview..." types in, holds and is
 // deleted in the first 65%; "Checking quality..." types in during the rest.
 const PREVIEW_STATUS_CREATING_SHARE = 0.65
@@ -141,11 +171,12 @@ const CHECKING_TYPING_SHARE = 0.8
 // laid out up front and each set at its own time from the start, so they
 // don't drift. Restarts each time `active` turns on; kept as it is while it
 // turns off, so the pill doesn't empty out as it retracts.
-function typedPreviewStatusFrames(durationMs: number): { at: number; text: string }[] {
+function typedPreviewStatusFrames(
+  durationMs: number,
+  { creating: first, checking: second }: PreviewStatements
+): { at: number; text: string }[] {
   const creatingMs = durationMs * PREVIEW_STATUS_CREATING_SHARE
   const checkingMs = durationMs - creatingMs
-  const first = PREVIEW_STATUS_CREATING
-  const second = PREVIEW_STATUS_CHECKING
   const firstCharMs = (creatingMs * CREATING_TYPING_SHARE) / (2 * first.length)
   const secondCharMs = (checkingMs * CHECKING_TYPING_SHARE) / second.length
   const frames: { at: number; text: string }[] = []
@@ -162,24 +193,66 @@ function typedPreviewStatusFrames(durationMs: number): { at: number; text: strin
   return frames
 }
 
-function useTypedPreviewStatus(active: boolean, durationMs: number) {
+function useTypedPreviewStatus(
+  active: boolean,
+  durationMs: number,
+  statements: PreviewStatements
+) {
   const [text, setText] = useState("")
   useEffect(() => {
     if (!active) return
     setText("")
-    const timers = typedPreviewStatusFrames(durationMs).map(frame =>
+    const timers = typedPreviewStatusFrames(durationMs, statements).map(frame =>
       window.setTimeout(() => setText(frame.text), frame.at)
     )
     return () => timers.forEach(t => window.clearTimeout(t))
-  }, [active, durationMs])
+  }, [active, durationMs, statements])
   return text
+}
+
+// The type size that lets the longer statement fit the canvas: full size where
+// it does, scaled down (to PREVIEW_STATUS_MIN_FONT_PX at least) where it
+// doesn't. Measured off the text grid, whose width the invisible full
+// statements set; re-measured when the canvas resizes.
+function usePreviewStatusFontPx(
+  pillRef: React.RefObject<HTMLDivElement | null>,
+  sizerRef: React.RefObject<HTMLSpanElement | null>,
+  statements: PreviewStatements
+) {
+  const [fontPx, setFontPx] = useState(PREVIEW_STATUS_FONT_PX)
+  useLayoutEffect(() => {
+    const pill = pillRef.current
+    const sizer = sizerRef.current
+    // The slot is absolute in the canvas, so the canvas is its offsetParent.
+    const canvas = (pill?.offsetParent as HTMLElement | null)?.offsetParent as HTMLElement | null
+    if (!pill || !sizer || !canvas) return
+    const fit = () => {
+      const pad = pill.offsetWidth - sizer.offsetWidth
+      const room = canvas.clientWidth - PREVIEW_STATUS_EDGE_PX - pad
+      // The sizer's width at full size: its current width undone by the
+      // current scale.
+      const current = parseFloat(getComputedStyle(sizer).fontSize) || PREVIEW_STATUS_FONT_PX
+      const natural = (sizer.offsetWidth / current) * PREVIEW_STATUS_FONT_PX
+      const next = Math.max(
+        PREVIEW_STATUS_MIN_FONT_PX,
+        Math.min(PREVIEW_STATUS_FONT_PX, (PREVIEW_STATUS_FONT_PX * room) / natural)
+      )
+      setFontPx(prev => (Math.abs(prev - next) < 0.1 ? prev : next))
+    }
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(canvas)
+    return () => observer.disconnect()
+  }, [pillRef, sizerRef, statements])
+  return fontPx
 }
 
 // create-omat's preview-generation status pill. create-omat also docks it under
 // the editor bar while an element is selected; here the preview only renders
 // once nothing is selected, so it appears as the editor bar leaves — at its own
 // spot, without travelling there from the bar.
-// Dressed as the intro loader (.preview-status-glow); the status is typed in
+// Plain white, a short gradient line circling its border
+// (.preview-status-ring); the status is typed in
 // and out as on create-omat's add to basket (useTypedPreviewStatus). The pill
 // is centred in its slot and the text centred in the pill, so it grows from
 // the centre as letters arrive and shrinks back to it as they go.
@@ -192,28 +265,51 @@ export function EmbroideryPreviewStatus({
   loading: boolean
   durationMs: number
 }) {
-  const text = useTypedPreviewStatus(loading, durationMs)
+  const statements = usePreviewStatements()
+  const text = useTypedPreviewStatus(loading, durationMs, statements)
+  const pillRef = useRef<HTMLDivElement>(null)
+  const sizerRef = useRef<HTMLSpanElement>(null)
+  const fontPx = usePreviewStatusFontPx(pillRef, sizerRef, statements)
+  // Both statements in full, invisible, in the same grid cell as the typed
+  // text: the cell takes the wider one's width, so the pill holds one width in
+  // any language while the text is typed and deleted, centred, inside it.
+  // The cursor's room is in both, so the last letter doesn't push it out.
+  const sizer = (statement: string) => (
+    <span aria-hidden="true" className="invisible [grid-area:1/1]">
+      {statement}|
+    </span>
+  )
+  // Typing the second statement once the text can only be its start.
+  const checking =
+    text.length > 0 && statements.checking.startsWith(text) && !statements.creating.startsWith(text)
   return (
     <CanvasStatusSlot>
       <div
+        ref={pillRef}
         role="status"
         aria-hidden={!loading}
-        aria-label={text.startsWith("Checking") ? PREVIEW_STATUS_CHECKING : PREVIEW_STATUS_CREATING}
+        aria-label={checking ? statements.checking : statements.creating}
         className={
-          PILL + "preview-status-glow gap-2 px-4 py-2.5 text-neutral-700 " + visibility(loading)
+          PILL +
+          "preview-status-ring border border-white bg-white px-4 py-2.5 text-black " +
+          visibility(loading)
         }
       >
-        <span className="text-center text-sm leading-none font-semibold whitespace-nowrap">
-          {text}
-          {/* The typing cursor, as react-type-animation draws it. */}
-          <span aria-hidden="true" className="animate-[curve-caret-blink_1s_infinite]">
-            |
+        <span
+          ref={sizerRef}
+          className="grid leading-none font-semibold whitespace-nowrap"
+          style={{ fontSize: fontPx }}
+        >
+          {sizer(statements.creating)}
+          {sizer(statements.checking)}
+          <span className="text-center [grid-area:1/1]">
+            {text}
+            {/* The typing cursor, as react-type-animation draws it. */}
+            <span aria-hidden="true" className="animate-[curve-caret-blink_1s_infinite]">
+              |
+            </span>
           </span>
         </span>
-        <span
-          aria-hidden="true"
-          className="size-4 shrink-0 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-700"
-        />
       </div>
     </CanvasStatusSlot>
   )
@@ -270,8 +366,8 @@ const SIZE_BADGE = {
 // while an element is selected, "Creating preview" while the stitched render is
 // made — then slides up into the spot once that leaves. `offsetPx` puts it
 // further down, under other badges.
-// The design-issue warnings carry their own "See options" row; `onHelp` is
-// what that opens (ThinLineHelpPopover).
+// The design-issue warnings carry the way out in the same frame: switching to
+// standard print, its price against the embroidery price (`standardSwitch`).
 export function EmbroiderySizeBadge({
   status,
   stack = null,
@@ -279,7 +375,8 @@ export function EmbroiderySizeBadge({
   concealed = false,
   shakeSignal = 0,
   combination = false,
-  onHelp,
+  standardSwitch,
+  className,
 }: {
   status: EmbroiderySizeStatus | null
   stack?: CanvasStatusStack | null
@@ -288,7 +385,9 @@ export function EmbroiderySizeBadge({
   shakeSignal?: number
   /** Several objects: too large reads as the combination being too large. */
   combination?: boolean
-  onHelp?: () => void
+  standardSwitch?: StandardPrintSwitch
+  /** On the slot — e.g. `dlg:hidden` where EmbroideryIssueDock takes over. */
+  className?: string
 }) {
   // Keep the last message on screen while the badge retracts, so it doesn't
   // empty out mid-animation.
@@ -301,16 +400,17 @@ export function EmbroiderySizeBadge({
       offsetPx={offsetPx}
       concealed={concealed}
       shakeSignal={shakeSignal}
+      className={className}
     >
       {/* A one-line badge's 30px box: on desktop the slot centres its content
-          in 48px, so a taller badge (thin-line with "See options") would grow
-          upward into the editor bar. Held to 30px, it keeps the one-line
-          badge's top and grows downward. */}
+          in 48px, so a taller badge (a design issue with its standard-print
+          switch) would grow upward into the editor bar. Held to 30px, it
+          keeps the one-line badge's top and grows downward. */}
       <div className="flex h-[30px] flex-col items-center">
         <SizeBadgePill
           status={status ?? shown}
           hidden={!show}
-          onHelp={onHelp}
+          standardSwitch={standardSwitch}
           label={
             combination && (status ?? shown) === "too-large"
               ? "Combination of designs too large for embroidery"
@@ -319,6 +419,65 @@ export function EmbroiderySizeBadge({
         />
       </div>
     </CanvasStatusSlot>
+  )
+}
+
+// The design-issue warning at the bottom of the canvas (desktop, merged
+// designer), in place of the bottom row: the two swap, the way the editor bar
+// comes and goes — the row slides down out of the canvas, the warning slides
+// up into its spot from below (the canvas clips both), and back the other way
+// once the issue is gone. The one arriving waits SWAP_DELAY_MS, so the two
+// pass rather than overlap. Kept mounted through its exit, holding the last
+// issue so it doesn't empty out on the way down.
+const DOCK_SLIDE_MS = 300
+export const SWAP_DELAY_MS = 150
+
+export function EmbroideryIssueDock({
+  issue,
+  standardSwitch,
+  shakeSignal = 0,
+}: {
+  issue: EmbroideryDesignIssue | null
+  standardSwitch: StandardPrintSwitch
+  shakeSignal?: number
+}) {
+  const show = issue !== null
+  const [shownIssue, setShownIssue] = useState<EmbroideryDesignIssue>(issue ?? "thin-line")
+  if (issue && issue !== shownIssue) setShownIssue(issue)
+  const [mounted, setMounted] = useState(show)
+  const [entered, setEntered] = useState(false)
+  useEffect(() => {
+    if (show) {
+      setMounted(true)
+      let inner = 0
+      const outer = requestAnimationFrame(() => {
+        inner = requestAnimationFrame(() => setEntered(true))
+      })
+      return () => {
+        cancelAnimationFrame(outer)
+        cancelAnimationFrame(inner)
+      }
+    }
+    setEntered(false)
+    const t = setTimeout(() => setMounted(false), DOCK_SLIDE_MS)
+    return () => clearTimeout(t)
+  }, [show])
+  const shakes = useShakes(shakeSignal)
+
+  if (!mounted) return null
+  return (
+    <div
+      aria-hidden={!entered}
+      className={
+        "max-dlg:hidden absolute bottom-6 left-1/2 z-[5] max-w-[calc(100%-48px)] -translate-x-1/2 transition-transform duration-300 ease-out motion-reduce:transition-none " +
+        (entered ? "translate-y-0" : "pointer-events-none translate-y-[calc(100%+2rem)]")
+      }
+      style={{ transitionDelay: entered ? `${SWAP_DELAY_MS}ms` : "0ms" }}
+    >
+      <div key={shakes} className={shakes ? "embroidery-shake" : undefined}>
+        <SizeBadgePill status={shownIssue} standardSwitch={standardSwitch} />
+      </div>
+    </div>
   )
 }
 
@@ -373,36 +532,44 @@ export function EmbroideryMaxSizeBadge({
   )
 }
 
+// A design issue's way out, offered inside its warning: the same design as a
+// standard print, its price against the embroidery price it replaces.
+export type StandardPrintSwitch = {
+  price: string
+  embroideryPrice: string
+  onSwitch: () => void
+}
+
 // One badge pill, also drawn sharp above the blur by ThinLineHelpPopover. A
-// design-issue warning adds a dark grey "See options" row under its message,
-// centred in the badge, the icon staying beside the first line — so it rounds
-// as a box rather than a full pill.
+// design-issue warning adds the standard-print switch under its message — a
+// line of reassurance, then a black CTA and the struck-through embroidery
+// price beside the print price —
+// in the same orange frame, 16px in all round, so it rounds as a box rather
+// than a full pill.
 function SizeBadgePill({
   status,
   hidden = false,
-  helpOpen = false,
-  onHelp,
+  standardSwitch,
   label,
 }: {
   status: EmbroiderySizeStatus
   hidden?: boolean
-  helpOpen?: boolean
-  onHelp?: () => void
+  standardSwitch?: StandardPrintSwitch
   /** In place of the status's own message. */
   label?: string
 }) {
   const badge = SIZE_BADGE[status]
-  const withHelp = isDesignIssue(status)
+  const withSwitch = isDesignIssue(status) && !!standardSwitch
   return (
     <div
       role="status"
       aria-hidden={hidden}
-      data-thin-line-help={withHelp ? "true" : undefined}
+      data-thin-line-help={isDesignIssue(status) ? "true" : undefined}
       className={
+        "flex flex-col items-start border bg-white transition-all duration-300 ease-out " +
         // pl-1.5 matches py-1.5: the icon sits as far from the left edge as
         // from the top (the 16px icon is the first row's tallest item).
-        "flex flex-col items-start border bg-white py-1.5 pr-3 pl-1.5 transition-all duration-300 ease-out " +
-        (withHelp ? "rounded-2xl pb-2 " : "rounded-full ") +
+        (withSwitch ? "gap-3 rounded-2xl p-4 " : "rounded-full py-1.5 pr-3 pl-1.5 ") +
         `${badge.frame} ` +
         visibility(!hidden)
       }
@@ -418,35 +585,36 @@ function SizeBadgePill({
           {label ?? badge.label}
         </span>
       </div>
-      {withHelp && (
-        <button
-          type="button"
-          onClick={onHelp}
-          aria-expanded={helpOpen}
-          tabIndex={hidden ? -1 : 0}
-          className={
-            "mt-1.5 flex items-center self-center gap-0.5 text-sm leading-none font-semibold text-neutral-700 hover:text-neutral-900 " +
-            (hidden ? "" : "pointer-events-auto cursor-pointer")
-          }
-        >
-          {/* The too-complex popover holds instructions rather than options. */}
-          {status === "too-complex" ? "See instructions" : "See options"}
-          {/* Turns to point up while the popover it opens is showing. */}
-          <svg
-            aria-hidden="true"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className={`shrink-0 transition-transform duration-300 ease-out ${helpOpen ? "rotate-180" : ""}`}
+      {withSwitch && (
+        // Separates the warning from its way out — a light tone of the frame's orange.
+        <div aria-hidden="true" className="h-px w-full bg-[#FED7AA]" />
+      )}
+      {withSwitch && (
+        <p className="text-sm leading-snug text-neutral-700">
+          We can print your design in its best quality.
+        </p>
+      )}
+      {withSwitch && (
+        // Wraps the prices under the CTA where the canvas is too narrow for
+        // both on one line.
+        <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <button
+            type="button"
+            onClick={standardSwitch.onSwitch}
+            tabIndex={hidden ? -1 : 0}
+            className={
+              "h-9 rounded-full bg-neutral-900 px-4 text-sm font-semibold whitespace-nowrap text-white transition-colors hover:bg-neutral-700 " +
+              (hidden ? "" : "pointer-events-auto cursor-pointer")
+            }
           >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </button>
+            Switch to standard print
+          </button>
+          {/* The embroidery price it replaces, struck through, over it. */}
+          <p className="flex flex-col items-end gap-0.5 leading-none whitespace-nowrap">
+            <s className="text-xs text-neutral-500">{standardSwitch.embroideryPrice}</s>
+            <span className="text-sm font-bold text-neutral-900">{standardSwitch.price}</span>
+          </p>
+        </div>
       )}
     </div>
   )
@@ -612,7 +780,7 @@ export function ThinLineHelpPopover({
         style={{ left: anchor.centerX, top: anchor.top }}
         onClick={e => e.stopPropagation()}
       >
-        <SizeBadgePill status={issue} helpOpen={entered} onHelp={onClose} />
+        <SizeBadgePill status={issue} />
         <div
           ref={dialogRef}
           role="dialog"

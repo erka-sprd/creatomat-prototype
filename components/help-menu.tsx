@@ -23,9 +23,16 @@ type ContactOption = {
     external?: boolean
 }
 
-const OPTIONS: ContactOption[] = [
+export const CONTACT_OPTIONS: ContactOption[] = [
     { Icon: PhoneIcon, label: "0341 996 59989", sub: "Mo-Fr 9-18 Uhr", href: "tel:+4934199659989" },
 ]
+
+// Hover opens after this long, so a quick pass-over doesn't pop the menu.
+export const HOVER_OPEN_MS = 300
+// Leaving closes after this long — enough to bridge the gap onto the menu.
+export const HOVER_CLOSE_MS = 150
+// A hover-opened menu ignores the clicks that would close it for this long.
+export const CLICK_GUARD_MS = 1000
 
 export default function HelpMenu({ variant = "label" }: { variant?: "label" | "icon" }) {
     const [open, setOpen] = useState(false)
@@ -46,19 +53,19 @@ export default function HelpMenu({ variant = "label" }: { variant?: "label" | "i
         if (closeTimer.current) clearTimeout(closeTimer.current)
         if (open) return // already open (e.g. moving onto the menu) — nothing to schedule
         if (openTimer.current) clearTimeout(openTimer.current)
-        openTimer.current = setTimeout(() => changeOpen(true), 300)
+        openTimer.current = setTimeout(() => changeOpen(true), HOVER_OPEN_MS)
     }
     const hoverClose = () => {
         if (openTimer.current) clearTimeout(openTimer.current) // cancel a pending open
         if (closeTimer.current) clearTimeout(closeTimer.current)
-        closeTimer.current = setTimeout(() => setOpen(false), 150)
+        closeTimer.current = setTimeout(() => setOpen(false), HOVER_CLOSE_MS)
     }
 
     // Hover already opened it — swallow the toggle-close interactions for the
     // first second so a natural hover-then-click doesn't dismiss it immediately.
     // After that, clicking closes it as usual. Radix closes via the trigger's
     // pointer-down AND via the content's outside-interaction, so guard both.
-    const inGrace = () => open && Date.now() - openedAt.current < 1000
+    const inGrace = () => open && Date.now() - openedAt.current < CLICK_GUARD_MS
     const guardEvent = (e: { preventDefault: () => void }) => {
         if (inGrace()) e.preventDefault()
     }
@@ -114,7 +121,7 @@ export default function HelpMenu({ variant = "label" }: { variant?: "label" | "i
                 // sane on narrow viewports.
                 className="flex w-min max-w-[92vw] flex-col overflow-hidden rounded-[12px] border-0 bg-white p-1.5 text-[14px] text-black shadow-lg"
             >
-                {OPTIONS.map(o => (
+                {CONTACT_OPTIONS.map(o => (
                     <Fragment key={o.label}>
                         <DropdownMenuItem
                             asChild

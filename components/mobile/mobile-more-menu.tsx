@@ -40,6 +40,8 @@ type MobileMoreMenuProps = {
     onProductDetails: () => void
     /** Portal host — the gray canvas area, so overlay + sheet stay inside it. */
     container?: HTMLElement | null
+    /** vaul modal mode (default true). false keeps the page around it interactive. */
+    modal?: boolean
 }
 
 const TruckAltIcon = () => (
@@ -108,6 +110,7 @@ export default function MobileMoreMenu({
     onOpenChange,
     onProductDetails,
     container,
+    modal,
 }: MobileMoreMenuProps) {
     const [copied, setCopied] = useState(false)
 
@@ -127,6 +130,7 @@ export default function MobileMoreMenu({
             onOpenChange={onOpenChange}
             title="More Actions"
             container={container}
+            modal={modal}
         >
             {/* Rows are grouped into cards by topic (shipping/returns · product ·
                 contact), separated by gaps — the iOS action-sheet pattern. The

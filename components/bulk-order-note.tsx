@@ -10,14 +10,26 @@ import { useEffect, useRef, useState } from "react"
 // Shared by the desktop Contact dropdown (pinned at its bottom) and the mobile
 // "More Actions" sheet (its own category card at the bottom).
 
-const BULK_PURPLE = "#bfb9fd"
-const BULK_HEADLINE = "Need help ordering 50+ products?"
-const BULK_CTA = "Write to us at:"
-const BULK_EMAIL = "pro@spreadshirt.net"
-const BULK_COPY = "COPY"
-const BULK_NOTE = "We answer in 24 hours, except the weekends."
+export const BULK_PURPLE = "#bfb9fd"
+export const BULK_EMAIL = "pro@spreadshirt.net"
 
-export default function BulkOrderNote({ className = "" }: { className?: string }) {
+export type BulkOrderStrings = { headline: string; cta: string; copy: string; note: string }
+export const BULK_ORDER_STRINGS: BulkOrderStrings = {
+    headline: "Need help ordering 50+ products?",
+    cta: "Write to us at:",
+    copy: "COPY",
+    note: "We answer in 24 hours, except the weekends.",
+}
+
+export default function BulkOrderNote({
+    className = "",
+    strings,
+}: {
+    className?: string
+    /** Another language's wording, for showing how the panel sizes itself. */
+    strings?: Partial<BulkOrderStrings>
+}) {
+    const s = { ...BULK_ORDER_STRINGS, ...strings }
     const [copied, setCopied] = useState(false)
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -76,10 +88,10 @@ export default function BulkOrderNote({ className = "" }: { className?: string }
                 font-bold resolved up to Black — Medium is the one lighter face
                 that exists. */}
             <span className="font-display text-[16px] leading-tight font-medium">
-                {BULK_HEADLINE}
+                {s.headline}
             </span>
             <div className="flex flex-col gap-2">
-                <span className="text-[14px] leading-tight text-neutral-600">{BULK_CTA}</span>
+                <span className="text-[14px] leading-tight text-neutral-600">{s.cta}</span>
                 {/* The address field: a whisper of the panel purple rather than
                     plain white (12% vs the panel's 30%), so it lifts off the
                     card without reading as a different colour. */}
@@ -111,7 +123,7 @@ export default function BulkOrderNote({ className = "" }: { className?: string }
                         aria-label={copied ? "Address copied" : `Copy ${BULK_EMAIL}`}
                         className="relative -my-3 -mr-4 shrink-0 cursor-pointer touch-manipulation py-3 pr-4 pl-4 text-[12px] font-bold tracking-wide whitespace-nowrap transition-opacity hover:opacity-70"
                     >
-                        <span className={copied ? "invisible" : ""}>{BULK_COPY}</span>
+                        <span className={copied ? "invisible" : ""}>{s.copy}</span>
                         {copied && (
                             // Right-aligned with the label's own right edge
                             // (the button's pr-4), vertically centred.
@@ -120,7 +132,7 @@ export default function BulkOrderNote({ className = "" }: { className?: string }
                     </button>
                 </div>
             </div>
-            <span className="text-[13px] leading-tight text-neutral-600">{BULK_NOTE}</span>
+            <span className="text-[13px] leading-tight text-neutral-600">{s.note}</span>
         </div>
     )
 }

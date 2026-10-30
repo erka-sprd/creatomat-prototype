@@ -93,6 +93,8 @@ export function MergedBottomRow({
   embroiderySupported,
   showTechnique = true,
   staticTechnique = false,
+  hidden = false,
+  swapDelayMs = 0,
 }: {
   zoom: number
   maxZoom: number
@@ -109,6 +111,14 @@ export function MergedBottomRow({
   showTechnique?: boolean
   /** Names the current technique instead of offering the dropdown. */
   staticTechnique?: boolean
+  /**
+   * Slid down out of the canvas, which clips it — while something else takes
+   * the spot (the embroidery design-issue warning), as the editor bar comes
+   * and goes. Coming back it waits `swapDelayMs`, so the two pass rather
+   * than overlap.
+   */
+  hidden?: boolean
+  swapDelayMs?: number
 }) {
   return (
     // The equal side columns keep the views at the canvas centre whatever the
@@ -116,8 +126,15 @@ export function MergedBottomRow({
     // controls, so on a narrow canvas only the strip gives way: its
     // fit-content column shrinks and the strip scrolls.
     <div
-      className="max-dlg:hidden pointer-events-none absolute inset-x-6 bottom-6 z-[5] grid items-end gap-3"
-      style={{ gridTemplateColumns: `1fr fit-content(${STRIP_MAX_PX}px) 1fr` }}
+      aria-hidden={hidden}
+      className={
+        "max-dlg:hidden pointer-events-none absolute inset-x-6 bottom-6 z-[5] grid items-end gap-3 transition-transform duration-300 ease-out motion-reduce:transition-none " +
+        (hidden ? "translate-y-[calc(100%+2rem)] [&_*]:pointer-events-none!" : "translate-y-0")
+      }
+      style={{
+        gridTemplateColumns: `1fr fit-content(${STRIP_MAX_PX}px) 1fr`,
+        transitionDelay: hidden ? "0ms" : `${swapDelayMs}ms`,
+      }}
     >
       <div className="pointer-events-auto justify-self-end">
         <ZoomControl
@@ -147,6 +164,13 @@ export function MergedBottomRow({
     </div>
   )
 }
+
+// The zoom buttons' − and +, on a 20×20 viewBox.
+export const ZOOM_ICON_PATH = {
+  plus: "M10.8277 4.06952C10.7796 3.65507 10.4273 3.33337 9.99998 3.33337C9.53974 3.33337 9.16665 3.70647 9.16665 4.16671V9.16671H4.16665L4.06946 9.17231C3.65501 9.22045 3.33331 9.57268 3.33331 10C3.33331 10.4603 3.70641 10.8334 4.16665 10.8334H9.16665V15.8334L9.17225 15.9306C9.22039 16.345 9.57262 16.6667 9.99998 16.6667C10.4602 16.6667 10.8333 16.2936 10.8333 15.8334V10.8334H15.8333L15.9305 10.8278C16.3449 10.7796 16.6666 10.4274 16.6666 10C16.6666 9.5398 16.2935 9.16671 15.8333 9.16671H10.8333V4.16671L10.8277 4.06952Z",
+  minus:
+    "M15.8333 9.16663C16.2935 9.16663 16.6666 9.53972 16.6666 9.99996C16.6666 10.4273 16.3449 10.7795 15.9305 10.8277L15.8333 10.8333H4.16665C3.70641 10.8333 3.33331 10.4602 3.33331 9.99996C3.33331 9.5726 3.65501 9.22037 4.06946 9.17223L4.16665 9.16663H15.8333Z",
+} as const
 
 // The zoom, laid flat: minus, slider, plus — as long as the upright one
 // (180px), its slider the same 88px.
@@ -182,11 +206,7 @@ export function ZoomControl({
           <path
             fillRule="evenodd"
             clipRule="evenodd"
-            d={
-              dir === 1
-                ? "M10.8277 4.06952C10.7796 3.65507 10.4273 3.33337 9.99998 3.33337C9.53974 3.33337 9.16665 3.70647 9.16665 4.16671V9.16671H4.16665L4.06946 9.17231C3.65501 9.22045 3.33331 9.57268 3.33331 10C3.33331 10.4603 3.70641 10.8334 4.16665 10.8334H9.16665V15.8334L9.17225 15.9306C9.22039 16.345 9.57262 16.6667 9.99998 16.6667C10.4602 16.6667 10.8333 16.2936 10.8333 15.8334V10.8334H15.8333L15.9305 10.8278C16.3449 10.7796 16.6666 10.4274 16.6666 10C16.6666 9.5398 16.2935 9.16671 15.8333 9.16671H10.8333V4.16671L10.8277 4.06952Z"
-                : "M15.8333 9.16663C16.2935 9.16663 16.6666 9.53972 16.6666 9.99996C16.6666 10.4273 16.3449 10.7795 15.9305 10.8277L15.8333 10.8333H4.16665C3.70641 10.8333 3.33331 10.4602 3.33331 9.99996C3.33331 9.5726 3.65501 9.22037 4.06946 9.17223L4.16665 9.16663H15.8333Z"
-            }
+            d={dir === 1 ? ZOOM_ICON_PATH.plus : ZOOM_ICON_PATH.minus}
           />
         </svg>
       </button>

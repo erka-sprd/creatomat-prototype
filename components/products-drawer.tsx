@@ -23,15 +23,15 @@ import { cn } from "@/lib/utils"
 import {
   VOLUME_DISCOUNT_BEST_MAX_PERCENTAGE,
   discountedPrice,
-  volumeDiscountPercentage,
+  tileSale,
 } from "@/lib/volume-discount"
 
 const eur = (n: number) => n.toFixed(2).replace(".", ",") + " €"
 
 // Per production: auto-apply the stepper 1s after it stops changing; hold the
 // button spinner for at least 300ms so the (client-side) update is noticeable.
-const AUTO_APPLY_DEBOUNCE_MS = 1000
-const PRICE_UPDATE_SPINNER_MS = 300
+export const AUTO_APPLY_DEBOUNCE_MS = 1000
+export const PRICE_UPDATE_SPINNER_MS = 300
 
 /** ids from the root down to `id` (inclusive), or [] when not found */
 function pathTo(nodes: CategoryNode[], id: string): string[] {
@@ -70,12 +70,6 @@ export default function ProductsDrawer({
   // discount — it has to measure the same figure the tiles display.
   const [orderQuantity, setOrderQuantity] = useState(1)
   const [appliedQuantity, setAppliedQuantity] = useState(1)
-  // The discount a quantity buys depends on the product type — the grid mixes
-  // T-shirts (up to 60%) with totes (40%) and posters (35%), so it is resolved
-  // per tile rather than once for the whole grid.
-  const tileDiscountPct = (productId: string) =>
-    appliedQuantity > 1 ? volumeDiscountPercentage(appliedQuantity, productId) : 0
-
   const filters = useProductFilters(products, appliedQuantity)
 
   // Mobile second-level drawers (filter accordion, sort, price calculator).
@@ -177,15 +171,7 @@ export default function ProductsDrawer({
     return () => observer.disconnect()
   }, [open, isMobile, hasGridPanel, gridPanelNode, productScrollNode])
 
-  // Sale display per production: caption whenever a bulk quantity is applied;
-  // red discounted price + struck original only when a tier is reached.
-  const saleFor = (productId: string) =>
-    appliedQuantity > 1
-      ? {
-          caption: `Estimated price per item for ${appliedQuantity} products`,
-          pct: tileDiscountPct(productId),
-        }
-      : undefined
+  const saleFor = (productId: string) => tileSale(productId, appliedQuantity)
 
   const tileButton = (t: ProductTileData) => {
     const sale = saleFor(t.id)

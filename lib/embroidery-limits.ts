@@ -25,12 +25,21 @@ const HOOP_FRAME_FRACTION_BY_GARMENT: Partial<Record<Garment, number | null>> = 
 // Everything not listed above (socks, pants, bodysuits, home & living, …).
 const DEFAULT_HOOP_FRAME_FRACTION = 1 / 7
 
+// Single products whose hoop frame differs from their garment's, by name.
+const HOOP_FRAME_FRACTION_BY_PRODUCT: Record<string, number | null> = {
+    // Twice the T-shirt's: 15.6 × 19.6 cm on its 39 × 49 cm front.
+    "Men's Premium Organic T-Shirt": 2 / 5,
+}
+
 // A design measured off a rendered bitmap lands a pixel or so over an element
 // sized exactly to the hoop frame; overshoot within this share still fits.
 const HOOP_FRAME_TOLERANCE = 0.01
 
 /** Share of the print area's width/height the hoop frame spans, or null for no limit. */
 export function embroideryHoopFrameFraction(productName: string): number | null {
+    if (productName in HOOP_FRAME_FRACTION_BY_PRODUCT) {
+        return HOOP_FRAME_FRACTION_BY_PRODUCT[productName]
+    }
     const fraction = HOOP_FRAME_FRACTION_BY_GARMENT[deriveGarment(productName)]
     return fraction === undefined ? DEFAULT_HOOP_FRAME_FRACTION : fraction
 }

@@ -113,3 +113,21 @@ export function discountedPrice(price: number, percentage: number): number {
     const discount = percentage ? Math.round(price * percentage) / 100 : 0
     return price - discount
 }
+
+/**
+ * A product tile's sale display at an applied quantity, per create-omat: the
+ * caption whenever a bulk quantity is applied; the discount only once a tier
+ * is reached. Resolved per product type — a grid mixes T-shirts (up to 60%)
+ * with totes (40%) and posters (35%). undefined for a single item.
+ */
+export function tileSale(
+    productId: string,
+    quantity: number
+): { caption: string; pct: number } | undefined {
+    return quantity > 1
+        ? {
+              caption: `Estimated price per item for ${quantity} products`,
+              pct: volumeDiscountPercentage(quantity, productId),
+          }
+        : undefined
+}

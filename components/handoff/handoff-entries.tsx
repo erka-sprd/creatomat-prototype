@@ -8,7 +8,10 @@
 import {
   BulkDiscountArt,
   CanvasRowArt,
+  ContactArt,
   CurveTextArt,
+  PriceCalcArt,
+  ZoomArt,
 } from "@/components/handoff/handoff-card-art"
 
 export type Entry = {
@@ -70,9 +73,63 @@ const TINTS = {
     ink: "#9A5468",
     glow: ["186, 114, 131", "167, 139, 250", "251, 146, 120", "244, 114, 182"],
   },
+  // The bulk-order panel's purple, #BFB9FD, with violet, pink and sky.
+  violet: {
+    tray: "#F2F0FE",
+    line: "#E2DEFB",
+    ink: "#6B5FD6",
+    glow: ["191, 185, 253", "167, 139, 250", "244, 114, 182", "56, 189, 248"],
+  },
+  // The catalogue's light-blue shirt, with sky, teal and lime.
+  sky: {
+    tray: "#EDF5FB",
+    line: "#D6E8F5",
+    ink: "#3A7CA5",
+    glow: ["125, 170, 210", "56, 189, 248", "45, 212, 191", "132, 204, 22"],
+  },
+  // The price field's amber, with orange, the sale red and pink.
+  amber: {
+    tray: "#FEF6E7",
+    line: "#FBE7C0",
+    ink: "#A16207",
+    glow: ["245, 158, 11", "249, 115, 22", "220, 38, 38", "236, 72, 153"],
+  },
 } satisfies Record<string, Tint>
 
 export const ENTRIES: Entry[] = [
+  {
+    Art: PriceCalcArt,
+    slug: "price-calculator",
+    title: "Price calculator, polished",
+    problem:
+      "“I typed 50 — why hasn't the price changed?” — the quantity field is awkward to use, and the tiles give no sign that prices are being recalculated.",
+    created: "2026-07-16",
+    updated: { date: "October 29, 2026", time: "6:30 PM" },
+    status: "live",
+    tint: TINTS.amber,
+  },
+  {
+    Art: ZoomArt,
+    slug: "zoom-slider",
+    title: "Zoom slider, under control",
+    problem:
+      "“Why won't the zoom go where I click?” — the handle only moves when dragged, + and − creep instead of stepping, and the canvas snaps rather than eases.",
+    created: "2026-07-24",
+    updated: { date: "October 29, 2026", time: "6:30 PM" },
+    status: "live",
+    tint: TINTS.sky,
+  },
+  {
+    Art: ContactArt,
+    slug: "contact-customer-service",
+    title: "Contact customer service",
+    problem:
+      "“How do I reach someone about a big order?” — contact is a plain menu, and nothing says where bulk orders should go.",
+    created: "2026-08-05",
+    updated: { date: "October 29, 2026", time: "6:30 PM" },
+    status: "live",
+    tint: TINTS.violet,
+  },
   {
     Art: BulkDiscountArt,
     slug: "bulk-purchase-rework",

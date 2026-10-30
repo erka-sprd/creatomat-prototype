@@ -511,9 +511,9 @@ function PlatformSwitch({
           type="button"
           aria-pressed={value === option}
           onClick={() => onChange(option)}
-          className={`cursor-pointer rounded-full px-3.5 py-1 font-[family-name:var(--ho-mono)] text-[12px] capitalize transition-colors ${
+          className={`cursor-pointer font-semibold rounded-full px-3.5 py-1 text-[14px] capitalize transition-colors ${
             value === option
-              ? "bg-green-700 text-white"
+              ? "bg-black text-white"
               : "text-[var(--ho-muted)] hover:text-[var(--ho-ink)]"
           }`}
         >
