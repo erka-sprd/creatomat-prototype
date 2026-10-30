@@ -3658,8 +3658,25 @@ export default function Designer({
   const embroideryScale = designBbox
     ? embroideryHoopFitScale(designBbox.w, designBbox.h, embroideryHoopFrame)
     : 1
+  // Mocked design issues, by graphic: the pink cat (THIN_LINE_GRAPHIC_SRC) has
+  // lines too thin to stitch, the mountain lake (COMPLEX_GRAPHIC_SRC) is too
+  // complex — which wins when both are in the design, as DESIGN_TOO_COMPLEX
+  // outranks the other precheck verdicts in create-omat.
+  // An issue outranks the size too: a design with one is never "too large"
+  // (nor "good size") — no size badge, hoop guide or size verdict at all, and
+  // its design check runs whatever its size, so the issue shows instead.
+  // None in the DTF version.
+  const designIssue: EmbroideryDesignIssue | null = dtf
+    ? null
+    : visibleGraphicElements.some(g => g.src.endsWith(COMPLEX_GRAPHIC_SRC))
+    ? "too-complex"
+    : visibleGraphicElements.some(g => g.src.endsWith(THIN_LINE_GRAPHIC_SRC))
+      ? "thin-line"
+      : null
+  const hasThinLineDesign = designIssue !== null
+
   // The design is wider or taller than the product's hoop frame.
-  const embroideryTooLarge = embroideryScale < 1
+  const embroideryTooLarge = embroideryScale < 1 && !hasThinLineDesign
 
   // While resizing with the hoop guide up, whether the object fits the hoop
   // frame right now (the guide is at least the object's size). Live, unlike
@@ -3953,7 +3970,9 @@ export default function Designer({
   // The live group verdict — only once the size is in question: the design was
   // too large when last measured, or the group is too large now. null otherwise,
   // leaving the measured verdict (embroideryTooLarge) in charge.
-  const liveGroupTooLarge = liveGroupBox
+  const liveGroupTooLarge = hasThinLineDesign
+    ? null
+    : liveGroupBox
     ? embroideryHoopFitScale(
         (liveGroupInk ?? liveGroupBox).w,
         (liveGroupInk ?? liveGroupBox).h,
@@ -3981,8 +4000,9 @@ export default function Designer({
   // "Creating preview" while the stitched render is made, and in the spot itself
   // once the preview is up. During a guided resize it follows the object live,
   // and with several objects the group (groupTooLarge).
-  const embroiderySizeStatus: EmbroiderySizeStatus | null =
-    resizeFitsHoop !== null
+  const embroiderySizeStatus: EmbroiderySizeStatus | null = hasThinLineDesign
+    ? null
+    : resizeFitsHoop !== null
       ? resizeFitsHoop
         ? "good"
         : "too-large"
@@ -4003,25 +4023,10 @@ export default function Designer({
           : null
       : null
 
-  // Mocked design issues, by graphic: the pink cat (THIN_LINE_GRAPHIC_SRC) has
-  // lines too thin to stitch, the mountain lake (COMPLEX_GRAPHIC_SRC) is too
-  // complex — which wins when both are in the design, as DESIGN_TOO_COMPLEX
-  // outranks the other precheck verdicts in create-omat. The thin-line state
-  // below (thinLineWarning, thinLineShown, …) stands for whichever issue it is.
-  // The warning arrives with a stitched preview of a design that fits the
-  // hoop frame — the first preview, or the one after a resize brought it back
-  // inside — taking the spot "Creating preview" leaves. Once up it stays
-  // through resizes that keep the design within the hoop frame. Being too
-  // large has priority and clears it (see below).
-  // None in the DTF version.
-  const designIssue: EmbroideryDesignIssue | null = dtf
-    ? null
-    : visibleGraphicElements.some(g => g.src.endsWith(COMPLEX_GRAPHIC_SRC))
-    ? "too-complex"
-    : visibleGraphicElements.some(g => g.src.endsWith(THIN_LINE_GRAPHIC_SRC))
-      ? "thin-line"
-      : null
-  const hasThinLineDesign = designIssue !== null
+  // The thin-line state below (thinLineWarning, thinLineShown, …) stands for
+  // whichever design issue it is (designIssue, further up). The warning
+  // arrives with a stitched preview, taking the spot "Creating preview" leaves,
+  // and stays through resizes.
   useEffect(() => {
     if (hasThinLineDesign && embroideryShown && designBbox && !embroideryTooLarge) {
       setThinLineWarning(true)
@@ -4873,6 +4878,10 @@ export default function Designer({
   // out: switching to standard print, which drops the warning with the
   // embroidery.
   const designIssueWarning = thinLineShown && !designCheckPending ? designIssue : null
+  // What the bottom dock shows (merged designer, desktop): a design issue, or
+  // the size — too large, or a good size again — never both, as an issue
+  // mutes the size.
+  const dockedWarning = designIssueWarning ?? sizeBadgeStatus
   const standardPrintSwitch: StandardPrintSwitch = {
     price: `${formatEUR(standardPrintUnitPrice)} €`,
     embroideryPrice: `${formatEUR(embroideryUnitPrice)} €`,
@@ -6782,6 +6791,8 @@ export default function Designer({
               // Shakes only on a refused add to basket — which only happens
               // while a warning shows, so never as the green badge.
               shakeSignal={embroideryShakeSignal}
+              // At the bottom with the others in the merged designer.
+              dockedOnDesktop={mergedDesigner ? ["too-large", "good"] : []}
             />
             {/* Thin-line / too-complex warning: arrives in the badge spot with
                 the switch to standard print under the message, replacing the
@@ -6795,7 +6806,7 @@ export default function Designer({
               concealed={thinLineHelpOpen || thinLineHelpPresent}
               shakeSignal={embroideryShakeSignal}
               standardSwitch={standardPrintSwitch}
-              className={mergedDesigner ? "dlg:hidden" : ""}
+              dockedOnDesktop={mergedDesigner ? ["thin-line", "too-complex"] : []}
             />
             <ThinLineHelpPopover
               issue={designIssue ?? "thin-line"}
@@ -6885,7 +6896,7 @@ export default function Designer({
                 onPrintTechnique={setPrintTechnique}
                 embroiderySupported={embroiderySupported}
                 showTechnique={!dtf && !csMode}
-                hidden={designIssueWarning !== null}
+                hidden={dockedWarning !== null}
                 swapDelayMs={SWAP_DELAY_MS}
               />
             )}
@@ -6893,7 +6904,8 @@ export default function Designer({
                 swapping with it. */}
             {mergedDesigner && (
               <EmbroideryIssueDock
-                issue={designIssueWarning}
+                status={dockedWarning}
+                combination={isCombination}
                 shakeSignal={embroideryShakeSignal}
                 standardSwitch={standardPrintSwitch}
               />

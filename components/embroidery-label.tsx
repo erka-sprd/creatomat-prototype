@@ -376,7 +376,7 @@ export function EmbroiderySizeBadge({
   shakeSignal = 0,
   combination = false,
   standardSwitch,
-  className,
+  dockedOnDesktop = [],
 }: {
   status: EmbroiderySizeStatus | null
   stack?: CanvasStatusStack | null
@@ -386,8 +386,11 @@ export function EmbroiderySizeBadge({
   /** Several objects: too large reads as the combination being too large. */
   combination?: boolean
   standardSwitch?: StandardPrintSwitch
-  /** On the slot — e.g. `dlg:hidden` where EmbroideryIssueDock takes over. */
-  className?: string
+  /**
+   * Statuses EmbroideryIssueDock shows at the bottom on desktop instead — the
+   * badge sits them out there, retracting included, so none flashes up here.
+   */
+  dockedOnDesktop?: EmbroiderySizeStatus[]
 }) {
   // Keep the last message on screen while the badge retracts, so it doesn't
   // empty out mid-animation.
@@ -400,7 +403,7 @@ export function EmbroiderySizeBadge({
       offsetPx={offsetPx}
       concealed={concealed}
       shakeSignal={shakeSignal}
-      className={className}
+      className={dockedOnDesktop.includes(status ?? shown) ? "dlg:hidden" : ""}
     >
       {/* A one-line badge's 30px box: on desktop the slot centres its content
           in 48px, so a taller badge (a design issue with its standard-print
@@ -422,28 +425,32 @@ export function EmbroiderySizeBadge({
   )
 }
 
-// The design-issue warning at the bottom of the canvas (desktop, merged
-// designer), in place of the bottom row: the two swap, the way the editor bar
+// The embroidery badges at the bottom of the canvas (desktop, merged
+// designer) — too large, good size again, and the design issues with their
+// standard-print switch — in place of the bottom row: the two swap, the way the editor bar
 // comes and goes — the row slides down out of the canvas, the warning slides
 // up into its spot from below (the canvas clips both), and back the other way
 // once the issue is gone. The one arriving waits SWAP_DELAY_MS, so the two
 // pass rather than overlap. Kept mounted through its exit, holding the last
-// issue so it doesn't empty out on the way down.
+// warning so it doesn't empty out on the way down.
 const DOCK_SLIDE_MS = 300
 export const SWAP_DELAY_MS = 150
 
 export function EmbroideryIssueDock({
-  issue,
+  status,
   standardSwitch,
   shakeSignal = 0,
+  combination = false,
 }: {
-  issue: EmbroideryDesignIssue | null
+  status: EmbroiderySizeStatus | null
   standardSwitch: StandardPrintSwitch
   shakeSignal?: number
+  /** Several objects: too large reads as the combination being too large. */
+  combination?: boolean
 }) {
-  const show = issue !== null
-  const [shownIssue, setShownIssue] = useState<EmbroideryDesignIssue>(issue ?? "thin-line")
-  if (issue && issue !== shownIssue) setShownIssue(issue)
+  const show = status !== null
+  const [shownStatus, setShownStatus] = useState<EmbroiderySizeStatus>(status ?? "too-large")
+  if (status && status !== shownStatus) setShownStatus(status)
   const [mounted, setMounted] = useState(show)
   const [entered, setEntered] = useState(false)
   useEffect(() => {
@@ -475,7 +482,16 @@ export function EmbroideryIssueDock({
       style={{ transitionDelay: entered ? `${SWAP_DELAY_MS}ms` : "0ms" }}
     >
       <div key={shakes} className={shakes ? "embroidery-shake" : undefined}>
-        <SizeBadgePill status={shownIssue} standardSwitch={standardSwitch} />
+        <SizeBadgePill
+          status={shownStatus}
+          standardSwitch={standardSwitch}
+          docked
+          label={
+            combination && shownStatus === "too-large"
+              ? "Combination of designs too large for embroidery"
+              : undefined
+          }
+        />
       </div>
     </div>
   )
@@ -551,12 +567,15 @@ function SizeBadgePill({
   hidden = false,
   standardSwitch,
   label,
+  docked = false,
 }: {
   status: EmbroiderySizeStatus
   hidden?: boolean
   standardSwitch?: StandardPrintSwitch
   /** In place of the status's own message. */
   label?: string
+  /** In the bottom row's place (EmbroideryIssueDock): the 16px frame, switch or not. */
+  docked?: boolean
 }) {
   const badge = SIZE_BADGE[status]
   const withSwitch = isDesignIssue(status) && !!standardSwitch
@@ -569,7 +588,7 @@ function SizeBadgePill({
         "flex flex-col items-start border bg-white transition-all duration-300 ease-out " +
         // pl-1.5 matches py-1.5: the icon sits as far from the left edge as
         // from the top (the 16px icon is the first row's tallest item).
-        (withSwitch ? "gap-3 rounded-2xl p-4 " : "rounded-full py-1.5 pr-3 pl-1.5 ") +
+        (withSwitch || docked ? "gap-3 rounded-2xl p-4 " : "rounded-full py-1.5 pr-3 pl-1.5 ") +
         `${badge.frame} ` +
         visibility(!hidden)
       }
