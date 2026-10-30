@@ -2783,8 +2783,11 @@ export default function Designer({
   // At rest, a lone object measured too large (e.g. just switched to
   // embroidery) shows the guide too, before any resize; a resize's own guide
   // takes over from it.
+  // Never for a design with a design issue (thin lines, too complex): its
+  // size isn't judged, so there's no size to guide it to.
   const activeHoopGuide = () => resizeHoopGuide ?? restHoopGuide
   const hoopGuideShown = (id: string) => {
+    if (hasThinLineDesign) return false
     const guide = activeHoopGuide()
     return guide?.id === id && guide.ratio < 1 - HOOP_RESIZE_FIT_TOLERANCE
   }
@@ -3682,8 +3685,9 @@ export default function Designer({
   // frame right now (the guide is at least the object's size). Live, unlike
   // embroideryTooLarge, which is measured on deselect. null when no guide.
   // After release it keeps the final verdict until the design is measured again.
-  const resizeFitsHoop =
-    resizeHoopGuide !== null
+  const resizeFitsHoop = hasThinLineDesign
+    ? null
+    : resizeHoopGuide !== null
       ? resizeHoopGuide.ratio >= 1 - HOOP_RESIZE_FIT_TOLERANCE
       : resizeFitAfterRelease
   // A fresh measurement (on deselect) takes over from the resize's verdict.
