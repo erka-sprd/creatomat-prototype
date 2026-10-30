@@ -4060,6 +4060,16 @@ export default function Designer({
     effectivePrintTechnique === "embroidery" &&
     hasThinLineDesign &&
     embroiderySizeStatus !== "too-large"
+  // The moment the warning arrives, the graphic it's about is selected — and
+  // stays so while it's up (selectionLockedRef).
+  const issueGraphicSrc = designIssue === "too-complex" ? COMPLEX_GRAPHIC_SRC : THIN_LINE_GRAPHIC_SRC
+  useEffect(() => {
+    if (!thinLineShown) return
+    const graphic = visibleGraphicElements.find(g => g.src.endsWith(issueGraphicSrc))
+    if (!graphic) return
+    setSelectedTextId(null)
+    setSelectedGraphicId(graphic.id)
+  }, [thinLineShown, issueGraphicSrc])
   // A selected object's frame and corner handles: the gizmo blue normally, the
   // warning orange while the design is too large for embroidery (as last
   // measured on deselect, once the session's first warning has shown), and
