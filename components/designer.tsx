@@ -4151,10 +4151,13 @@ export default function Designer({
       ? null
       : embroiderySizeStatus
   // A lone design (text or graphic) under "Design too large for embroidery"
-  // stays selected: tapping away doesn't deselect it until it fits. Read by
-  // the deselect handlers, so a ref.
+  // stays selected: tapping away doesn't deselect it until it fits. Under the
+  // thin-line or too-complex warning any selected design stays selected too,
+  // until the issue is gone (switched to standard print, or the graphic
+  // removed). Read by the deselect handlers, so a ref.
   selectionLockedRef.current =
-    !isCombination && sizeBadgeStatus === "too-large" && (!!selectedTextId || !!selectedGraphicId)
+    (!!selectedTextId || !!selectedGraphicId) &&
+    (thinLineShown || (!isCombination && sizeBadgeStatus === "too-large"))
   // A warning on the canvas means the design can't be embroidered as it is, so
   // add to basket is refused — and each try shakes the warning
   // (embroideryShakeSignal) instead.
