@@ -34,7 +34,6 @@ import {
 import { buildCarryMap, carryBox, carryTextPoint } from "@/lib/design-carry"
 import { IMAGE_SERVER_BASE, loadCatalog, modelImagesFor } from "@/lib/catalog"
 import {
-  AI_IMAGE_SRCS,
   AI_MAX_PRINT_AREA_FRACTION,
   GRAPHIC_SRCS,
   isAiImage,
@@ -73,11 +72,11 @@ import {
   EmbroideryMaxSizeBadge,
   EmbroideryPreviewStatus,
   EmbroideryIssueDock,
+  EmbroideryPreviewDock,
   EmbroiderySizeBadge,
   SWAP_DELAY_MS,
   ThinLineHelpPopover,
   type EmbroideryDesignIssue,
-  type StandardPrintSwitch,
   type EmbroiderySizeStatus,
 } from "@/components/embroidery-label"
 import MobileEditSheet from "@/components/mobile/mobile-edit-sheet"
@@ -134,6 +133,8 @@ import graphicsAnim from "@/components/ui/lottie/graphics.json"
 import textAnim from "@/components/ui/lottie/text.json"
 import uploadsAnim from "@/components/ui/lottie/uploads.json"
 import { TextColorPanel } from "@/components/ui/text-color-panel/TextColorPanel"
+import { AIPanel } from "@/components/ai-panel/ai-panel"
+import { simplifyImage } from "@/lib/simplify-image"
 import { UploadPanel } from "@/components/ui/upload-panel/UploadPanel"
 
 /**
@@ -198,6 +199,17 @@ const PASTE_OFFSET_PCT = 5
 // TrashCanPlugin (28px circle, 20px gap from the object's screen bounding box).
 const TRASH_BUTTON_SIZE = 28
 const TRASH_OFFSET = 20
+// The button's look, bar its colours (red, or the warning orange).
+const TRASH_BUTTON_CLASS =
+  "flex cursor-pointer items-center justify-center rounded-full border-2 bg-[#f4f4f4] shadow-[0_2px_4px_rgba(0,0,0,0.1)] transition-colors duration-300 ease-out"
+
+function TrashIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M14 2C15.0543 2 15.9177 2.81581 15.9941 3.85059L16 4V6H20C20.5523 6 21 6.44772 21 7C21 7.51284 20.6136 7.9354 20.1162 7.99316L20 8H19.9199L19 19C19 20.5975 17.7513 21.9036 16.1768 21.9951L16 22H8C6.4024 22 5.09608 20.7512 5.00781 19.251L5.00391 19.083L4.08008 8H4C3.44772 8 3 7.55228 3 7C3 6.48716 3.38645 6.0646 3.88379 6.00684L4 6H8V4C8 2.9457 8.81581 2.08229 9.85059 2.00586L10 2H14ZM7 19C7 19.5128 7.38645 19.9354 7.88379 19.9932L8 20H16C16.5155 20 16.94 19.6096 16.9971 19.041L17.0039 18.917L17.9141 8H6.08594L7 19ZM10 10C10.5128 10 10.9354 10.3865 10.9932 10.8838L11 11V17C11 17.5523 10.5523 18 10 18C9.48716 18 9.0646 17.6135 9.00684 17.1162L9 17V11C9 10.4477 9.44772 10 10 10ZM14 10C14.5128 10 14.9354 10.3865 14.9932 10.8838L15 11V17C15 17.5523 14.5523 18 14 18C13.4872 18 13.0646 17.6135 13.0068 17.1162L13 17V11C13 10.4477 13.4477 10 14 10ZM10 6H14V4H10V6Z" fill="currentColor"/>
+    </svg>
+  )
+}
 
 // Custom cursor for the rotate handle: a circular arrow with a white halo so it
 // reads on any background. Hotspot centred at 12,12.
@@ -218,17 +230,25 @@ const RESIZE_NESW_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
 // Bottom selection handles under a selected element — rotate + move, traced
 // from the imgly gizmo create-omat shows: white circles with a #3355FF ring
 // and glyph (2px smaller than the 28px trash button, which reads larger),
-// 20px below the frame, 12px apart. Hover fills the disc.
-const BOTTOM_HANDLE_CLASS =
-  "flex size-[26px] touch-none items-center justify-center rounded-full border-2 border-[#3355FF] bg-white text-[#3355FF] transition-colors hover:bg-[#3355FF] hover:text-white"
+// 20px below the frame, 12px apart. Hover fills the disc. While a thin-line or
+// too-complex warning shows they wear the warning orange, like the frame.
+const BOTTOM_HANDLE_BASE =
+  "flex size-[26px] touch-none items-center justify-center rounded-full border-2 bg-white transition-colors duration-300 ease-out hover:text-white"
+const BOTTOM_HANDLE_TONE = {
+  default: "border-[#3355FF] text-[#3355FF] hover:bg-[#3355FF]",
+  warning: "border-[#EA580C] text-[#EA580C] hover:bg-[#EA580C]",
+}
 
 function SelectionBottomHandles({
   onRotateStart,
   onMoveStart,
+  warning = false,
 }: {
   onRotateStart: (e: React.PointerEvent) => void
   onMoveStart: (e: React.PointerEvent) => void
+  warning?: boolean
 }) {
+  const BOTTOM_HANDLE_CLASS = `${BOTTOM_HANDLE_BASE} ${BOTTOM_HANDLE_TONE[warning ? "warning" : "default"]}`
   return (
     <span className="absolute top-full left-1/2 z-30 mt-5 flex -translate-x-1/2 gap-3">
       <span
@@ -310,7 +330,21 @@ const LIGHT_PRODUCT_IMAGE_SHADOW = lightProductImageShadow()
 // The mocked design-issue warnings apply to these designs only: thin lines to
 // the pink cat, too complex to the mountain lake (next to it in the panel).
 const THIN_LINE_GRAPHIC_SRC = "/img/graphics/graphics1.png"
-const COMPLEX_GRAPHIC_SRC = "/img/graphics/graphics2.png"
+// After "Switch to standard print": how long the bottom row keeps naming
+// embroidery — its return (SWAP_DELAY_MS + the 300ms slide), then a beat
+// held in view — before it changes to standard print.
+const SWITCH_REVEAL_MS = SWAP_DELAY_MS + 300 + 600
+// Then how long the green tick holds in the technique icon's place.
+const SWITCH_CONFIRM_MS = 2000
+// What "Simplify with AI" fills the AI panel's prompt with.
+const SIMPLIFY_FOR_EMBROIDERY_PROMPT = "Make this design simpler for embroidery"
+// The least time the panel's Modify shows "Generating design..." for.
+const AI_MODIFY_MIN_MS = 1500
+// Too complex: the mountain lake, and the boy with the fish (8th in the
+// Graphics panel) — the one to try "Simplify with AI" on.
+const COMPLEX_GRAPHIC_SRCS = ["/img/graphics/graphics2.png", "/img/graphics/graphics8.png"]
+const isComplexGraphic = (src: string) => COMPLEX_GRAPHIC_SRCS.some(s => src.endsWith(s))
+const isThinLineGraphic = (src: string) => src.endsWith(THIN_LINE_GRAPHIC_SRC)
 // Designs whose lines become too thin to stitch below a size: in embroidery
 // they can't be made smaller than this (mm, on their longer side) — the
 // resize stops there with a bounce and "Min. size for embroidery". The beaver's
@@ -1399,8 +1433,8 @@ export default function Designer({
   // released. Holds the frame/badge colour until the next deselect measures the
   // design again — otherwise they'd fall back to the pre-resize measurement.
   const [resizeFitAfterRelease, setResizeFitAfterRelease] = useState<boolean | null>(null)
-  // The "See options" popover under the thin-line warning. While open,
-  // the designer blurs around it like the add-to-basket size sheet.
+  // The design-issue warning's "See solutions" popover. While open, the
+  // designer blurs around it like the add-to-basket size sheet.
   const [thinLineHelpOpen, setThinLineHelpOpen] = useState(false)
   const closeThinLineHelp = useCallback(() => setThinLineHelpOpen(false), [])
   // Whether its sharp layer is on screen, closing fade included — the
@@ -1784,19 +1818,53 @@ export default function Designer({
   // and flipped below the object when it is rotated upside down so it never
   // sits under the rotate handle's arc.
   const [trashPos, setTrashPos] = useState<{ left: number; top: number } | null>(null)
+  // Also while "Creating preview" runs, when nothing can be selected: placed
+  // over the whole design exactly as over a selected object — over the one
+  // object of a lone design, over the box round all of them otherwise — and
+  // deleting all of it.
+  const designTrash = embroideryLoading && !!designBbox
   useLayoutEffect(() => {
     const id = selectedTextId ?? selectedGraphicId
-    const node = id
+    const selectedNode = id
       ? (selectedTextId ? textElementRefs : graphicElementRefs).current[id]
       : null
-    if (!node || isManipulating) {
+    // The design's objects on screen (refs can outlive their nodes, and other
+    // views' objects aren't laid out).
+    const designNodes =
+      !selectedNode && designTrash
+        ? [
+            ...Object.entries(textElementRefs.current).map(([elId, n]) => ({
+              n,
+              rotation: textElements.find(t => t.id === elId)?.rotation,
+            })),
+            ...Object.entries(graphicElementRefs.current).map(([elId, n]) => ({
+              n,
+              rotation: graphicElements.find(g => g.id === elId)?.rotation,
+            })),
+          ].filter(({ n }) => n.isConnected && n.getClientRects().length > 0)
+        : []
+    const nodes = selectedNode ? [selectedNode] : designNodes.map(d => d.n)
+    if (nodes.length === 0 || isManipulating) {
       setTrashPos(null)
       return
     }
+    // The union of the objects' on-screen boxes — for one, its own box.
+    const nodeRect = () => {
+      const rects = nodes.map(n => n.getBoundingClientRect())
+      const left = Math.min(...rects.map(r => r.left))
+      const top = Math.min(...rects.map(r => r.top))
+      const right = Math.max(...rects.map(r => r.right))
+      const bottom = Math.max(...rects.map(r => r.bottom))
+      return { left, top, bottom, width: right - left }
+    }
     const rotation =
-      (selectedTextId
-        ? textElements.find(t => t.id === selectedTextId)?.rotation
-        : graphicElements.find(g => g.id === selectedGraphicId)?.rotation) ?? 0
+      (selectedNode
+        ? selectedTextId
+          ? textElements.find(t => t.id === selectedTextId)?.rotation
+          : graphicElements.find(g => g.id === selectedGraphicId)?.rotation
+        : designNodes.length === 1
+          ? designNodes[0].rotation
+          : 0) ?? 0
     // Rotation is stored -180..180, so this matches the plugin's
     // |deg| in (90, 270) upside-down window.
     const upsideDown = Math.abs(rotation) > 90 && Math.abs(rotation) < 270
@@ -1808,7 +1876,7 @@ export default function Designer({
       // visual-viewport shift cancels out.
       const section = canvasSectionRef.current
       if (!section) return
-      const rect = node.getBoundingClientRect()
+      const rect = nodeRect()
       const sec = section.getBoundingClientRect()
       setTrashPos({
         left: rect.left + rect.width / 2 - TRASH_BUTTON_SIZE / 2 - sec.left,
@@ -1846,6 +1914,7 @@ export default function Designer({
     zoom,
     mobileZoom,
     mobilePan,
+    designTrash,
   ])
 
   // Adds a graphic into the current print area, centred and sized to ~40% of the
@@ -2021,6 +2090,15 @@ export default function Designer({
   const deleteSelectedGraphic = () => {
     if (!selectedGraphicId) return
     setGraphicElements(prev => prev.filter(g => g.id !== selectedGraphicId))
+    setSelectedGraphicId(null)
+  }
+
+  // The trash button over "Creating preview": the whole design on this view.
+  const deleteVisibleDesign = () => {
+    if (!currentPrintAreaId) return
+    setTextElements(prev => prev.filter(t => t.printAreaId !== currentPrintAreaId))
+    setGraphicElements(prev => prev.filter(g => g.printAreaId !== currentPrintAreaId))
+    setSelectedTextId(null)
     setSelectedGraphicId(null)
   }
 
@@ -2380,9 +2458,9 @@ export default function Designer({
         // Same reason as the sheet: the mobile editor bar floats over the
         // canvas, so a tap on it must not read as a tap away from the text.
         target.closest("[data-mobile-editor-bar]") ||
-        // The thin-line warning (its "See options" included) and the popover it
-        // opens (portalled to <body>, its backdrop included): reading the
-        // explanation, or closing it, leaves the selection as it was.
+        // The thin-line warning (its "See solutions" included) and the popover
+        // it opens (portalled to <body>, its backdrop included): reading it,
+        // or closing it, leaves the selection as it was.
         target.closest("[data-thin-line-help]") ||
         target.closest("[data-thin-line-help-layer]")
       ) {
@@ -2730,6 +2808,9 @@ export default function Designer({
   }, [])
 
   const startTextDrag = (e: React.PointerEvent, el: TextElement) => {
+    // No grabbing — so no selecting on release — while "Creating preview"
+    // runs: the preview and its checks go on unless the design is removed.
+    if (designTrash) return
     if (editingTextId === el.id) return
     e.preventDefault()
     dragStateRef.current = {
@@ -2745,6 +2826,7 @@ export default function Designer({
   // Move a text while it's being edited — grabbing its border. No editing guard,
   // and preventDefault keeps the textarea focused so editing continues.
   const startTextMove = (e: React.PointerEvent, el: TextElement) => {
+    if (designTrash) return
     e.preventDefault()
     e.stopPropagation()
     dragStateRef.current = {
@@ -2758,6 +2840,7 @@ export default function Designer({
     }
   }
   const startGraphicDrag = (e: React.PointerEvent, el: GraphicElement) => {
+    if (designTrash) return
     e.preventDefault()
     dragStateRef.current = {
       kind: "graphic",
@@ -3662,8 +3745,8 @@ export default function Designer({
     ? embroideryHoopFitScale(designBbox.w, designBbox.h, embroideryHoopFrame)
     : 1
   // Mocked design issues, by graphic: the pink cat (THIN_LINE_GRAPHIC_SRC) has
-  // lines too thin to stitch, the mountain lake (COMPLEX_GRAPHIC_SRC) is too
-  // complex — which wins when both are in the design, as DESIGN_TOO_COMPLEX
+  // lines too thin to stitch, the mountain lake and the boy with the fish
+  // (COMPLEX_GRAPHIC_SRCS) are too complex — which wins when both are in the design, as DESIGN_TOO_COMPLEX
   // outranks the other precheck verdicts in create-omat.
   // An issue outranks the size too: a design with one is never "too large"
   // (nor "good size") — no size badge, hoop guide or size verdict at all, and
@@ -3671,9 +3754,9 @@ export default function Designer({
   // None in the DTF version.
   const designIssue: EmbroideryDesignIssue | null = dtf
     ? null
-    : visibleGraphicElements.some(g => g.src.endsWith(COMPLEX_GRAPHIC_SRC))
+    : visibleGraphicElements.some(g => isComplexGraphic(g.src))
     ? "too-complex"
-    : visibleGraphicElements.some(g => g.src.endsWith(THIN_LINE_GRAPHIC_SRC))
+    : visibleGraphicElements.some(g => isThinLineGraphic(g.src))
       ? "thin-line"
       : null
   const hasThinLineDesign = designIssue !== null
@@ -4062,14 +4145,18 @@ export default function Designer({
     embroiderySizeStatus !== "too-large"
   // The moment the warning arrives, the graphic it's about is selected — and
   // stays so while it's up (selectionLockedRef).
-  const issueGraphicSrc = designIssue === "too-complex" ? COMPLEX_GRAPHIC_SRC : THIN_LINE_GRAPHIC_SRC
+  const isIssueGraphic = designIssue === "too-complex" ? isComplexGraphic : isThinLineGraphic
+  // The graphic it's about (the first, if the design holds more than one).
+  const issueGraphicId = visibleGraphicElements.find(g => isIssueGraphic(g.src))?.id ?? null
+  // Not before the check behind "Creating preview" is done, though: selecting
+  // would cut it short.
+  // (designCheckPending, declared further down.)
+  const issueCheckRunning = hasThinLineDesign && embroideryLoading
   useEffect(() => {
-    if (!thinLineShown) return
-    const graphic = visibleGraphicElements.find(g => g.src.endsWith(issueGraphicSrc))
-    if (!graphic) return
+    if (!thinLineShown || issueCheckRunning || !issueGraphicId) return
     setSelectedTextId(null)
-    setSelectedGraphicId(graphic.id)
-  }, [thinLineShown, issueGraphicSrc])
+    setSelectedGraphicId(issueGraphicId)
+  }, [thinLineShown, issueCheckRunning, issueGraphicId])
   // A selected object's frame and corner handles: the gizmo blue normally, the
   // warning orange while the design is too large for embroidery (as last
   // measured on deselect, once the session's first warning has shown), and
@@ -4865,6 +4952,13 @@ export default function Designer({
     return `Add ${next.from - totalSelected} more for %${next.percentage} off`
   })()
   const formatEUR = (n: number) => n.toFixed(2).replace(".", ",")
+  // What switching to standard print saves on the design's print areas — the
+  // "Print it instead" card's badge. None when it doesn't save anything.
+  const printSaving =
+    printAreaTotal(decoratedPrintAreaIdList, "embroidery") -
+    printAreaTotal(decoratedPrintAreaIdList, "standard")
+  const printSavingLabel =
+    printSaving > 0 ? `${formatEUR(printSaving)} € cheaper than embroidery` : null
 
   // Add-to-basket handler shared by the desktop CTA and the mobile size sheet
   // (extracted verbatim from the desktop button's onClick).
@@ -4881,15 +4975,6 @@ export default function Designer({
         }
       : undefined
 
-  // The too-complex popover's way out: the same design as a standard print.
-  // Its price is the standard print-area rate on the same areas, shown
-  // against the embroidery price it replaces; "Add to
-  // basket" switches the technique and then runs the regular add to basket —
-  // once the switch has rendered, so the embroidery block is gone by then.
-  const standardPrintUnitPrice =
-    BASE_PRICE + printAreaTotal(decoratedPrintAreaIdList, "standard")
-  const embroideryUnitPrice =
-    BASE_PRICE + printAreaTotal(decoratedPrintAreaIdList, "embroidery")
   // The design issue on show, once its check is done — on the badge at the
   // top, or in the bottom row's place (EmbroideryIssueDock) — and its way
   // out: switching to standard print, which drops the warning with the
@@ -4898,23 +4983,78 @@ export default function Designer({
   // What the bottom dock shows (merged designer, desktop): a design issue, or
   // the size — too large, or a good size again — never both, as an issue
   // mutes the size.
-  const dockedWarning = designIssueWarning ?? sizeBadgeStatus
-  const standardPrintSwitch: StandardPrintSwitch = {
-    price: `${formatEUR(standardPrintUnitPrice)} €`,
-    embroideryPrice: `${formatEUR(embroideryUnitPrice)} €`,
-    onSwitch: () => setPrintTechnique("standard"),
-  }
-  const [pendingStandardAdd, setPendingStandardAdd] = useState(false)
-  const addAsStandardPrint = () => {
-    setThinLineHelpOpen(false)
-    setPrintTechnique("standard")
-    setPendingStandardAdd(true)
-  }
+  // "Creating preview" takes the spot first while it runs (EmbroideryPreviewDock).
+  const creatingPreview = embroideryLoading && !!designBbox
+  const dockedWarning = creatingPreview ? null : (designIssueWarning ?? sizeBadgeStatus)
+  // The switch is made at once — the warning leaves with the embroidery — but
+  // the bottom row comes back still naming embroidery, and only once it's in
+  // view changes to standard print, so the change is seen being made.
+  // Changed, the switcher wears a green tick in its technique icon's place
+  // for SWITCH_CONFIRM_MS, and the droplet eases back.
+  const [rowShowsEmbroidery, setRowShowsEmbroidery] = useState(false)
+  const [techniqueConfirmed, setTechniqueConfirmed] = useState(false)
   useEffect(() => {
-    if (!pendingStandardAdd || effectivePrintTechnique !== "standard") return
-    setPendingStandardAdd(false)
-    handleAddToBasket()
-  })
+    if (!rowShowsEmbroidery) return
+    const t = setTimeout(() => {
+      setRowShowsEmbroidery(false)
+      setTechniqueConfirmed(true)
+    }, SWITCH_REVEAL_MS)
+    return () => clearTimeout(t)
+  }, [rowShowsEmbroidery])
+  useEffect(() => {
+    if (!techniqueConfirmed) return
+    const t = setTimeout(() => setTechniqueConfirmed(false), SWITCH_CONFIRM_MS)
+    return () => clearTimeout(t)
+  }, [techniqueConfirmed])
+  // The solutions popover's "Switch to print": closes it, and the switch plays
+  // out in the bottom row as it comes back.
+  const switchToStandardPrint = () => {
+    setThinLineHelpOpen(false)
+    setRowShowsEmbroidery(true)
+    setPrintTechnique("standard")
+  }
+  // The solutions popover's "Simplify with AI": closes it and opens the AI
+  // panel in modify mode on the design's graphic — create-omat's "Modify with
+  // AI", which hands the image to the panel (additionalDialogData) to show as
+  // a thumbnail in its prompt box. A fresh object each time, so the panel
+  // takes it up again even for the same graphic.
+  // The prompt comes filled in (SIMPLIFY_FOR_EMBROIDERY_PROMPT).
+  const [aiModifyImage, setAiModifyImage] = useState<{
+    graphicId: string
+    src: string
+    prompt: string
+  } | null>(null)
+  const simplifyWithAI = () => {
+    setThinLineHelpOpen(false)
+    const graphic =
+      graphicElements.find(g => g.id === selectedGraphicId) ??
+      visibleGraphicElements.find(g => g.id === issueGraphicId)
+    if (graphic) {
+      setAiModifyImage({
+        graphicId: graphic.id,
+        src: graphic.src,
+        prompt: SIMPLIFY_FOR_EMBROIDERY_PROMPT,
+      })
+    }
+    setActivePanel("ai")
+  }
+  // The panel's Modify, without a model: the image simplified in the browser
+  // (simplifyImage), held for at least AI_MODIFY_MIN_MS so it reads as a
+  // generation, then swapped into the graphic in place. Its new src isn't a
+  // mocked issue graphic, so the warning goes and the embroidery check runs
+  // again on the result.
+  const modifyWithAI = async (src: string) => {
+    const graphicId = aiModifyImage?.src === src ? aiModifyImage.graphicId : null
+    const [simplified] = await Promise.all([
+      simplifyImage(src),
+      new Promise(resolve => setTimeout(resolve, AI_MODIFY_MIN_MS)),
+    ])
+    setGraphicElements(prev =>
+      prev.map(g => (g.id === graphicId || (!graphicId && g.src === src) ? { ...g, src: simplified } : g))
+    )
+  }
+  // The warning's "See solutions": opens the popover, or closes it again.
+  const toggleThinLineHelp = () => setThinLineHelpOpen(open => !open)
 
   const handleAddToBasket = () => {
     if (addingToBasket || flashSize) return
@@ -5232,9 +5372,9 @@ export default function Designer({
           ref={creatomatRef}
           id="creatomat-container"
           className="relative flex items-stretch gap-2 w-full max-w-[1920px] h-full justify-center"
-          // Thin-line help open: the whole designer blurs behind it, the same
-          // blur and ease the add-to-basket size sheet uses. The warning, its
-          // link and the popover are drawn sharp above it (ThinLineHelpPopover).
+          // Solutions popover open: the whole designer blurs behind it, the
+          // same blur and ease the add-to-basket size sheet uses. The warning
+          // and the popover are drawn sharp above it (ThinLineHelpPopover).
           style={{
             transition: "filter 0.3s ease",
             filter: thinLineHelpOpen ? `blur(${VIEW_DROPDOWN_BLUR_PX}px)` : "none",
@@ -6234,6 +6374,7 @@ export default function Designer({
                             })}
                             {draggingElId !== el.id && resizingElId !== el.id && (
                               <SelectionBottomHandles
+                                warning={thinLineShown}
                                 onRotateStart={e => startRotate(e, el)}
                                 // startTextMove keeps the textarea focused, so
                                 // editing continues while moving.
@@ -6379,6 +6520,7 @@ export default function Designer({
                           })}
                         {selectedTextId === el.id && draggingElId !== el.id && resizingElId !== el.id && (
                           <SelectionBottomHandles
+                            warning={thinLineShown}
                             onRotateStart={e => startRotate(e, el)}
                             onMoveStart={e => {
                               e.stopPropagation()
@@ -6472,6 +6614,7 @@ export default function Designer({
                         })}
                       {selectedGraphicId === el.id && draggingElId !== el.id && resizingElId !== el.id && (
                         <SelectionBottomHandles
+                          warning={thinLineShown}
                           onRotateStart={e => startRotate(e, el, "graphic")}
                           onMoveStart={e => {
                             e.stopPropagation()
@@ -6515,18 +6658,23 @@ export default function Designer({
                         onClick={e => {
                           e.stopPropagation()
                           if (selectedTextId) deleteSelectedText()
-                          else deleteSelectedGraphic()
+                          else if (selectedGraphicId) deleteSelectedGraphic()
+                          // Over "Creating preview", nothing selected: the design.
+                          else deleteVisibleDesign()
                         }}
                         style={{
                           transform: `translate(${trashPos.left}px, ${trashPos.top}px)`,
                           width: TRASH_BUTTON_SIZE,
                           height: TRASH_BUTTON_SIZE,
                         }}
-                        className="absolute top-0 left-0 z-[1] flex cursor-pointer items-center justify-center rounded-full border-2 border-[#d01c00] bg-[#f4f4f4] text-[#d01c00] shadow-[0_2px_4px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#ffebeb]"
+                        // Warning orange while a thin-line / too-complex warning shows.
+                        className={`absolute top-0 left-0 z-[1] ${TRASH_BUTTON_CLASS} ${
+                          thinLineShown
+                            ? "border-[#EA580C] text-[#EA580C] hover:bg-[#FFF7ED]"
+                            : "border-[#d01c00] text-[#d01c00] hover:bg-[#ffebeb]"
+                        }`}
                       >
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                          <path d="M14 2C15.0543 2 15.9177 2.81581 15.9941 3.85059L16 4V6H20C20.5523 6 21 6.44772 21 7C21 7.51284 20.6136 7.9354 20.1162 7.99316L20 8H19.9199L19 19C19 20.5975 17.7513 21.9036 16.1768 21.9951L16 22H8C6.4024 22 5.09608 20.7512 5.00781 19.251L5.00391 19.083L4.08008 8H4C3.44772 8 3 7.55228 3 7C3 6.48716 3.38645 6.0646 3.88379 6.00684L4 6H8V4C8 2.9457 8.81581 2.08229 9.85059 2.00586L10 2H14ZM7 19C7 19.5128 7.38645 19.9354 7.88379 19.9932L8 20H16C16.5155 20 16.94 19.6096 16.9971 19.041L17.0039 18.917L17.9141 8H6.08594L7 19ZM10 10C10.5128 10 10.9354 10.3865 10.9932 10.8838L11 11V17C11 17.5523 10.5523 18 10 18C9.48716 18 9.0646 17.6135 9.00684 17.1162L9 17V11C9 10.4477 9.44772 10 10 10ZM14 10C14.5128 10 14.9354 10.3865 14.9932 10.8838L15 11V17C15 17.5523 14.5523 18 14 18C13.4872 18 13.0646 17.6135 13.0068 17.1162L13 17V11C13 10.4477 13.4477 10 14 10ZM10 6H14V4H10V6Z" fill="currentColor"/>
-                        </svg>
+                        <TrashIcon />
                       </button>,
                       canvasSectionEl
                     )}
@@ -6635,6 +6783,47 @@ export default function Designer({
                         WebkitMaskSize: "100% 100%",
                       }}
                     />
+                  )}
+                  {/* Also while it runs: the design can't be selected or moved —
+                      a layer over the print area takes the clicks (and
+                      selection is refused besides: designTrash). It can still
+                      be removed, by the trash button, placed as for a
+                      selection. */}
+                  {creatingPreview && (
+                    <div
+                      aria-hidden="true"
+                      className="absolute inset-0 cursor-default"
+                      style={{ zIndex: designMaxZ + 2 }}
+                      onPointerDown={e => e.stopPropagation()}
+                      onMouseDown={e => e.stopPropagation()}
+                      onClick={e => e.stopPropagation()}
+                      onDoubleClick={e => e.stopPropagation()}
+                    />
+                  )}
+                  {/* Hovering the design meanwhile says why it can't be picked
+                      up: a tooltip under it, the app's dark one, arrow up. */}
+                  {creatingPreview && designBbox && (
+                    <div
+                      className="group/tooltip absolute cursor-default"
+                      style={{
+                        left: `${designBbox.x * 100}%`,
+                        top: `${designBbox.y * 100}%`,
+                        width: `${designBbox.w * 100}%`,
+                        height: `${designBbox.h * 100}%`,
+                        zIndex: designMaxZ + 3,
+                      }}
+                      onPointerDown={e => e.stopPropagation()}
+                      onMouseDown={e => e.stopPropagation()}
+                      onClick={e => e.stopPropagation()}
+                      onDoubleClick={e => e.stopPropagation()}
+                    >
+                      <span
+                        role="tooltip"
+                        className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 -translate-x-1/2 rounded-md bg-neutral-900 p-3 text-sm whitespace-nowrap text-neutral-100 opacity-0 shadow-sm transition-opacity group-hover/tooltip:opacity-100 before:absolute before:bottom-full before:left-1/2 before:h-0 before:w-0 before:-translate-x-1/2 before:border-x-[4px] before:border-b-[4px] before:border-x-transparent before:border-b-neutral-900 before:content-['']"
+                      >
+                        Wait for the quality check
+                      </span>
+                    </div>
                   )}
                   {/* Design exceeds the hoop frame: an orange frame around the
                       object(s), alongside the "Design too large" badge. With the
@@ -6791,10 +6980,13 @@ export default function Designer({
               />
             )}
             {/* While the stitched render is being generated — create-omat's
-                "Creating preview" pill at the top of the canvas. */}
+                "Creating preview" pill at the top of the canvas. In the merged
+                designer it takes the bottom row's place on desktop instead
+                (EmbroideryPreviewDock), so here it's mobile only. */}
             <EmbroideryPreviewStatus
               loading={embroideryLoading && !!designBbox}
               durationMs={EMBROIDERY_MIN_LOADER_MS}
+              className={mergedDesigner ? "dlg:hidden" : ""}
             />
             {/* Too large for the hoop frame, or a good size again after that
                 warning — stacked under the editor bar or the loader while
@@ -6812,9 +7004,9 @@ export default function Designer({
               dockedOnDesktop={mergedDesigner ? ["too-large", "good"] : []}
             />
             {/* Thin-line / too-complex warning: arrives in the badge spot with
-                the switch to standard print under the message, replacing the
-                green size badge. Switching drops the warning with the
-                embroidery. Shakes when add to basket is refused. In the merged
+                "See solutions" under the message, which opens its
+                options (ThinLineHelpPopover), replacing the green size badge.
+                Shakes when add to basket is refused. In the merged
                 designer it lives at the bottom on desktop instead
                 (EmbroideryIssueDock), so here it's mobile only. */}
             <EmbroiderySizeBadge
@@ -6822,7 +7014,7 @@ export default function Designer({
               stack={embroideryBadgeStack}
               concealed={thinLineHelpOpen || thinLineHelpPresent}
               shakeSignal={embroideryShakeSignal}
-              standardSwitch={standardPrintSwitch}
+              onSeeOptions={toggleThinLineHelp}
               dockedOnDesktop={mergedDesigner ? ["thin-line", "too-complex"] : []}
             />
             <ThinLineHelpPopover
@@ -6830,11 +7022,10 @@ export default function Designer({
               open={thinLineHelpOpen}
               onClose={closeThinLineHelp}
               onPresenceChange={setThinLineHelpPresent}
-              standardPrint={{
-                price: `${formatEUR(standardPrintUnitPrice)} €`,
-                embroideryPrice: `${formatEUR(embroideryUnitPrice)} €`,
-                onAddToBasket: addAsStandardPrint,
-              }}
+              designSrc={visibleGraphicElements.find(g => g.id === issueGraphicId)?.src ?? null}
+              printSavingLabel={printSavingLabel}
+              onSimplifyWithAI={simplifyWithAI}
+              onSwitchToPrint={switchToStandardPrint}
             />
             {/* Refused add to basket: alongside the shaking warning, an orange
                 inner border around the canvas that fades out over 2s. A new key
@@ -6909,11 +7100,12 @@ export default function Designer({
                   // add" picker for the rest of the session.
                   setFirstAddDone(true)
                 }}
-                printTechnique={printTechnique}
+                printTechnique={rowShowsEmbroidery ? "embroidery" : printTechnique}
+                techniqueConfirmed={techniqueConfirmed}
                 onPrintTechnique={setPrintTechnique}
                 embroiderySupported={embroiderySupported}
                 showTechnique={!dtf && !csMode}
-                hidden={dockedWarning !== null}
+                hidden={dockedWarning !== null || creatingPreview}
                 swapDelayMs={SWAP_DELAY_MS}
               />
             )}
@@ -6924,7 +7116,16 @@ export default function Designer({
                 status={dockedWarning}
                 combination={isCombination}
                 shakeSignal={embroideryShakeSignal}
-                standardSwitch={standardPrintSwitch}
+                onSeeOptions={toggleThinLineHelp}
+                concealed={thinLineHelpOpen || thinLineHelpPresent}
+              />
+            )}
+            {/* "Creating preview" in the bottom row's place (desktop), swapping
+                with it — and with a warning, which waits for it. */}
+            {mergedDesigner && (
+              <EmbroideryPreviewDock
+                loading={creatingPreview}
+                durationMs={EMBROIDERY_MIN_LOADER_MS}
               />
             )}
 
@@ -7242,9 +7443,13 @@ export default function Designer({
                   activePanel === panel ? "translate-x-0" : "-translate-x-[calc(100%+100px)]"
                 }`}
               >
-                <h2 className="font-display text-[18px] font-medium text-black px-6 pt-6 pb-4 capitalize flex-shrink-0">
-                  {panel === "ai" ? "AI design" : panel}
-                </h2>
+                {/* No title on the AI panel, as in create-omat (its style grid
+                    has its own). */}
+                {panel !== "ai" && (
+                  <h2 className="font-display text-[18px] font-medium text-black px-6 pt-6 pb-4 capitalize flex-shrink-0">
+                    {panel}
+                  </h2>
+                )}
                 {panel === "uploads" && (
                   <UploadPanel
                     onPlaceImage={addGraphicElement}
@@ -7277,26 +7482,7 @@ export default function Designer({
                   </div>
                 )}
                 {panel === "ai" && (
-                  <div className="flex-1 overflow-y-auto">
-                    <div className="grid grid-cols-3 gap-0">
-                      {AI_IMAGE_SRCS.map(src => (
-                        <button
-                          key={src}
-                          type="button"
-                          onClick={() => addGraphicElement(src)}
-                          className="aspect-square flex items-center justify-center p-3 cursor-pointer overflow-hidden border-r border-b border-neutral-100 hover:bg-neutral-50 transition-colors"
-                        >
-                          <img
-                            src={src}
-                            alt=""
-                            draggable
-                            onDragStart={e => startImageDrag(e, { src, source: "ai-panel" })}
-                            className="max-h-full max-w-full object-contain select-none"
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <AIPanel modifyImage={aiModifyImage} onModify={modifyWithAI} />
                 )}
                 <button
                   type="button"

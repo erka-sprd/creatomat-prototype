@@ -95,6 +95,7 @@ export function MergedBottomRow({
   staticTechnique = false,
   hidden = false,
   swapDelayMs = 0,
+  techniqueConfirmed = false,
 }: {
   zoom: number
   maxZoom: number
@@ -119,6 +120,8 @@ export function MergedBottomRow({
    */
   hidden?: boolean
   swapDelayMs?: number
+  /** The technique switcher's green tick in place of its technique icon (TechniqueSwitcher). */
+  techniqueConfirmed?: boolean
 }) {
   return (
     // The equal side columns keep the views at the canvas centre whatever the
@@ -158,6 +161,7 @@ export function MergedBottomRow({
             value={printTechnique}
             onChange={onPrintTechnique}
             embroiderySupported={embroiderySupported}
+            confirmed={techniqueConfirmed}
           />
         )}
       </div>
@@ -426,6 +430,67 @@ export function TechniqueLabel({ value }: { value: "standard" | "embroidery" }) 
   )
 }
 
+// The switcher's icon and name. A change of technique is shown, not just
+// made: the new one rises into place out of a blur (.technique-face-in), and
+// the pill eases to its width — the switch to standard print from an
+// embroidery warning is played out here. The first render doesn't animate.
+// `confirmed` puts a green tick in the technique icon's place; the two
+// crossfade, scaling, in one cell.
+function TechniqueFace({
+  tech,
+  confirmed = false,
+}: {
+  tech: "standard" | "embroidery"
+  confirmed?: boolean
+}) {
+  const innerRef = useRef<HTMLSpanElement>(null)
+  // Pinned to the face's measured width, so the next change has a width to
+  // ease from (auto would jump).
+  const [width, setWidth] = useState<number | null>(null)
+  const firstTech = useRef(tech)
+  const [changed, setChanged] = useState(false)
+  useLayoutEffect(() => {
+    if (tech !== firstTech.current) setChanged(true)
+    if (innerRef.current) setWidth(innerRef.current.offsetWidth)
+  }, [tech])
+  return (
+    <span
+      className="flex overflow-hidden transition-[width] duration-400 ease-out"
+      style={{ width: width ?? undefined }}
+    >
+      <span
+        ref={innerRef}
+        key={tech}
+        className={`flex shrink-0 items-center gap-2 ${changed ? "technique-face-in" : ""}`}
+      >
+        <span className="grid size-5 shrink-0 place-items-center [&>*]:[grid-area:1/1] [&>*]:transition-[opacity,scale] [&>*]:duration-300 [&>*]:ease-out">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+            className={`text-green-600 ${confirmed ? "scale-100 opacity-100" : "scale-50 opacity-0"}`}
+          >
+            <path
+              d="M5 12.5L10 17.5L19 7"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {/* flex, so the icon's inline span keeps its 20px box. */}
+          <span className={`flex ${confirmed ? "scale-50 opacity-0" : "scale-100 opacity-100"}`}>
+            <TechniqueIcon tech={tech} />
+          </span>
+        </span>
+        <span className="whitespace-nowrap">{TECHNIQUE_LABEL[tech]}</span>
+      </span>
+    </span>
+  )
+}
+
 // The print technique as a dropdown: the box shows the current one, and opens
 // upward onto both — the chosen one ticked, as the designer's earlier
 // technique dropdown did (the menu at MENU_RADIUS, its rows at the tiles'
@@ -435,12 +500,15 @@ export function TechniqueSwitcher({
   onChange,
   embroiderySupported,
   pinnedOpen = false,
+  confirmed = false,
 }: {
   value: "standard" | "embroidery"
   onChange: (technique: "standard" | "embroidery") => void
   embroiderySupported: boolean
   /** Holds the menu open — for the handoff, which shows it without a click. */
   pinnedOpen?: boolean
+  /** A green tick in the technique icon's place — confirming a switch just made. */
+  confirmed?: boolean
 }) {
   const [openState, setOpenState] = useState(false)
   const open = pinnedOpen || openState
@@ -457,15 +525,14 @@ export function TechniqueSwitcher({
         open ? TILE_ACTIVE : ""
       }`}
     >
-      <TechniqueIcon tech={current} />
-      <span className="whitespace-nowrap">{TECHNIQUE_LABEL[current]}</span>
+      <TechniqueFace tech={current} confirmed={confirmed} />
       <svg
         width="12"
         height="12"
         viewBox="0 0 12 12"
         fill="none"
         aria-hidden="true"
-        className={`text-neutral-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        className={`text-neutral-500 transition-[rotate] duration-200 ${open ? "rotate-180" : ""}`}
       >
         <path
           d="M2.5 4.5L6 8L9.5 4.5"

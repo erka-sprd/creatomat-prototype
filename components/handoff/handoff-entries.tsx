@@ -41,6 +41,15 @@ type Tint = { tray: string; line: string; ink: string; glow: string[] }
 const GLOW_SPOTS = ["0% 0%", "100% 12%", "55% 120%", "-10% 90%"]
 const GLOW_ALPHA = 0.08
 
+// What the pictures sit on: the page's own ground, the designer's grey canvas,
+// or each entry's gradient wash. Flip to "wash" to bring the gradients back.
+const ART_GROUND = "page" as "page" | "canvas" | "wash"
+// `page` is the page's warm grey, lifted most of the way towards white.
+const ART_GROUNDS = {
+  page: "color-mix(in srgb, var(--ho-ground) 35%, white)",
+  canvas: "#F4F4F4",
+}
+
 function wash(glow: string[]) {
   return glow
     .map(
@@ -205,11 +214,15 @@ export function ArtFrame({ entry, className = "" }: { entry: Entry; className?: 
   return (
     <div
       className={`rounded-[14px] ${className}`}
-      style={{
-        background: wash(entry.tint.glow),
-        border: `1px solid rgba(${entry.tint.glow[0]}, 0.1)`,
-        boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.6)",
-      }}
+      style={
+        ART_GROUND !== "wash"
+          ? { background: ART_GROUNDS[ART_GROUND] }
+          : {
+              background: wash(entry.tint.glow),
+              border: `1px solid rgba(${entry.tint.glow[0]}, 0.1)`,
+              boxShadow: "inset 0 0 0 1px rgba(255, 255, 255, 0.6)",
+            }
+      }
     >
       <div className="mx-auto w-[240px]">
         <entry.Art />
