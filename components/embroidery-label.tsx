@@ -517,6 +517,44 @@ export function EmbroideryPreviewDock({
   )
 }
 
+// "Simplify with AI" at work, in the same spot and pill as "Creating preview"
+// (the gradient line circling it), its text still and only the three dots
+// pulsing in turn (.loading-dot).
+const SIMPLIFY_STATUS = "Simplifying design for embroidery"
+const LOADING_DOT_STAGGER_MS = 200
+
+export function EmbroiderySimplifyDock({ active }: { active: boolean }) {
+  const { mounted, entered } = useDockPresence(active)
+  if (!mounted) return null
+  return (
+    <div
+      aria-hidden={!entered}
+      className={dockClass(entered, "raised")}
+      style={{ transitionDelay: dockDelay(entered) }}
+    >
+      <div
+        role="status"
+        aria-label={`${SIMPLIFY_STATUS}...`}
+        className={PILL + "preview-status-ring border border-white bg-white px-4 py-2.5 text-black"}
+      >
+        <span aria-hidden="true" className="preview-status-glow" />
+        <span aria-hidden="true" className="text-sm leading-none font-semibold whitespace-nowrap">
+          {SIMPLIFY_STATUS}
+          {[0, 1, 2].map(i => (
+            <span
+              key={i}
+              className="loading-dot"
+              style={{ animationDelay: `${i * LOADING_DOT_STAGGER_MS}ms` }}
+            >
+              .
+            </span>
+          ))}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export function EmbroideryIssueDock({
   status,
   onSeeOptions,

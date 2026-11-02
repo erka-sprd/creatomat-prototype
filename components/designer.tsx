@@ -73,6 +73,7 @@ import {
   EmbroideryPreviewStatus,
   EmbroideryIssueDock,
   EmbroideryPreviewDock,
+  EmbroiderySimplifyDock,
   EmbroiderySizeBadge,
   SWAP_DELAY_MS,
   ThinLineHelpPopover,
@@ -135,6 +136,7 @@ import uploadsAnim from "@/components/ui/lottie/uploads.json"
 import { TextColorPanel } from "@/components/ui/text-color-panel/TextColorPanel"
 import { AIPanel } from "@/components/ai-panel/ai-panel"
 import { simplifyImage } from "@/lib/simplify-image"
+import { KitButton } from "@/components/kit-button"
 import { UploadPanel } from "@/components/ui/upload-panel/UploadPanel"
 
 /**
@@ -338,8 +340,9 @@ const SWITCH_REVEAL_MS = SWAP_DELAY_MS + 300 + 600
 const SWITCH_CONFIRM_MS = 2000
 // What "Simplify with AI" fills the AI panel's prompt with.
 const SIMPLIFY_FOR_EMBROIDERY_PROMPT = "Make this design simpler for embroidery"
-// The least time the panel's Modify shows "Generating design..." for.
-const AI_MODIFY_MIN_MS = 1500
+// How long "Simplifying design for embroidery" runs before the result is
+// offered for review.
+const SIMPLIFY_RUN_MS = 4000
 // Too complex: the mountain lake, and the boy with the fish (8th in the
 // Graphics panel) — the one to try "Simplify with AI" on.
 const COMPLEX_GRAPHIC_SRCS = ["/img/graphics/graphics2.png", "/img/graphics/graphics8.png"]
@@ -1253,6 +1256,15 @@ export default function Designer({
   // re-rendered, at once if it didn't. No opacity fade.
   const [embroideryShown, setEmbroideryShown] = useState(false)
   const [embroideryLoading, setEmbroideryLoading] = useState(false)
+  // "Simplify with AI" on a graphic (modifyWithAI): running until `after` is
+  // in, then up for review, showing `after` unless `showBefore`.
+  const [simplifyRun, setSimplifyRun] = useState<{
+    graphicId: string
+    after: string | null
+    showBefore: boolean
+  } | null>(null)
+  const simplifying = simplifyRun !== null && simplifyRun.after === null
+  const simplifyReview = simplifyRun?.after ? simplifyRun : null
   // A design that differs from the one last shown stitched gets the "Creating
   // preview" loader for at least EMBROIDERY_MIN_LOADER_MS before its preview is
   // revealed, even if the render landed sooner (it can render in the background
@@ -1822,7 +1834,7 @@ export default function Designer({
   // over the whole design exactly as over a selected object — over the one
   // object of a lone design, over the box round all of them otherwise — and
   // deleting all of it.
-  const designTrash = embroideryLoading && !!designBbox
+  const designTrash = embroideryLoading && !!designBbox && !simplifyRun
   useLayoutEffect(() => {
     const id = selectedTextId ?? selectedGraphicId
     const selectedNode = id
@@ -4152,11 +4164,19 @@ export default function Designer({
   // would cut it short.
   // (designCheckPending, declared further down.)
   const issueCheckRunning = hasThinLineDesign && embroideryLoading
+  // Nor while Simplify with AI runs or its result is up for review: the design
+  // shows no handles then, and nothing is selected (selected again after
+  // Cancel, the warning back).
   useEffect(() => {
+    if (simplifyRun) {
+      setSelectedTextId(null)
+      setSelectedGraphicId(null)
+      return
+    }
     if (!thinLineShown || issueCheckRunning || !issueGraphicId) return
     setSelectedTextId(null)
     setSelectedGraphicId(issueGraphicId)
-  }, [thinLineShown, issueCheckRunning, issueGraphicId])
+  }, [thinLineShown, issueCheckRunning, issueGraphicId, simplifyRun !== null])
   // A selected object's frame and corner handles: the gizmo blue normally, the
   // warning orange while the design is too large for embroidery (as last
   // measured on deselect, once the session's first warning has shown), and
@@ -4985,7 +5005,9 @@ export default function Designer({
   // mutes the size.
   // "Creating preview" takes the spot first while it runs (EmbroideryPreviewDock).
   const creatingPreview = embroideryLoading && !!designBbox
-  const dockedWarning = creatingPreview ? null : (designIssueWarning ?? sizeBadgeStatus)
+  // Simplify with AI holds the warning back too, running and under review.
+  const dockedWarning =
+    creatingPreview || simplifyRun ? null : (designIssueWarning ?? sizeBadgeStatus)
   // The switch is made at once — the warning leaves with the embroidery — but
   // the bottom row comes back still naming embroidery, and only once it's in
   // view changes to standard print, so the change is seen being made.
@@ -5038,21 +5060,50 @@ export default function Designer({
     }
     setActivePanel("ai")
   }
-  // The panel's Modify, without a model: the image simplified in the browser
-  // (simplifyImage), held for at least AI_MODIFY_MIN_MS so it reads as a
-  // generation, then swapped into the graphic in place. Its new src isn't a
-  // mocked issue graphic, so the warning goes and the embroidery check runs
-  // again on the result.
+  // The panel's Modify, without a model. It closes the panel and lets the
+  // design go; the design shines as under "Creating preview" and
+  // "Simplifying design for embroidery" takes the bottom row's spot while the
+  // image is simplified in the browser (simplifyImage), for SIMPLIFY_RUN_MS.
+  // The result is then offered on the canvas — before/after, accept, cancel
+  // (simplifyReview) — the graphic keeping its own src until it's accepted,
+  // so the design stays as it was (warning and all) if it isn't. Accepted, its
+  // new src isn't a mocked issue graphic, so the warning goes and the
+  // embroidery check runs again on the result.
   const modifyWithAI = async (src: string) => {
-    const graphicId = aiModifyImage?.src === src ? aiModifyImage.graphicId : null
-    const [simplified] = await Promise.all([
-      simplifyImage(src),
-      new Promise(resolve => setTimeout(resolve, AI_MODIFY_MIN_MS)),
-    ])
-    setGraphicElements(prev =>
-      prev.map(g => (g.id === graphicId || (!graphicId && g.src === src) ? { ...g, src: simplified } : g))
-    )
+    const graphic =
+      graphicElements.find(g => g.id === aiModifyImage?.graphicId && g.src === src) ??
+      graphicElements.find(g => g.src === src)
+    if (!graphic) return
+    setActivePanel(null)
+    setSelectedGraphicId(null)
+    setSelectedTextId(null)
+    setSimplifyRun({ graphicId: graphic.id, after: null, showBefore: false })
+    Promise.all([simplifyImage(src), new Promise(resolve => setTimeout(resolve, SIMPLIFY_RUN_MS))])
+      .then(([after]) =>
+        setSimplifyRun(run =>
+          run?.graphicId === graphic.id && run.after === null ? { ...run, after } : run
+        )
+      )
+      .catch(err => {
+        console.error("Simplifying the design failed", err)
+        setSimplifyRun(null)
+      })
   }
+  // Removed meanwhile (the trash, another view's undo …): nothing to offer.
+  useEffect(() => {
+    if (simplifyRun && !graphicElements.some(g => g.id === simplifyRun.graphicId)) {
+      setSimplifyRun(null)
+    }
+  }, [simplifyRun, graphicElements])
+  const acceptSimplified = () => {
+    if (!simplifyReview) return
+    const { graphicId, after } = simplifyReview
+    setGraphicElements(prev => prev.map(g => (g.id === graphicId ? { ...g, src: after! } : g)))
+    setSimplifyRun(null)
+  }
+  const cancelSimplified = () => setSimplifyRun(null)
+  const showSimplifyBefore = (showBefore: boolean) =>
+    setSimplifyRun(run => (run ? { ...run, showBefore } : run))
   // The warning's "See solutions": opens the popover, or closes it again.
   const toggleThinLineHelp = () => setThinLineHelpOpen(open => !open)
 
@@ -6570,7 +6621,11 @@ export default function Designer({
                         </div>
                       )}
                       <img
-                        src={el.src}
+                        src={
+                          simplifyReview?.graphicId === el.id && !simplifyReview.showBefore
+                            ? simplifyReview.after!
+                            : el.src
+                        }
                         alt=""
                         draggable={false}
                         style={{
@@ -6767,7 +6822,7 @@ export default function Designer({
                       designBbox, so it lines up — so the light only falls on the
                       design's own pixels, never on the product. Above every
                       element (their z keeps climbing), clicks pass through. */}
-                  {embroideryLoading && designBbox && designDataUrl && (
+                  {(embroideryLoading || simplifying) && designBbox && designDataUrl && (
                     <div
                       aria-hidden="true"
                       className="embroidery-scan pointer-events-none absolute"
@@ -6789,10 +6844,10 @@ export default function Designer({
                       selection is refused besides: designTrash). It can still
                       be removed, by the trash button, placed as for a
                       selection. */}
-                  {creatingPreview && (
+                  {(creatingPreview || simplifyRun) && (
                     <div
                       aria-hidden="true"
-                      className="absolute inset-0 cursor-default"
+                      className="pointer-events-auto absolute inset-0 cursor-default"
                       style={{ zIndex: designMaxZ + 2 }}
                       onPointerDown={e => e.stopPropagation()}
                       onMouseDown={e => e.stopPropagation()}
@@ -6804,7 +6859,7 @@ export default function Designer({
                       up: a tooltip under it, the app's dark one, arrow up. */}
                   {creatingPreview && designBbox && (
                     <div
-                      className="group/tooltip absolute cursor-default"
+                      className="group/tooltip pointer-events-auto absolute cursor-default"
                       style={{
                         left: `${designBbox.x * 100}%`,
                         top: `${designBbox.y * 100}%`,
@@ -6825,6 +6880,75 @@ export default function Designer({
                       </span>
                     </div>
                   )}
+                  {/* Simplify with AI's result, up for review: the graphic
+                      framed as when selected but without its handles, and
+                      under it a before/after switch with Cancel and Accept. */}
+                  {(() => {
+                    const el =
+                      simplifyReview &&
+                      visibleGraphicElements.find(g => g.id === simplifyReview.graphicId)
+                    if (!el) return null
+                    // pointer-events-auto: the layer the elements sit in lets
+                    // clicks through to the canvas, as the elements do.
+                    return (
+                      <div
+                        className="pointer-events-auto absolute"
+                        style={{
+                          left: `${el.x}%`,
+                          top: `${el.y}%`,
+                          width: `${el.width}%`,
+                          height: `${el.height}%`,
+                          zIndex: designMaxZ + 3,
+                        }}
+                        onPointerDown={e => e.stopPropagation()}
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => e.stopPropagation()}
+                        onDoubleClick={e => e.stopPropagation()}
+                      >
+                        <div
+                          aria-hidden="true"
+                          className="absolute inset-0"
+                          style={{
+                            transform: `rotate(${el.rotation ?? 0}deg)`,
+                            boxShadow: `0 0 0 1px ${SELECTION_TONE.blue.hex}`,
+                          }}
+                        />
+                        <div
+                          role="radiogroup"
+                          aria-label="Compare with the original"
+                          className="absolute bottom-full left-1/2 mb-1 flex -translate-x-1/2 rounded-full bg-white p-1 whitespace-nowrap shadow-xs"
+                        >
+                            {[
+                              { label: "Before", before: true },
+                              { label: "After", before: false },
+                            ].map(option => (
+                              <button
+                                key={option.label}
+                                type="button"
+                                role="radio"
+                                aria-checked={simplifyReview.showBefore === option.before}
+                                onClick={() => showSimplifyBefore(option.before)}
+                                className={`min-h-8 cursor-pointer rounded-full px-3 text-xs font-semibold transition-colors ${
+                                  simplifyReview.showBefore === option.before
+                                    ? "bg-neutral-200 text-black"
+                                    : "text-black hover:bg-neutral-100"
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                        </div>
+                        <div className="absolute top-full left-1/2 mt-1 flex -translate-x-1/2 gap-2 whitespace-nowrap">
+                          <KitButton variant="ghost" size="m" className="bg-white" onClick={cancelSimplified}>
+                            Cancel
+                          </KitButton>
+                          <KitButton size="m" onClick={acceptSimplified}>
+                            Accept
+                          </KitButton>
+                        </div>
+                      </div>
+                    )
+                  })()}
                   {/* Design exceeds the hoop frame: an orange frame around the
                       object(s), alongside the "Design too large" badge. With the
                       stitched preview up it frames the objects; for several
@@ -7105,7 +7229,7 @@ export default function Designer({
                 onPrintTechnique={setPrintTechnique}
                 embroiderySupported={embroiderySupported}
                 showTechnique={!dtf && !csMode}
-                hidden={dockedWarning !== null || creatingPreview}
+                hidden={dockedWarning !== null || creatingPreview || simplifyRun !== null}
                 swapDelayMs={SWAP_DELAY_MS}
               />
             )}
@@ -7124,10 +7248,13 @@ export default function Designer({
                 with it — and with a warning, which waits for it. */}
             {mergedDesigner && (
               <EmbroideryPreviewDock
-                loading={creatingPreview}
+                loading={creatingPreview && !simplifying}
                 durationMs={EMBROIDERY_MIN_LOADER_MS}
               />
             )}
+            {/* "Simplifying design for embroidery" there too, while Simplify
+                with AI runs. */}
+            {mergedDesigner && <EmbroiderySimplifyDock active={simplifying} />}
 
             {/* Zoom control — vertical, bottom-left of the canvas area. Plus on
                 top, minus at the bottom; the WedgeSlider is rotated upright. */}

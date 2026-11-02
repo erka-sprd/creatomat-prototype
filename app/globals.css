@@ -1029,3 +1029,23 @@ body.designer-mobile [contenteditable="true"] {
     background-image: none;
   }
 }
+
+/* The "Simplifying design for embroidery" loader's three dots, brightening
+   one after another (staggered in embroidery-label.tsx). */
+@keyframes loading-dot {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.loading-dot {
+  animation: loading-dot 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-dot {
+    animation: none;
+  }
+}
