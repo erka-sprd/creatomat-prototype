@@ -10,6 +10,7 @@ import {
   CanvasRowArt,
   ContactArt,
   CurveTextArt,
+  EmbroideryArt,
   PriceCalcArt,
   ZoomArt,
 } from "@/components/handoff/handoff-card-art"
@@ -103,6 +104,13 @@ const TINTS = {
     ink: "#A16207",
     glow: ["245, 158, 11", "249, 115, 22", "220, 38, 38", "236, 72, 153"],
   },
+  // The hoop guide's green, #16A34A, with lime, teal and the warning orange.
+  green: {
+    tray: "#EEF8F1",
+    line: "#D3EEDB",
+    ink: "#2F7A47",
+    glow: ["22, 163, 74", "132, 204, 22", "45, 212, 191", "234, 88, 12"],
+  },
 } satisfies Record<string, Tint>
 
 export const ENTRIES: Entry[] = [
@@ -171,6 +179,17 @@ export const ENTRIES: Entry[] = [
     updated: { date: "October 29, 2026", time: "12:54 PM" },
     status: "live",
     tint: TINTS.mauve,
+  },
+  {
+    Art: EmbroideryArt,
+    slug: "embroidery",
+    title: "Embroidery, without dead ends",
+    problem:
+      "“Why can't I add this to my basket?” — embroidery problems surface only at checkout, say little about what's wrong, and offer no way to fix them.",
+    created: "2026-10-29",
+    updated: { date: "November 3, 2026", time: "1:32 PM" },
+    status: "live",
+    tint: TINTS.green,
   },
 ]
 

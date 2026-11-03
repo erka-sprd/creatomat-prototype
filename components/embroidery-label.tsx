@@ -145,12 +145,14 @@ const PREVIEW_STATEMENTS: Record<string, PreviewStatements> = {
   fi: { creating: "Esikatselun luominen...", checking: "Laatua tarkistetaan..." },
   es: { creating: "Creación de vista previa...", checking: "Comprobando la calidad..." },
 }
-function usePreviewStatements(): PreviewStatements {
+export const PREVIEW_LANGS = Object.keys(PREVIEW_STATEMENTS)
+// `fixed` overrides the URL's language (the handoff shows several side by side).
+function usePreviewStatements(fixed?: string): PreviewStatements {
   const [lang, setLang] = useState("en")
   useEffect(() => {
     setLang(new URLSearchParams(window.location.search).get("lang") ?? "en")
   }, [])
-  return PREVIEW_STATEMENTS[lang] ?? PREVIEW_STATEMENTS.en
+  return PREVIEW_STATEMENTS[fixed ?? lang] ?? PREVIEW_STATEMENTS.en
 }
 // The pill's type size, and the least it may shrink to when the longer
 // statement wouldn't fit the canvas otherwise (px).
@@ -273,13 +275,16 @@ export function EmbroideryPreviewStatus({
   durationMs,
   docked = false,
   className = "",
+  lang,
 }: {
   loading: boolean
   durationMs: number
   docked?: boolean
   className?: string
+  /** One of PREVIEW_LANGS, in place of the URL's `?lang=`. */
+  lang?: string
 }) {
-  const statements = usePreviewStatements()
+  const statements = usePreviewStatements(lang)
   const text = useTypedPreviewStatus(loading, durationMs, statements)
   const pillRef = useRef<HTMLDivElement>(null)
   const sizerRef = useRef<HTMLSpanElement>(null)
@@ -657,7 +662,7 @@ export function EmbroideryMaxSizeBadge({
 // design-issue warning adds, centred under its message, a secondary "See what
 // you can do" that opens its options (`onSeeOptions`) — in the same orange frame, 16px
 // in all round, so it rounds as a box rather than a full pill.
-function SizeBadgePill({
+export function SizeBadgePill({
   status,
   hidden = false,
   onSeeOptions,

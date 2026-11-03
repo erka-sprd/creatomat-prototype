@@ -359,6 +359,74 @@ export function PriceCalcArt() {
   )
 }
 
+/* -------------------------------------------------------------- embroidery */
+
+const EMBROIDERY_STEP_MS = 2200
+// The design past the hoop frame, against its size once it fits.
+const EMBROIDERY_LARGE_SCALE = 1.5
+
+/**
+ * A design too large for the hoop: orange, with its warning — then brought
+ * down onto the striped hoop frame, green, with the good-size badge.
+ */
+export function EmbroideryArt() {
+  const reduced = useReducedMotion()
+  const [front] = useProductViews(CANVAS_PRODUCT_ID, "white")
+  const [fits, setFits] = useState(false)
+  useEffect(() => {
+    if (reduced) return setFits(true)
+    const id = window.setInterval(() => setFits(f => !f), EMBROIDERY_STEP_MS)
+    return () => window.clearInterval(id)
+  }, [reduced])
+  const tone = fits ? "#16A34A" : "#EA580C"
+
+  return (
+    <div className={ART} aria-hidden="true">
+      {front && (
+        <img
+          src={front}
+          alt=""
+          draggable={false}
+          className="absolute top-1 left-1/2 h-[110px] w-[110px] -translate-x-1/2 object-contain"
+        />
+      )}
+      {/* The hoop frame on the chest, the design pinned to its top-left corner. */}
+      <div className="absolute top-[34px] left-[106px] size-7">
+        <span className="hoop-guide-stripes absolute inset-0 border border-[#16A34A] opacity-60" />
+        <div
+          className="absolute top-0 left-0 size-7 origin-top-left transition-[scale] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          style={{ scale: fits ? 1 : EMBROIDERY_LARGE_SCALE }}
+        >
+          <img
+            src="/img/graphics/graphics5.png"
+            alt=""
+            draggable={false}
+            className="size-full object-contain"
+          />
+          <span
+            className="absolute inset-0 transition-[box-shadow] duration-300"
+            style={{ boxShadow: `0 0 0 1px ${tone}` }}
+          />
+        </div>
+      </div>
+      <div
+        className="absolute bottom-3 left-1/2 flex h-5 -translate-x-1/2 items-center gap-1 rounded-full border bg-white pr-2 pl-1 whitespace-nowrap transition-colors duration-300"
+        style={{ borderColor: tone, color: tone }}
+      >
+        <span
+          className="flex size-3 items-center justify-center rounded-full text-[7px] leading-none font-bold text-white transition-colors duration-300"
+          style={{ background: tone }}
+        >
+          {fits ? "✓" : "!"}
+        </span>
+        <span key={String(fits)} className="ho-art-tick text-[9px] leading-none font-semibold">
+          {fits ? "Good size for embroidery" : "Too large for embroidery"}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 /* --------------------------------------------------- bulk-purchase-rework */
 
 // The designer's default product, the Men's Premium Organic T-Shirt.

@@ -16,6 +16,19 @@ export const CaretIcon = ({ className }: KitIconProps) => (
     </svg>
 )
 
+// Kit v2 Chevron — the stroked chevron, pointing down; rotate-90 for left,
+// -rotate-90 for right, rotate-180 for up (as create-omat uses it).
+export const ChevronIcon = ({ className }: KitIconProps) => (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
+        <path
+            fillRule="evenodd"
+            clipRule="evenodd"
+            d="M5.29289 8.29289C5.65338 7.93241 6.22061 7.90468 6.6129 8.2097L6.70711 8.29289L12 13.585L17.2929 8.29289C17.6534 7.93241 18.2206 7.90468 18.6129 8.2097L18.7071 8.29289C19.0676 8.65338 19.0953 9.22061 18.7903 9.6129L18.7071 9.70711L12.7071 15.7071C12.3466 16.0676 11.7794 16.0953 11.3871 15.7903L11.2929 15.7071L5.29289 9.70711C4.90237 9.31658 4.90237 8.68342 5.29289 8.29289Z"
+            fill="currentColor"
+        />
+    </svg>
+)
+
 // Kit v2 Sort — the two opposing arrows on the "Sort by" filter chip.
 export const SortIcon = ({ className }: KitIconProps) => (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden>

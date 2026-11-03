@@ -1,8 +1,9 @@
 "use client"
 
+import { DESIGNS_PANEL_TITLE, DesignsPanel } from "@/components/designs-panel/designs-panel"
 import MobileDrawer from "@/components/mobile/mobile-drawer"
 import { UploadPanel } from "@/components/ui/upload-panel/UploadPanel"
-import { AI_IMAGE_SRCS, GRAPHIC_SRCS } from "@/lib/graphics-library"
+import { AI_IMAGE_SRCS } from "@/lib/graphics-library"
 
 // Mobile presentation of the designer's add panels — the same Graphics /
 // Uploads / AI content the desktop left slide-in panels show, re-housed as a
@@ -20,7 +21,7 @@ type MobilePanelsDrawerProps = {
 }
 
 const PANEL_TITLES: Record<MobilePanel, string> = {
-    graphics: "Graphics",
+    graphics: DESIGNS_PANEL_TITLE,
     uploads: "Uploads",
     ai: "AI design",
 }
@@ -42,27 +43,13 @@ export default function MobilePanelsDrawer({
             heightClassName="h-[70dvh]"
         >
             {panel === "graphics" && (
-                <div className="flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
-                    <div className="grid grid-cols-3 gap-0">
-                        {GRAPHIC_SRCS.map(src => (
-                            <button
-                                key={src}
-                                type="button"
-                                onClick={() => {
-                                    onPlaceImage(src)
-                                    onClose()
-                                }}
-                                className="flex aspect-square cursor-pointer items-center justify-center overflow-hidden border-r border-b border-neutral-100 p-3 transition-colors active:bg-neutral-50"
-                            >
-                                <img
-                                    src={src}
-                                    alt=""
-                                    className="max-h-full max-w-full object-contain select-none"
-                                />
-                            </button>
-                        ))}
-                    </div>
-                </div>
+                <DesignsPanel
+                    layout="mobile"
+                    onPick={design => {
+                        onPlaceImage(design.src)
+                        onClose()
+                    }}
+                />
             )}
 
             {panel === "uploads" && (

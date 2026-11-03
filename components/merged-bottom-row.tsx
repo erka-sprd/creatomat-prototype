@@ -96,6 +96,7 @@ export function MergedBottomRow({
   hidden = false,
   swapDelayMs = 0,
   techniqueConfirmed = false,
+  zoomOnly = false,
 }: {
   zoom: number
   maxZoom: number
@@ -122,13 +123,46 @@ export function MergedBottomRow({
   swapDelayMs?: number
   /** The technique switcher's green tick in place of its technique icon (TechniqueSwitcher). */
   techniqueConfirmed?: boolean
+  /**
+   * Only the zoom, at the row's centre — while a Simplify with AI result is up
+   * for review. The change shows only while the row is out of view (`hidden`),
+   * so it slides out and back in as it was and will be — never rearranging in
+   * sight.
+   */
+  zoomOnly?: boolean
 }) {
+  // Hidden, the row keeps the look it left with — the zoom alone stays
+  // centred as it slides out (Cancel, the warning taking the spot) — and
+  // takes up the current one as it comes back.
+  const [zoomOnlyShown, setZoomOnlyShown] = useState(zoomOnly)
+  if (!hidden && zoomOnlyShown !== zoomOnly) setZoomOnlyShown(zoomOnly)
+  // How far the zoom's own place is from the row's centre — its translate
+  // while zoomOnly. Measured from layout (offsetLeft), which a translate
+  // doesn't move — again whenever any of the row's parts resizes (the views
+  // strip filling in moves the zoom's place), and as zoomOnly comes on.
+  const rowRef = useRef<HTMLDivElement>(null)
+  const zoomRef = useRef<HTMLDivElement>(null)
+  const [centreOffset, setCentreOffset] = useState(0)
+  useLayoutEffect(() => {
+    const row = rowRef.current
+    const zoomBox = zoomRef.current
+    if (!row || !zoomBox) return
+    const measure = () =>
+      setCentreOffset(row.clientWidth / 2 - (zoomBox.offsetLeft + zoomBox.offsetWidth / 2))
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(row)
+    for (const part of row.children) observer.observe(part)
+    return () => observer.disconnect()
+  }, [zoomOnlyShown])
+  const others = zoomOnlyShown ? "pointer-events-none! opacity-0" : ""
   return (
     // The equal side columns keep the views at the canvas centre whatever the
     // zoom and the technique button measure. They never go below their
     // controls, so on a narrow canvas only the strip gives way: its
     // fit-content column shrinks and the strip scrolls.
     <div
+      ref={rowRef}
       aria-hidden={hidden}
       className={
         "max-dlg:hidden pointer-events-none absolute inset-x-6 bottom-6 z-[5] grid items-end gap-3 transition-transform duration-300 ease-out motion-reduce:transition-none " +
@@ -139,7 +173,11 @@ export function MergedBottomRow({
         transitionDelay: hidden ? "0ms" : `${swapDelayMs}ms`,
       }}
     >
-      <div className="pointer-events-auto justify-self-end">
+      <div
+        ref={zoomRef}
+        className="pointer-events-auto justify-self-end"
+        style={{ translate: zoomOnlyShown ? `${centreOffset}px 0` : "0 0" }}
+      >
         <ZoomControl
           zoom={zoom}
           maxZoom={maxZoom}
@@ -148,13 +186,13 @@ export function MergedBottomRow({
           onJump={onZoomJump}
         />
       </div>
-      <div className="pointer-events-auto min-w-0">
+      <div aria-hidden={zoomOnlyShown} className={`pointer-events-auto min-w-0 ${others}`}>
         {/* Shown for a single view too, so the row keeps its three parts. */}
         {views.length > 0 && (
           <ViewStrip views={views} activeViewId={activeViewId} onSelect={onSelectView} />
         )}
       </div>
-      <div className="pointer-events-auto justify-self-start">
+      <div aria-hidden={zoomOnlyShown} className={`pointer-events-auto justify-self-start ${others}`}>
         {showTechnique && staticTechnique && <TechniqueLabel value={printTechnique} />}
         {showTechnique && !staticTechnique && (
           <TechniqueSwitcher

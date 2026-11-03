@@ -12,8 +12,8 @@ import {
 import { createPortal, flushSync } from "react-dom"
 import * as Popover from "@radix-ui/react-popover"
 import { Basket, type BasketItem, mergeIntoBasket } from "@/components/basket"
+import { EmbroideryPreview } from "@/components/embroidery-preview"
 import {
-  EmbroideryPreview,
   buildOutOfStockMap,
   buildTiles,
   getPrintAreaOverlay,
@@ -33,11 +33,8 @@ import {
 } from "@/lib/embroidery-limits"
 import { buildCarryMap, carryBox, carryTextPoint } from "@/lib/design-carry"
 import { IMAGE_SERVER_BASE, loadCatalog, modelImagesFor } from "@/lib/catalog"
-import {
-  AI_MAX_PRINT_AREA_FRACTION,
-  GRAPHIC_SRCS,
-  isAiImage,
-} from "@/lib/graphics-library"
+import { AI_MAX_PRINT_AREA_FRACTION, isAiImage } from "@/lib/graphics-library"
+import { DesignsPanel } from "@/components/designs-panel/designs-panel"
 import { printAreaCosts, printAreaTotal } from "@/lib/print-area-pricing"
 import { FREE_SHIPPING_THRESHOLD } from "@/lib/shipping"
 import {
@@ -165,7 +162,7 @@ const DESKTOP_VIEW_SWITCHER: "thumbs" | "dropdown" = "thumbs"
 const SHOW_PRINT_TECHNIQUE_SELECTOR: boolean = false
 // Shortest time the embroidery "Creating preview" loader stays up for a changed
 // design, so a fast render doesn't flash it by unseen.
-const EMBROIDERY_MIN_LOADER_MS = 3500
+export const EMBROIDERY_MIN_LOADER_MS = 3500
 
 // Monotonic unique id — Date.now() alone collides when two elements are created
 // in the same millisecond (e.g. uploading/placing several at once).
@@ -331,21 +328,22 @@ const LIGHT_PRODUCT_IMAGE_SHADOW = lightProductImageShadow()
 
 // The mocked design-issue warnings apply to these designs only: thin lines to
 // the pink cat, too complex to the mountain lake (next to it in the panel).
-const THIN_LINE_GRAPHIC_SRC = "/img/graphics/graphics1.png"
+export const THIN_LINE_GRAPHIC_SRC = "/img/graphics/graphics1.png"
 // After "Switch to standard print": how long the bottom row keeps naming
 // embroidery — its return (SWAP_DELAY_MS + the 300ms slide), then a beat
 // held in view — before it changes to standard print.
-const SWITCH_REVEAL_MS = SWAP_DELAY_MS + 300 + 600
+export const SWITCH_REVEAL_MS = SWAP_DELAY_MS + 300 + 600
 // Then how long the green tick holds in the technique icon's place.
-const SWITCH_CONFIRM_MS = 2000
-// What "Simplify with AI" fills the AI panel's prompt with.
-const SIMPLIFY_FOR_EMBROIDERY_PROMPT = "Make this design simpler for embroidery"
+export const SWITCH_CONFIRM_MS = 2000
 // How long "Simplifying design for embroidery" runs before the result is
 // offered for review.
-const SIMPLIFY_RUN_MS = 4000
+export const SIMPLIFY_RUN_MS = 4000
+// How long an accepted result waits for its check to start before the bottom
+// row stops waiting for it (acceptCheck) — should the check not run at all.
+const ACCEPT_CHECK_START_MS = 1000
 // Too complex: the mountain lake, and the boy with the fish (8th in the
 // Graphics panel) — the one to try "Simplify with AI" on.
-const COMPLEX_GRAPHIC_SRCS = ["/img/graphics/graphics2.png", "/img/graphics/graphics8.png"]
+export const COMPLEX_GRAPHIC_SRCS = ["/img/graphics/graphics2.png", "/img/graphics/graphics8.png"]
 const isComplexGraphic = (src: string) => COMPLEX_GRAPHIC_SRCS.some(s => src.endsWith(s))
 const isThinLineGraphic = (src: string) => src.endsWith(THIN_LINE_GRAPHIC_SRC)
 // Designs whose lines become too thin to stitch below a size: in embroidery
@@ -366,22 +364,22 @@ const HOOP_SNAP_PX = 10
 
 // The hoop guide's arrow is dropped once the object is within this share of
 // the hoop-frame size (snapped, or about to be) — there is nowhere left to point.
-const HOOP_ARROW_MIN_RATIO_GAP = 0.02
+export const HOOP_ARROW_MIN_RATIO_GAP = 0.02
 
 // How strongly the object under the hoop guide is blurred, in px, and how long
 // it takes to blur in and back out — the 300ms ease of the canvas pills.
-const HOOP_GUIDE_CONTENT_BLUR_PX = 4
+export const HOOP_GUIDE_CONTENT_BLUR_PX = 4
 const HOOP_GUIDE_BLUR_MS = 300
-const HOOP_GUIDE_BLUR_TRANSITION = `filter ${HOOP_GUIDE_BLUR_MS}ms ease-out`
+export const HOOP_GUIDE_BLUR_TRANSITION = `filter ${HOOP_GUIDE_BLUR_MS}ms ease-out`
 
 // During a guided resize the object counts as fitting the hoop frame within
 // this share of it — matches the snap, which lands it exactly on the frame.
-const HOOP_RESIZE_FIT_TOLERANCE = 0.01
+export const HOOP_RESIZE_FIT_TOLERANCE = 0.01
 // How long "Max. size for embroidery" stays after the resize is released.
 const EMBROIDERY_MAX_SIZE_LINGER_MS = 1000
 // How long the green "good size" badge stays once a lone design is brought
 // down to the hoop frame from past it.
-const RECOVERED_GOOD_SIZE_MS = 2000
+export const RECOVERED_GOOD_SIZE_MS = 2000
 // Its exit animation (EmbroideryMaxSizeBadge's duration-150).
 const EMBROIDERY_MAX_SIZE_EXIT_MS = 150
 // The bounce an object gives when its resize runs into the hoop frame: up to
@@ -404,9 +402,9 @@ const EMBROIDERY_MIN_BOUNCE_MS = 360
 // How a selection frame eases between tones: its colour, --selection-tone
 // (registered in globals.css), transitions — the ring itself doesn't, so it
 // still comes and goes at once.
-const SELECTION_FRAME_TRANSITION = "--selection-tone 300ms ease-out"
+export const SELECTION_FRAME_TRANSITION = "--selection-tone 300ms ease-out"
 
-const SELECTION_TONE = {
+export const SELECTION_TONE = {
   blue: {
     hex: "#3355FF",
     handle: "border-[#3355FF] hover:bg-[#3355FF]",
@@ -1256,7 +1254,7 @@ export default function Designer({
   // re-rendered, at once if it didn't. No opacity fade.
   const [embroideryShown, setEmbroideryShown] = useState(false)
   const [embroideryLoading, setEmbroideryLoading] = useState(false)
-  // "Simplify with AI" on a graphic (modifyWithAI): running until `after` is
+  // "Simplify with AI" on a graphic (simplifyWithAI): running until `after` is
   // in, then up for review, showing `after` unless `showBefore`.
   const [simplifyRun, setSimplifyRun] = useState<{
     graphicId: string
@@ -5035,50 +5033,29 @@ export default function Designer({
     setRowShowsEmbroidery(true)
     setPrintTechnique("standard")
   }
-  // The solutions popover's "Simplify with AI": closes it and opens the AI
-  // panel in modify mode on the design's graphic — create-omat's "Modify with
-  // AI", which hands the image to the panel (additionalDialogData) to show as
-  // a thumbnail in its prompt box. A fresh object each time, so the panel
-  // takes it up again even for the same graphic.
-  // The prompt comes filled in (SIMPLIFY_FOR_EMBROIDERY_PROMPT).
-  const [aiModifyImage, setAiModifyImage] = useState<{
-    graphicId: string
-    src: string
-    prompt: string
-  } | null>(null)
-  const simplifyWithAI = () => {
-    setThinLineHelpOpen(false)
-    const graphic =
-      graphicElements.find(g => g.id === selectedGraphicId) ??
-      visibleGraphicElements.find(g => g.id === issueGraphicId)
-    if (graphic) {
-      setAiModifyImage({
-        graphicId: graphic.id,
-        src: graphic.src,
-        prompt: SIMPLIFY_FOR_EMBROIDERY_PROMPT,
-      })
-    }
-    setActivePanel("ai")
-  }
-  // The panel's Modify, without a model. It closes the panel and lets the
-  // design go; the design shines as under "Creating preview" and
-  // "Simplifying design for embroidery" takes the bottom row's spot while the
-  // image is simplified in the browser (simplifyImage), for SIMPLIFY_RUN_MS.
+  // The solutions popover's "Simplify with AI": closes it and simplifies the
+  // design's graphic at once, without a model and without the AI panel. The
+  // design lets go and shines as under "Creating preview", and "Simplifying
+  // design for embroidery" takes the bottom row's spot while the image is
+  // simplified in the browser (simplifyImage), for SIMPLIFY_RUN_MS.
   // The result is then offered on the canvas — before/after, accept, cancel
   // (simplifyReview) — the graphic keeping its own src until it's accepted,
   // so the design stays as it was (warning and all) if it isn't. Accepted, its
   // new src isn't a mocked issue graphic, so the warning goes and the
   // embroidery check runs again on the result.
-  const modifyWithAI = async (src: string) => {
+  const simplifyWithAI = () => {
+    setThinLineHelpOpen(false)
     const graphic =
-      graphicElements.find(g => g.id === aiModifyImage?.graphicId && g.src === src) ??
-      graphicElements.find(g => g.src === src)
+      graphicElements.find(g => g.id === selectedGraphicId) ??
+      visibleGraphicElements.find(g => g.id === issueGraphicId)
     if (!graphic) return
-    setActivePanel(null)
     setSelectedGraphicId(null)
     setSelectedTextId(null)
     setSimplifyRun({ graphicId: graphic.id, after: null, showBefore: false })
-    Promise.all([simplifyImage(src), new Promise(resolve => setTimeout(resolve, SIMPLIFY_RUN_MS))])
+    Promise.all([
+      simplifyImage(graphic.src),
+      new Promise(resolve => setTimeout(resolve, SIMPLIFY_RUN_MS)),
+    ])
       .then(([after]) =>
         setSimplifyRun(run =>
           run?.graphicId === graphic.id && run.after === null ? { ...run, after } : run
@@ -5095,9 +5072,26 @@ export default function Designer({
       setSimplifyRun(null)
     }
   }, [simplifyRun, graphicElements])
+  // Accepted, the result goes through the check ("Creating preview") like any
+  // changed design. The bottom row slides out at once — its review look, the
+  // zoom alone at the centre, going with it — and stays out until the check
+  // is done, then comes back whole.
+  const [acceptCheck, setAcceptCheck] = useState<"pending" | "running" | null>(null)
+  useEffect(() => {
+    if (acceptCheck === "pending") {
+      if (creatingPreview) {
+        setAcceptCheck("running")
+        return
+      }
+      const t = setTimeout(() => setAcceptCheck(null), ACCEPT_CHECK_START_MS)
+      return () => clearTimeout(t)
+    }
+    if (acceptCheck === "running" && !creatingPreview) setAcceptCheck(null)
+  }, [acceptCheck, creatingPreview])
   const acceptSimplified = () => {
     if (!simplifyReview) return
     const { graphicId, after } = simplifyReview
+    setAcceptCheck("pending")
     setGraphicElements(prev => prev.map(g => (g.id === graphicId ? { ...g, src: after! } : g)))
     setSimplifyRun(null)
   }
@@ -7229,7 +7223,10 @@ export default function Designer({
                 onPrintTechnique={setPrintTechnique}
                 embroiderySupported={embroiderySupported}
                 showTechnique={!dtf && !csMode}
-                hidden={dockedWarning !== null || creatingPreview || simplifyRun !== null}
+                hidden={
+                  dockedWarning !== null || creatingPreview || simplifying || acceptCheck !== null
+                }
+                zoomOnly={simplifyReview !== null}
                 swapDelayMs={SWAP_DELAY_MS}
               />
             )}
@@ -7571,8 +7568,9 @@ export default function Designer({
                 }`}
               >
                 {/* No title on the AI panel, as in create-omat (its style grid
-                    has its own). */}
-                {panel !== "ai" && (
+                    has its own); the Designs & Graphics panel carries its own
+                    title above its search. */}
+                {panel === "uploads" && (
                   <h2 className="font-display text-[18px] font-medium text-black px-6 pt-6 pb-4 capitalize flex-shrink-0">
                     {panel}
                   </h2>
@@ -7585,31 +7583,18 @@ export default function Designer({
                   />
                 )}
                 {panel === "graphics" && (
-                  <div className="flex-1 overflow-y-auto">
-                    <div className="grid grid-cols-3 gap-0">
-                      {GRAPHIC_SRCS.map(src => (
-                        <button
-                          key={src}
-                          type="button"
-                          onClick={() => addGraphicElement(src)}
-                          className="aspect-square flex items-center justify-center p-3 cursor-pointer overflow-hidden border-r border-b border-neutral-100 hover:bg-neutral-50 transition-colors"
-                        >
-                          {/* Dragging the image onto the canvas places it where
-                              it is dropped; clicking still centres it. */}
-                          <img
-                            src={src}
-                            alt=""
-                            draggable
-                            onDragStart={e => startImageDrag(e, { src, source: "marketplace-design" })}
-                            className="max-h-full max-w-full object-contain select-none"
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  // Dragging a card onto the canvas places it where it is
+                  // dropped; clicking still centres it.
+                  <DesignsPanel
+                    layout="desktop"
+                    onPick={design => addGraphicElement(design.src)}
+                    onDragStart={(e, design) =>
+                      startImageDrag(e, { src: design.src, source: "marketplace-design" })
+                    }
+                  />
                 )}
                 {panel === "ai" && (
-                  <AIPanel modifyImage={aiModifyImage} onModify={modifyWithAI} />
+                  <AIPanel />
                 )}
                 <button
                   type="button"
