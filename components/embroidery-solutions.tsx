@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react"
 
+import type { EmbroideryDesignIssue } from "@/components/embroidery-label"
 import { KitButton } from "@/components/kit-button"
 
 // What the design-issue popover (ThinLineHelpPopover) holds — the warning's
@@ -18,13 +19,30 @@ import { KitButton } from "@/components/kit-button"
 // Simplify it with AI (`onSimplifyWithAI`, primary — the AI panel in modify
 // mode) or print it instead (`onSwitchToPrint`, secondary). The AI card opens
 // with a preview of the simplification on the user's own design (`designSrc`).
+// The AI card's copy per issue: thin lines are fixed (thickened), not
+// simplified — simplifying would lose them.
+const AI_CARD = {
+  "thin-line": {
+    title: "Fix with AI",
+    text: "Thickens the thin lines so they can be stitched.",
+    action: "Fix now",
+  },
+  "too-complex": {
+    title: "Simplify with AI",
+    text: "You might lose some details.",
+    action: "Simplify now",
+  },
+} as const
+
 export function EmbroiderySolutions({
+  issue,
   designSrc,
   printSavingLabel,
   onClose,
   onSimplifyWithAI,
   onSwitchToPrint,
 }: {
+  issue: EmbroideryDesignIssue
   designSrc: string | null
   /** "X € cheaper", badged on the print card's design — or null. */
   printSavingLabel: string | null
@@ -47,12 +65,12 @@ export function EmbroiderySolutions({
       </div>
       <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
         <SolutionCard
-          title="Simplify with AI"
-          text="You might lose some details."
+          title={AI_CARD[issue].title}
+          text={AI_CARD[issue].text}
           visual={designSrc && <SimplifyPreview src={designSrc} />}
         >
           <KitButton variant="primary" onClick={onSimplifyWithAI}>
-            Simplify now
+            {AI_CARD[issue].action}
           </KitButton>
         </SolutionCard>
         <SolutionCard

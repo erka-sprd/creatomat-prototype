@@ -10,7 +10,8 @@ import { AI_IMAGE_SRCS } from "@/lib/graphics-library"
 // vaul bottom drawer (create-omat presents these via ResponsiveDrawer below
 // the breakpoint). Driven by the shared `activePanel` state.
 
-export type MobilePanel = "graphics" | "uploads" | "ai"
+// Templates: the drawer and its title only, for now.
+export type MobilePanel = "graphics" | "uploads" | "ai" | "templates"
 
 type MobilePanelsDrawerProps = {
     panel: MobilePanel | null
@@ -24,6 +25,7 @@ const PANEL_TITLES: Record<MobilePanel, string> = {
     graphics: DESIGNS_PANEL_TITLE,
     uploads: "Uploads",
     ai: "AI design",
+    templates: "Templates",
 }
 
 export default function MobilePanelsDrawer({

@@ -99,6 +99,65 @@ function smooth(labels: Int16Array, w: number, h: number, k: number): Int16Array
   return out
 }
 
+// "Fix with AI" for thin lines, likewise without the AI: thickens the design's
+// lines rather than simplifying it away (the soften above would melt thin
+// lines). Its alpha made solid, then grown THICKEN_SHARE of its longer side
+// all round, one pixel a pass — each clear pixel touching ink takes that
+// ink's colour — so every stroke gets wider in its own colour.
+// Only strokes against transparency thicken; lines drawn over a filled area
+// stay as they are (a real model would redraw them).
+const THICKEN_SHARE = 0.008
+
+/** The image with its lines thickened, as a PNG data URL. */
+export async function thickenLines(src: string): Promise<string> {
+  const img = await loadImage(src)
+  const scale = Math.min(1, MAX_SIZE_PX / Math.max(img.naturalWidth, img.naturalHeight))
+  const w = Math.max(1, Math.round(img.naturalWidth * scale))
+  const h = Math.max(1, Math.round(img.naturalHeight * scale))
+  const canvas = document.createElement("canvas")
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })
+  if (!ctx) throw new Error("Canvas 2D is unavailable")
+  ctx.drawImage(img, 0, 0, w, h)
+
+  const image = ctx.getImageData(0, 0, w, h)
+  const { data } = image
+  for (let i = 3; i < data.length; i += 4) data[i] = data[i] >= ALPHA_CUTOFF ? 255 : 0
+  const passes = Math.max(1, Math.round(Math.max(w, h) * THICKEN_SHARE))
+  for (let p = 0; p < passes; p++) {
+    const prev = new Uint8ClampedArray(data)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4
+        if (prev[i + 3]) continue
+        const from = inkNeighbour(prev, w, h, x, y)
+        if (from < 0) continue
+        data[i] = prev[from]
+        data[i + 1] = prev[from + 1]
+        data[i + 2] = prev[from + 2]
+        data[i + 3] = 255
+      }
+    }
+  }
+  ctx.putImageData(image, 0, 0)
+  return canvas.toDataURL("image/png")
+}
+
+// The data index of an opaque pixel among (x, y)'s eight neighbours, or -1.
+function inkNeighbour(data: Uint8ClampedArray, w: number, h: number, x: number, y: number) {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx
+      const ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+      const j = (ny * w + nx) * 4
+      if (data[j + 3]) return j
+    }
+  }
+  return -1
+}
+
 /** The simplified image as a PNG data URL. */
 export async function simplifyImage(src: string): Promise<string> {
   const img = await loadImage(src)

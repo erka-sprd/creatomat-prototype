@@ -43,6 +43,12 @@ export const EMBROIDERY_RULE_DESIGNS: PanelDesign[] = [
     { src: "/img/graphics/graphics9.png", designId: 9, name: "Beaver", tags: [EMBROIDERY_TAG] },
     { src: "/img/graphics/graphics11.png", designId: 11, name: "Rose", tags: [EMBROIDERY_TAG, "Rose"] },
     { src: "/img/graphics/graphics5.png", designId: 5, name: "Mushroom", tags: [EMBROIDERY_TAG] },
+    {
+        src: "/img/marketplace/314234417.png",
+        designId: 314234417,
+        name: "Team Marathon Viewing FR red",
+        tags: [EMBROIDERY_TAG, "Team"],
+    },
 ]
 
 /** Everything the Designs & Graphics panel lists, in its "Most popular" order. */

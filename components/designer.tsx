@@ -69,6 +69,7 @@ import {
   EmbroideryMaxSizeBadge,
   EmbroideryPreviewStatus,
   EmbroideryIssueDock,
+  EmbroideryZoomTipDock,
   EmbroideryPreviewDock,
   EmbroiderySimplifyDock,
   EmbroiderySizeBadge,
@@ -128,11 +129,12 @@ import { graphicInkFractions, rotatedBounds, textInkPx, type InkRect } from "@/l
 import DockHoverIcon from "@/components/ui/lottie/DockHoverIcon"
 import aiImageAnim from "@/components/ui/lottie/ai-image.json"
 import graphicsAnim from "@/components/ui/lottie/graphics.json"
+import templatesAnim from "@/components/ui/lottie/templates.json"
 import textAnim from "@/components/ui/lottie/text.json"
 import uploadsAnim from "@/components/ui/lottie/uploads.json"
 import { TextColorPanel } from "@/components/ui/text-color-panel/TextColorPanel"
 import { AIPanel } from "@/components/ai-panel/ai-panel"
-import { simplifyImage } from "@/lib/simplify-image"
+import { simplifyImage, thickenLines } from "@/lib/simplify-image"
 import { KitButton } from "@/components/kit-button"
 import { UploadPanel } from "@/components/ui/upload-panel/UploadPanel"
 
@@ -146,7 +148,7 @@ import { UploadPanel } from "@/components/ui/upload-panel/UploadPanel"
  * - ✅ Kept "30-Day easy returns" and Shipping rows in place
  */
 
-type DesignerPanel = "graphics" | "uploads" | "ai"
+type DesignerPanel = "graphics" | "uploads" | "ai" | "templates"
 
 const DEFAULT_PRODUCT_ID = "812" // Men's Premium Organic T-Shirt
 
@@ -175,7 +177,9 @@ const ROTATE_SNAP_DEG = 8
 
 // Upper bound for every zoom path — slider, +/- stops, wheel, mobile pinch.
 // 1 = fit-to-canvas.
-const MAX_ZOOM = 15
+export const MAX_ZOOM = 15
+// The +/- stops: create-omat's 0/10/50/100 % of the range (1× → 2.4× → 8× → 15×).
+export const ZOOM_STOPS = [0, 10, 50, 100].map(percent => 1 + (percent / 100) * (MAX_ZOOM - 1))
 // DTF: the zoom levels its render is remade at (see dtfZoomStep), and the
 // longest side that render may reach — the patch's shape is computed per
 // pixel, so this caps the wait at high zoom.
@@ -196,13 +200,13 @@ const PASTE_OFFSET_PCT = 5
 
 // Floating delete button above the selected object — port of create-omat's
 // TrashCanPlugin (28px circle, 20px gap from the object's screen bounding box).
-const TRASH_BUTTON_SIZE = 28
-const TRASH_OFFSET = 20
+export const TRASH_BUTTON_SIZE = 28
+export const TRASH_OFFSET = 20
 // The button's look, bar its colours (red, or the warning orange).
-const TRASH_BUTTON_CLASS =
+export const TRASH_BUTTON_CLASS =
   "flex cursor-pointer items-center justify-center rounded-full border-2 bg-[#f4f4f4] shadow-[0_2px_4px_rgba(0,0,0,0.1)] transition-colors duration-300 ease-out"
 
-function TrashIcon() {
+export function TrashIcon() {
   return (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M14 2C15.0543 2 15.9177 2.81581 15.9941 3.85059L16 4V6H20C20.5523 6 21 6.44772 21 7C21 7.51284 20.6136 7.9354 20.1162 7.99316L20 8H19.9199L19 19C19 20.5975 17.7513 21.9036 16.1768 21.9951L16 22H8C6.4024 22 5.09608 20.7512 5.00781 19.251L5.00391 19.083L4.08008 8H4C3.44772 8 3 7.55228 3 7C3 6.48716 3.38645 6.0646 3.88379 6.00684L4 6H8V4C8 2.9457 8.81581 2.08229 9.85059 2.00586L10 2H14ZM7 19C7 19.5128 7.38645 19.9354 7.88379 19.9932L8 20H16C16.5155 20 16.94 19.6096 16.9971 19.041L17.0039 18.917L17.9141 8H6.08594L7 19ZM10 10C10.5128 10 10.9354 10.3865 10.9932 10.8838L11 11V17C11 17.5523 10.5523 18 10 18C9.48716 18 9.0646 17.6135 9.00684 17.1162L9 17V11C9 10.4477 9.44772 10 10 10ZM14 10C14.5128 10 14.9354 10.3865 14.9932 10.8838L15 11V17C15 17.5523 14.5523 18 14 18C13.4872 18 13.0646 17.6135 13.0068 17.1162L13 17V11C13 10.4477 13.4477 10 14 10ZM10 6H14V4H10V6Z" fill="currentColor"/>
@@ -238,7 +242,7 @@ const BOTTOM_HANDLE_TONE = {
   warning: "border-[#EA580C] text-[#EA580C] hover:bg-[#EA580C]",
 }
 
-function SelectionBottomHandles({
+export function SelectionBottomHandles({
   onRotateStart,
   onMoveStart,
   warning = false,
@@ -329,11 +333,8 @@ const LIGHT_PRODUCT_IMAGE_SHADOW = lightProductImageShadow()
 // The mocked design-issue warnings apply to these designs only: thin lines to
 // the pink cat, too complex to the mountain lake (next to it in the panel).
 export const THIN_LINE_GRAPHIC_SRC = "/img/graphics/graphics1.png"
-// After "Switch to standard print": how long the bottom row keeps naming
-// embroidery — its return (SWAP_DELAY_MS + the 300ms slide), then a beat
-// held in view — before it changes to standard print.
-export const SWITCH_REVEAL_MS = SWAP_DELAY_MS + 300 + 600
-// Then how long the green tick holds in the technique icon's place.
+// How long the technique switcher's green tick holds in its icon's place
+// (TechniqueSwitcher's `confirmed`) — shown on the handoff.
 export const SWITCH_CONFIRM_MS = 2000
 // How long "Simplifying design for embroidery" runs before the result is
 // offered for review.
@@ -341,6 +342,22 @@ export const SIMPLIFY_RUN_MS = 4000
 // How long an accepted result waits for its check to start before the bottom
 // row stops waiting for it (acceptCheck) — should the check not run at all.
 const ACCEPT_CHECK_START_MS = 1000
+// "Fit to best size": how long the object takes to shrink into the hoop
+// frame, and how far it overshoots on the way (easeOutBack's c1; 1.70158 is
+// the usual, this a smaller bounce).
+// The tip over the zoom-in button on the session's first stitched preview,
+// and where its "seen" is kept.
+export const ZOOM_HINT_TEXT = "Preview is done. Zoom in to check the stitch details"
+const ZOOM_HINT_SEEN_KEY = "embroidery-zoom-hint-seen"
+const FIT_TO_HOOP_MS = 500
+const FIT_TO_HOOP_OVERSHOOT = 1.2
+// 0 → 1, overshooting 1 a little on the way (by FIT_TO_HOOP_OVERSHOOT).
+const fitEaseOutBack = (p: number) =>
+  1 + (FIT_TO_HOOP_OVERSHOOT + 1) * Math.pow(p - 1, 3) + FIT_TO_HOOP_OVERSHOOT * Math.pow(p - 1, 2)
+// 0 → 1 with no overshoot, for a step that another follows.
+const fitEaseInOut = (p: number) => (p < 0.5 ? 4 * p ** 3 : 1 - (-2 * p + 2) ** 3 / 2)
+// Bisection steps for how close a combination's objects must come.
+const FIT_GROUP_SEARCH_STEPS = 24
 // Too complex: the mountain lake, and the boy with the fish (8th in the
 // Graphics panel) — the one to try "Simplify with AI" on.
 export const COMPLEX_GRAPHIC_SRCS = ["/img/graphics/graphics2.png", "/img/graphics/graphics8.png"]
@@ -352,8 +369,6 @@ const isThinLineGraphic = (src: string) => src.endsWith(THIN_LINE_GRAPHIC_SRC)
 // outlines need 4 cm.
 const DESIGN_MIN_MM: Record<string, number> = {
   "/img/graphics/graphics9.png": 40,
-  // The rose.
-  "/img/graphics/graphics11.png": 100,
 }
 const designMinMm = (src: string | undefined) =>
   src ? (Object.entries(DESIGN_MIN_MM).find(([s]) => src.endsWith(s))?.[1] ?? null) : null
@@ -806,12 +821,13 @@ export default function Designer({
       el.removeEventListener("touchcancel", onTouchEnd)
     }
   }, [isDlgMobile])
-  // The zoom +/- buttons jump between four fixed stops (1× → 5× → 10× → 15×). We ease the
+  // The zoom +/- buttons jump between four fixed stops — create-omat's
+  // ZoomControl: 0%, 10%, 50% and 100% of the zoom range as the control reads
+  // it (1× → 2.4× → 8× → 15×). We ease the
   // zoom value ourselves with rAF (each frame is instant, no CSS height
   // transition) so it animates smoothly AND the group-centering effect re-centres
   // every frame — a CSS height transition would clamp the scroll mid-animation
   // and drift off the objects / print area.
-  const ZOOM_STOPS = [1, 5, 10, MAX_ZOOM] as const
   const animateZoomTo = (target: number) => {
     cancelZoomAnim()
     setZoomAnimate(false)
@@ -1246,9 +1262,15 @@ export default function Designer({
   const [resizingElId, setResizingElId] = useState<string | null>(null)
   // The corner held in the current resize. Its handle stays on under the
   // pointer while the other three hide (resizeHandleCorners).
+  // A design found too thin or too complex (thinLineShown, issueGraphicId)
+  // gets no handles at all — resize, rotate or move: none of them solves it,
+  // its solutions do. It still moves by dragging the design itself.
   const [resizeCorner, setResizeCorner] = useState<"nw" | "ne" | "sw" | "se" | null>(null)
+  const handlesHiddenForIssue = (id: string) => thinLineShown && id === issueGraphicId
   const resizeHandleCorners = (id: string) =>
-    (["nw", "ne", "sw", "se"] as const).filter(c => resizingElId !== id || c === resizeCorner)
+    handlesHiddenForIssue(id)
+      ? []
+      : (["nw", "ne", "sw", "se"] as const).filter(c => resizingElId !== id || c === resizeCorner)
   // On-canvas embroidery: once nothing is selected, the stitched render replaces
   // the flat design — after the "Creating preview" loader if it had to be
   // re-rendered, at once if it didn't. No opacity fade.
@@ -1256,8 +1278,11 @@ export default function Designer({
   const [embroideryLoading, setEmbroideryLoading] = useState(false)
   // "Simplify with AI" on a graphic (simplifyWithAI): running until `after` is
   // in, then up for review, showing `after` unless `showBefore`.
+  // `issue`: what it answers — thin lines are thickened ("Fix with AI",
+  // thickenLines), a too complex design simplified (simplifyImage).
   const [simplifyRun, setSimplifyRun] = useState<{
     graphicId: string
+    issue: EmbroideryDesignIssue
     after: string | null
     showBefore: boolean
   } | null>(null)
@@ -1495,10 +1520,11 @@ export default function Designer({
   const newElementHoopFrame =
     effectivePrintTechnique === "embroidery" ? embroideryHoopFrame : null
 
-  // With embroidery selected, every new design or text is placed unselected, so
-  // the stitched preview — and the embroidery checks behind "Creating preview"
-  // — run straight away instead of waiting for a deselect. Selecting it
-  // afterwards works as usual.
+  // With embroidery selected, every new design (upload or graphic) is placed
+  // unselected, so the stitched preview — and the embroidery checks behind
+  // "Creating preview" — run straight away instead of waiting for a deselect.
+  // Selecting it afterwards works as usual. Not a new text: it's selected
+  // (and on desktop typed into) as ever, the check waiting for its deselect.
   const previewOnAdd = () => effectivePrintTechnique === "embroidery"
   // In place of selecting the new element: nothing selected or in editing, so
   // an element still selected from before can't hold the preview back either.
@@ -1607,12 +1633,10 @@ export default function Designer({
         fontFamily: DEFAULT_FONT_FAMILY,
       },
     ])
-    // Decided now, while the technique is the one the text was added under.
-    const previewFirst = previewOnAdd()
     // Defer to next tick so the document click handler (firing in the same
     // event's bubble phase) doesn't clear the selection we're about to set.
+    // Embroidery too: no check yet (see previewOnAdd).
     setTimeout(() => {
-      if (previewFirst) return clearSelectionForPreview()
       setSelectedTextId(id)
       // Desktop drops straight into typing. Mobile does not: a new text is
       // selected, which is what raises the editor bar over it — the same thing
@@ -1831,8 +1855,10 @@ export default function Designer({
   // Also while "Creating preview" runs, when nothing can be selected: placed
   // over the whole design exactly as over a selected object — over the one
   // object of a lone design, over the box round all of them otherwise — and
-  // deleting all of it.
-  const designTrash = embroideryLoading && !!designBbox && !simplifyRun
+  // deleting all of it. And while Simplify with AI runs: over the graphic
+  // being simplified, deleting just that — which ends the run (its graphic
+  // gone, simplifyRun is dropped and the result never offered).
+  const designTrash = (embroideryLoading && !!designBbox && !simplifyRun) || simplifying
   useLayoutEffect(() => {
     const id = selectedTextId ?? selectedGraphicId
     const selectedNode = id
@@ -1840,8 +1866,18 @@ export default function Designer({
       : null
     // The design's objects on screen (refs can outlive their nodes, and other
     // views' objects aren't laid out).
+    const simplifyNode = simplifying
+      ? graphicElementRefs.current[simplifyRun.graphicId]
+      : undefined
     const designNodes =
-      !selectedNode && designTrash
+      !selectedNode && simplifyNode
+        ? [
+            {
+              n: simplifyNode,
+              rotation: graphicElements.find(g => g.id === simplifyRun?.graphicId)?.rotation,
+            },
+          ].filter(({ n }) => n.isConnected && n.getClientRects().length > 0)
+        : !selectedNode && designTrash
         ? [
             ...Object.entries(textElementRefs.current).map(([elId, n]) => ({
               n,
@@ -1925,6 +1961,7 @@ export default function Designer({
     mobileZoom,
     mobilePan,
     designTrash,
+    simplifyRun?.graphicId,
   ])
 
   // Adds a graphic into the current print area, centred and sized to ~40% of the
@@ -3921,18 +3958,21 @@ export default function Designer({
     id: string
     corner: "nw" | "ne" | "sw" | "se"
   } | null>(null)
-  // A lone object past the hoop frame: its guide at the hoop-frame size, from
-  // that corner. Measured from the object as it is now — its ink,
-  // unrotated, as the guide sits in its own box — so the guide holds the hoop
-  // frame's size while the object shrinks towards it, and goes once it fits.
-  const restHoopGuide = (() => {
+  // A lone object past the hoop frame, and the scale that brings it to the
+  // hoop-frame size (`ratio`). Measured from the object as it is now — its
+  // ink, unrotated — so it holds while the object shrinks towards the hoop
+  // frame, and goes once it fits. "Fit to best size" scales by it; the rest
+  // guide draws it.
+  const loneHoopFit = (() => {
     const [el] = designEls
     if (effectivePrintTechnique !== "embroidery" || designEls.length !== 1 || !el) return null
-    if (movingLoneDesign) return null
-    // Not before the design is measured too large and, just after a switch to
-    // embroidery, selected: the guide arrives in the same frame as the
-    // selection and the warning (whose effects run off that measurement).
-    if (!embroideryTooLarge || selectOnMeasure) return null
+    // Not before the design is too large — measured so (on deselect), or
+    // resized past the frame since (resizeFitsHoop, which the warning follows
+    // too: the design stays selected, so it isn't measured again) — and, just
+    // after a switch to embroidery, selected: the guide arrives in the same
+    // frame as the selection and the warning (whose effects run off that
+    // measurement).
+    if (!(embroideryTooLarge || resizeFitsHoop === false) || selectOnMeasure) return null
     const baseW = printAreaPxSize.width / zoom
     const baseH = printAreaPxSize.height / zoom
     if (baseW <= 1 || baseH <= 1) return null
@@ -3950,9 +3990,18 @@ export default function Designer({
         })()
     if (!ink) return null
     const ratio = embroideryHoopFillScale(ink.w, ink.h, newElementHoopFrame)
-    const corner = guideCorner?.id === el.id ? guideCorner.corner : "se"
-    return ratio < 1 ? { id: el.id, corner, ratio } : null
+    return ratio < 1 ? { id: el.id, ratio } : null
   })()
+  // Its guide at the hoop-frame size, from that corner (the guide sits in
+  // the object's own box) — once measured too large, and not while it's being
+  // moved.
+  const restHoopGuide =
+    loneHoopFit && embroideryTooLarge && !movingLoneDesign
+      ? {
+          ...loneHoopFit,
+          corner: guideCorner?.id === loneHoopFit.id ? guideCorner.corner : ("se" as const),
+        }
+      : null
   useEffect(() => {
     if (prevTechniqueRef.current !== "embroidery" && effectivePrintTechnique === "embroidery") {
       setSelectOnMeasure(true)
@@ -3968,6 +4017,212 @@ export default function Designer({
     setSelectedTextId(isText ? el.id : null)
     setSelectedGraphicId(isText ? null : el.id)
   }, [selectOnMeasure, designBbox, embroideryTooLarge])
+  // "Design too large for embroidery"'s "Fit to best size": shrinks the lone
+  // object about its centre to the largest size the hoop frame takes — the
+  // rest guide's ratio — easing there with a slight overshoot
+  // (FIT_TO_HOOP_OVERSHOOT, past the hoop size and back). Ends as a guided
+  // resize released within the frame does (resizeFitAfterRelease), so the
+  // green "good size" badge follows.
+  const fitAnimRef = useRef(0)
+  useEffect(() => () => cancelAnimationFrame(fitAnimRef.current), [])
+  const fitToBestSize = () => {
+    if (!loneHoopFit || fitAnimRef.current) return
+    const { id, ratio } = loneHoopFit
+    const graphic = visibleGraphicElements.find(g => g.id === id)
+    const text = visibleTextElements.find(t => t.id === id)
+    const node = textElementRefs.current[id]
+    if (!graphic && !(text && node)) return
+    // The box's size in % of the print area, for the centre to hold: a text's
+    // is read off its node, its font size being what scales.
+    const start = graphic
+      ? { x: graphic.x, y: graphic.y, w: graphic.width, h: graphic.height, fontSize: 0 }
+      : {
+          x: text!.x,
+          y: text!.y,
+          w: (node!.offsetWidth / printAreaPxSize.width) * 100,
+          h: (node!.offsetHeight / printAreaPxSize.height) * 100,
+          fontSize: text!.fontSize,
+        }
+    const cx = start.x + start.w / 2
+    const cy = start.y + start.h / 2
+    const t0 = performance.now()
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / FIT_TO_HOOP_MS)
+      const s = 1 + (ratio - 1) * fitEaseOutBack(p)
+      const x = cx - (start.w * s) / 2
+      const y = cy - (start.h * s) / 2
+      if (graphic) {
+        setGraphicElements(prev =>
+          prev.map(g =>
+            g.id === id ? { ...g, x, y, width: start.w * s, height: start.h * s } : g
+          )
+        )
+      } else {
+        setTextElements(prev =>
+          prev.map(t =>
+            t.id === id
+              ? { ...t, x, y, fontSize: Math.max(MIN_TEXT_FONT_SIZE, start.fontSize * s) }
+              : t
+          )
+        )
+      }
+      if (p < 1) {
+        fitAnimRef.current = requestAnimationFrame(step)
+        return
+      }
+      fitAnimRef.current = 0
+      setResizeFitAfterRelease(true)
+      setEmbroiderySettling(true)
+    }
+    fitAnimRef.current = requestAnimationFrame(step)
+  }
+  // "Combination of designs too large"'s "Fit to best size": first draws the
+  // objects together towards the group's centre — each ink centre's offset
+  // from it scaled by `q`, from 1 (as they are) down to 0 (all centred on
+  // it) — as little as fits the hoop frame. If even stacked they don't fit,
+  // they come all the way together and then shrink about the same centre to
+  // the hoop size. The last step overshoots a little (fitEaseOutBack) — the
+  // safe way, closer or smaller; a step another follows doesn't. Measured
+  // as the group verdict measures (ink, rotated), so that verdict turns
+  // green on its own once it's done.
+  const fitGroupToBestSize = () => {
+    if (!isCombination || fitAnimRef.current || embroideryHoopFrame === null) return
+    const baseW = printAreaPxSize.width / zoom
+    const baseH = printAreaPxSize.height / zoom
+    if (baseW <= 1 || baseH <= 1) return
+    const hoop = embroideryHoopFrame * 100
+    // Each object: its box (% of the print area — a text's from its ink
+    // measure, its font size being what scales) and its ink's centre and
+    // half-extents.
+    const toPct = (r: InkRect) => ({
+      cx: ((r.l + r.r) / 2 / baseW) * 100,
+      cy: ((r.t + r.b) / 2 / baseH) * 100,
+      hw: ((r.r - r.l) / 2 / baseW) * 100,
+      hh: ((r.b - r.t) / 2 / baseH) * 100,
+    })
+    const parts = [
+      ...visibleGraphicElements.map(g => ({
+        kind: "graphic" as const,
+        id: g.id,
+        box: { x: g.x, y: g.y, w: g.width, h: g.height },
+        fontSize: 0,
+        ink: toPct(graphicInkRect(g, baseW, baseH)),
+      })),
+      ...visibleTextElements.flatMap(t => {
+        const px = textInkPx(t)
+        const rect = textInkRect(t, baseW, baseH)
+        if (!px || !rect) return []
+        return [
+          {
+            kind: "text" as const,
+            id: t.id,
+            box: { x: t.x, y: t.y, w: (px.blockW / baseW) * 100, h: (px.blockH / baseH) * 100 },
+            fontSize: t.fontSize,
+            ink: toPct(rect),
+          },
+        ]
+      }),
+    ]
+    if (parts.length < 2) return
+    const cx =
+      (Math.min(...parts.map(p => p.ink.cx - p.ink.hw)) +
+        Math.max(...parts.map(p => p.ink.cx + p.ink.hw))) /
+      2
+    const cy =
+      (Math.min(...parts.map(p => p.ink.cy - p.ink.hh)) +
+        Math.max(...parts.map(p => p.ink.cy + p.ink.hh))) /
+      2
+    // The group's ink width and height with the offsets scaled by q.
+    const extent = (q: number) => {
+      const ls = parts.map(p => cx + q * (p.ink.cx - cx) - p.ink.hw)
+      const rs = parts.map(p => cx + q * (p.ink.cx - cx) + p.ink.hw)
+      const ts = parts.map(p => cy + q * (p.ink.cy - cy) - p.ink.hh)
+      const bs = parts.map(p => cy + q * (p.ink.cy - cy) + p.ink.hh)
+      return { w: Math.max(...rs) - Math.min(...ls), h: Math.max(...bs) - Math.min(...ts) }
+    }
+    const fits = (q: number) => {
+      const e = extent(q)
+      return e.w <= hoop && e.h <= hoop
+    }
+    // The extent grows with q, so the q's that fit run from 0 up to the one
+    // sought: found by bisection.
+    let q = 0
+    let s = 1
+    if (fits(0)) {
+      let hi = 1
+      for (let i = 0; i < FIT_GROUP_SEARCH_STEPS; i++) {
+        const mid = (q + hi) / 2
+        if (fits(mid)) q = mid
+        else hi = mid
+      }
+    } else {
+      const stacked = extent(0)
+      s = Math.min(hoop / stacked.w, hoop / stacked.h)
+    }
+    const moves = q < 1
+    const shrinks = s < 1
+    if (!moves && !shrinks) return
+    // Draw together by `qNow`, then scale about the centre by `kNow`.
+    const apply = (qNow: number, kNow: number) => {
+      const placed = new Map(
+        parts.map(p => {
+          const bx = p.box.x + p.box.w / 2 + (qNow - 1) * (p.ink.cx - cx)
+          const by = p.box.y + p.box.h / 2 + (qNow - 1) * (p.ink.cy - cy)
+          const w = p.box.w * kNow
+          const h = p.box.h * kNow
+          return [
+            p.id,
+            {
+              x: cx + kNow * (bx - cx) - w / 2,
+              y: cy + kNow * (by - cy) - h / 2,
+              w,
+              h,
+              fontSize: p.fontSize * kNow,
+            },
+          ] as const
+        })
+      )
+      setGraphicElements(prev =>
+        prev.map(g => {
+          const n = placed.get(g.id)
+          return n ? { ...g, x: n.x, y: n.y, width: n.w, height: n.h } : g
+        })
+      )
+      setTextElements(prev =>
+        prev.map(t => {
+          const n = placed.get(t.id)
+          return n
+            ? { ...t, x: n.x, y: n.y, fontSize: Math.max(MIN_TEXT_FONT_SIZE, n.fontSize) }
+            : t
+        })
+      )
+    }
+    const moveMs = moves ? FIT_TO_HOOP_MS : 0
+    const total = moveMs + (shrinks ? FIT_TO_HOOP_MS : 0)
+    const moveEase = shrinks ? fitEaseInOut : fitEaseOutBack
+    const t0 = performance.now()
+    const step = (now: number) => {
+      const elapsed = Math.min(total, now - t0)
+      const pm = moves ? Math.min(1, elapsed / moveMs) : 1
+      const ps = shrinks ? Math.max(0, (elapsed - moveMs) / FIT_TO_HOOP_MS) : 0
+      // Never past 0: the objects meet, they don't cross.
+      const qNow = Math.max(0, 1 + (q - 1) * moveEase(pm))
+      const kNow = shrinks ? 1 + (s - 1) * fitEaseOutBack(Math.min(1, ps)) : 1
+      apply(qNow, kNow)
+      if (elapsed < total) {
+        fitAnimRef.current = requestAnimationFrame(step)
+        return
+      }
+      fitAnimRef.current = 0
+    }
+    fitAnimRef.current = requestAnimationFrame(step)
+  }
+  // What the too-large warning's "Fit to best size" runs, if anything.
+  const fitDesignToBestSize = isCombination
+    ? fitGroupToBestSize
+    : loneHoopFit
+      ? fitToBestSize
+      : undefined
   // The ink of every object in the print area but `exceptId`, as one rect —
   // what the rest of a group spans. null when there's nothing else.
   const otherObjectsInk =(exceptId: string | null, baseW: number, baseH: number) => {
@@ -4128,14 +4383,48 @@ export default function Designer({
     if (hasThinLineDesign && embroideryShown && designBbox && !embroideryTooLarge) {
       setThinLineWarning(true)
     }
-  }, [hasThinLineDesign, embroideryShown, designBbox, embroideryTooLarge])
-  // The stitched render on the canvas. "Creating preview" is where the design
+  }, [hasThinLineDesign, embroideryShown, designBbox, embroideryTooLarge])  // The stitched render on the canvas. "Creating preview" is where the design
   // is checked; when that finds the design can't be stitched as it is — too
   // large for the hoop frame, or with a design issue (the cat's thin lines,
   // the mountain's complexity) — no stitched render is revealed: the original
   // design stays on plainly under the warning. embroideryShown still marks the
   // check as done, which is what brings the warnings up.
   const embroideryPreviewVisible = embroideryShown && !embroideryTooLarge && !hasThinLineDesign
+  // The first stitched preview of the session puts a tip (ZOOM_HINT_TEXT,
+  // EmbroideryZoomTipDock) in the bottom row's place, held until its "Zoom
+  // in" — once per session (sessionStorage; just this page view should
+  // storage be blocked). Embroidery only, so not the DTF version. Skipped
+  // for anyone who has zoomed in already this session — they know — and
+  // closed should they zoom in some other way (pinch, wheel) while it's up.
+  const [zoomHintOpen, setZoomHintOpen] = useState(false)
+  const zoomHintSeenRef = useRef(false)
+  const zoomedIn = zoom > 1 + 0.001
+  const markZoomHintSeen = () => {
+    zoomHintSeenRef.current = true
+    try {
+      sessionStorage.setItem(ZOOM_HINT_SEEN_KEY, "1")
+    } catch {
+      // Storage blocked: the ref keeps it to once on this page view.
+    }
+  }
+  useEffect(() => {
+    if (!zoomedIn) return
+    markZoomHintSeen()
+    setZoomHintOpen(false)
+  }, [zoomedIn])
+  useEffect(() => {
+    if (!embroideryPreviewVisible || dtf || zoomHintSeenRef.current) return
+    try {
+      if (sessionStorage.getItem(ZOOM_HINT_SEEN_KEY)) {
+        zoomHintSeenRef.current = true
+        return
+      }
+    } catch {
+      // Storage blocked: the ref alone keeps it to once.
+    }
+    markZoomHintSeen()
+    setZoomHintOpen(true)
+  }, [embroideryPreviewVisible, dtf])
   // Thin lines are only known from the check behind "Creating preview". Once
   // the design goes over the hoop frame (live during a resize too) that
   // verdict is dropped: brought back within it, the design shows as a good
@@ -4273,6 +4562,16 @@ export default function Designer({
   selectionLockedRef.current =
     (!!selectedTextId || !!selectedGraphicId) &&
     (thinLineShown || (!isCombination && sizeBadgeStatus === "too-large"))
+  // And it's selected as soon as the warning shows, if it isn't already — so
+  // it can be moved, resized, rotated or removed straight away.
+  const loneTooLargeId =
+    !isCombination && sizeBadgeStatus === "too-large" ? (designEls[0]?.id ?? null) : null
+  useEffect(() => {
+    if (!loneTooLargeId || selectedTextId || selectedGraphicId) return
+    const isText = visibleTextElements.some(t => t.id === loneTooLargeId)
+    setSelectedTextId(isText ? loneTooLargeId : null)
+    setSelectedGraphicId(isText ? null : loneTooLargeId)
+  }, [loneTooLargeId, selectedTextId, selectedGraphicId])
   // A warning on the canvas means the design can't be embroidered as it is, so
   // add to basket is refused — and each try shakes the warning
   // (embroideryShakeSignal) instead.
@@ -5006,31 +5305,20 @@ export default function Designer({
   // Simplify with AI holds the warning back too, running and under review.
   const dockedWarning =
     creatingPreview || simplifyRun ? null : (designIssueWarning ?? sizeBadgeStatus)
-  // The switch is made at once — the warning leaves with the embroidery — but
-  // the bottom row comes back still naming embroidery, and only once it's in
-  // view changes to standard print, so the change is seen being made.
-  // Changed, the switcher wears a green tick in its technique icon's place
-  // for SWITCH_CONFIRM_MS, and the droplet eases back.
-  const [rowShowsEmbroidery, setRowShowsEmbroidery] = useState(false)
-  const [techniqueConfirmed, setTechniqueConfirmed] = useState(false)
+  // The solutions popover's "Switch to print": closes it and makes the switch
+  // at once — the warning leaves with the embroidery. In its place comes
+  // only "Switched to standard print", in green (a dock of its own), said for
+  // as long as the green "good size" badge (RECOVERED_GOOD_SIZE_MS); then it
+  // goes and the bottom row comes back, already on standard print.
+  const [printSwitched, setPrintSwitched] = useState(false)
   useEffect(() => {
-    if (!rowShowsEmbroidery) return
-    const t = setTimeout(() => {
-      setRowShowsEmbroidery(false)
-      setTechniqueConfirmed(true)
-    }, SWITCH_REVEAL_MS)
+    if (!printSwitched) return
+    const t = setTimeout(() => setPrintSwitched(false), RECOVERED_GOOD_SIZE_MS)
     return () => clearTimeout(t)
-  }, [rowShowsEmbroidery])
-  useEffect(() => {
-    if (!techniqueConfirmed) return
-    const t = setTimeout(() => setTechniqueConfirmed(false), SWITCH_CONFIRM_MS)
-    return () => clearTimeout(t)
-  }, [techniqueConfirmed])
-  // The solutions popover's "Switch to print": closes it, and the switch plays
-  // out in the bottom row as it comes back.
+  }, [printSwitched])
   const switchToStandardPrint = () => {
     setThinLineHelpOpen(false)
-    setRowShowsEmbroidery(true)
+    setPrintSwitched(true)
     setPrintTechnique("standard")
   }
   // The solutions popover's "Simplify with AI": closes it and simplifies the
@@ -5051,9 +5339,10 @@ export default function Designer({
     if (!graphic) return
     setSelectedGraphicId(null)
     setSelectedTextId(null)
-    setSimplifyRun({ graphicId: graphic.id, after: null, showBefore: false })
+    const issue = designIssue ?? "too-complex"
+    setSimplifyRun({ graphicId: graphic.id, issue, after: null, showBefore: false })
     Promise.all([
-      simplifyImage(graphic.src),
+      issue === "thin-line" ? thickenLines(graphic.src) : simplifyImage(graphic.src),
       new Promise(resolve => setTimeout(resolve, SIMPLIFY_RUN_MS)),
     ])
       .then(([after]) =>
@@ -5100,6 +5389,13 @@ export default function Designer({
     setSimplifyRun(run => (run ? { ...run, showBefore } : run))
   // The warning's "See solutions": opens the popover, or closes it again.
   const toggleThinLineHelp = () => setThinLineHelpOpen(open => !open)
+  // Something else in the bottom row's place (desktop): a message, a loader.
+  const bottomSpotTaken =
+    dockedWarning !== null || creatingPreview || simplifying || acceptCheck !== null || printSwitched
+  // The zoom tip takes the place once nothing else does, holding the row back
+  // until its "Zoom in".
+  const zoomTipShown =
+    zoomHintOpen && effectivePrintTechnique === "embroidery" && !bottomSpotTaken
 
   const handleAddToBasket = () => {
     if (addingToBasket || flashSize) return
@@ -5169,6 +5465,7 @@ export default function Designer({
     ai: aiImageAnim,
     upload: uploadsAnim,
     text: textAnim,
+    templates: templatesAnim,
     graphics: graphicsAnim,
   }
   // Each button's icon Lottie stays mounted from hover-in through the reverse-out
@@ -5624,6 +5921,62 @@ export default function Designer({
                 {isDockCompact && hoveredButton === "text" && (
                   <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded-md bg-neutral-900 p-3 text-sm text-neutral-100 shadow-sm z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-neutral-900">
                     Text
+                  </span>
+                )}
+              </button>
+
+              {/* Templates Button — create-omat's order: after Text, before
+                  Graphics. Opens an empty panel (its title only) for now. */}
+              <button
+                type="button"
+                disabled={!canDesignOnCurrentView}
+                onMouseEnter={() => {
+                  setHoveredButton("templates")
+                  setAnimActive(setDockAnimActive, "templates", true)
+                }}
+                onMouseLeave={() => setHoveredButton(null)}
+                onClick={() => togglePanel("templates")}
+                className={
+                  "relative w-[88px] h-auto flex flex-col items-center gap-[8px] rounded-[10px] transition-all duration-200 " +
+                  (canDesignOnCurrentView ? "cursor-pointer " : "cursor-not-allowed opacity-40 ") +
+                  (isDockCompact ? "px-[8px] py-[10px] " : "p-[8px] ") +
+                  (!canDesignOnCurrentView
+                    ? "bg-transparent"
+                    : activePanel === "templates"
+                      ? "bg-white"
+                      : hoveredButton === "templates"
+                        ? "bg-[#E9E9E9]"
+                        : "bg-transparent")
+                }
+              >
+                {/* create-omat's template icon. */}
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="text-black"
+                  style={dockAnimActive.templates ? {visibility: "hidden"} : undefined}
+                >
+                  <rect x="2" y="2" width="8" height="20" rx="1" stroke="currentColor" strokeWidth="2" />
+                  <rect x="14" y="2" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="2" />
+                  <rect x="14" y="14" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="2" />
+                </svg>
+                {dockAnimActive.templates && (
+                  <DockHoverIcon
+                    className="pointer-events-none absolute inset-0"
+                    hovered={hoveredButton === "templates"}
+                    animationData={templatesAnim}
+                    onReverseDone={() => setAnimActive(setDockAnimActive, "templates", false)}
+                  />
+                )}
+                {!isDockCompact && (
+                  <div className="text-[12px] font-[600] text-black text-center">Templates</div>
+                )}
+                {isDockCompact && hoveredButton === "templates" && (
+                  <span className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 whitespace-nowrap rounded-md bg-neutral-900 p-3 text-sm text-neutral-100 shadow-sm z-50 before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:w-0 before:h-0 before:border-y-[4px] before:border-y-transparent before:border-r-[4px] before:border-r-neutral-900">
+                    Templates
                   </span>
                 )}
               </button>
@@ -6661,7 +7014,10 @@ export default function Designer({
                             />
                           )
                         })}
-                      {selectedGraphicId === el.id && draggingElId !== el.id && resizingElId !== el.id && (
+                      {selectedGraphicId === el.id &&
+                        draggingElId !== el.id &&
+                        resizingElId !== el.id &&
+                        !handlesHiddenForIssue(el.id) && (
                         <SelectionBottomHandles
                           warning={thinLineShown}
                           onRotateStart={e => startRotate(e, el, "graphic")}
@@ -6708,6 +7064,12 @@ export default function Designer({
                           e.stopPropagation()
                           if (selectedTextId) deleteSelectedText()
                           else if (selectedGraphicId) deleteSelectedGraphic()
+                          // While Simplify with AI runs: the graphic being
+                          // simplified, which ends the run.
+                          else if (simplifying)
+                            setGraphicElements(prev =>
+                              prev.filter(g => g.id !== simplifyRun.graphicId)
+                            )
                           // Over "Creating preview", nothing selected: the design.
                           else deleteVisibleDesign()
                         }}
@@ -7112,14 +7474,15 @@ export default function Designer({
                 the badges share a z-index, so this one stays behind the
                 thin-line pair as the green badge fades out under them. */}
             <EmbroiderySizeBadge
-              status={sizeBadgeStatus}
+              status={printSwitched ? "print-switched" : sizeBadgeStatus}
               stack={embroideryBadgeStack}
               combination={isCombination}
               // Shakes only on a refused add to basket — which only happens
               // while a warning shows, so never as the green badge.
               shakeSignal={embroideryShakeSignal}
               // At the bottom with the others in the merged designer.
-              dockedOnDesktop={mergedDesigner ? ["too-large", "good"] : []}
+              dockedOnDesktop={mergedDesigner ? ["too-large", "good", "print-switched"] : []}
+              onFitToSize={fitDesignToBestSize}
             />
             {/* Thin-line / too-complex warning: arrives in the badge spot with
                 "See solutions" under the message, which opens its
@@ -7218,27 +7581,39 @@ export default function Designer({
                   // add" picker for the rest of the session.
                   setFirstAddDone(true)
                 }}
-                printTechnique={rowShowsEmbroidery ? "embroidery" : printTechnique}
-                techniqueConfirmed={techniqueConfirmed}
+                printTechnique={printTechnique}
                 onPrintTechnique={setPrintTechnique}
                 embroiderySupported={embroiderySupported}
                 showTechnique={!dtf && !csMode}
-                hidden={
-                  dockedWarning !== null || creatingPreview || simplifying || acceptCheck !== null
-                }
+                hidden={bottomSpotTaken || zoomTipShown}
                 zoomOnly={simplifyReview !== null}
                 swapDelayMs={SWAP_DELAY_MS}
               />
             )}
             {/* The design-issue warning in the bottom row's place (desktop),
-                swapping with it. */}
+                swapping with it. The green messages are docks of their own
+                (below), so they swap with it by sliding too — out of the
+                way and back up — rather than repainting it in place. */}
             {mergedDesigner && (
               <EmbroideryIssueDock
-                status={dockedWarning}
+                status={dockedWarning === "good" ? null : dockedWarning}
                 combination={isCombination}
                 shakeSignal={embroideryShakeSignal}
                 onSeeOptions={toggleThinLineHelp}
+                onFitToSize={fitDesignToBestSize}
                 concealed={thinLineHelpOpen || thinLineHelpPresent}
+              />
+            )}
+            {/* The green messages: "Good design size" (back within the hoop
+                frame) and, after "Switch to print", "Switched to standard
+                print" — in the same spot, arriving from below as the warning
+                leaves. */}
+            {mergedDesigner && (
+              <EmbroideryIssueDock
+                status={
+                  printSwitched ? "print-switched" : dockedWarning === "good" ? "good" : null
+                }
+                onSeeOptions={toggleThinLineHelp}
               />
             )}
             {/* "Creating preview" in the bottom row's place (desktop), swapping
@@ -7251,7 +7626,20 @@ export default function Designer({
             )}
             {/* "Simplifying design for embroidery" there too, while Simplify
                 with AI runs. */}
-            {mergedDesigner && <EmbroiderySimplifyDock active={simplifying} />}
+            {mergedDesigner && (
+              <EmbroiderySimplifyDock issue={simplifying ? simplifyRun.issue : null} />
+            )}
+            {/* The first stitched preview's zoom tip there too, the row held
+                back until its "Zoom in". */}
+            {mergedDesigner && (
+              <EmbroideryZoomTipDock
+                text={zoomTipShown ? ZOOM_HINT_TEXT : null}
+                onZoomIn={() => {
+                  setZoomHintOpen(false)
+                  stepZoomStop(1)
+                }}
+              />
+            )}
 
             {/* Zoom control — vertical, bottom-left of the canvas area. Plus on
                 top, minus at the bottom; the WedgeSlider is rotated upright. */}
@@ -7560,7 +7948,7 @@ export default function Designer({
               </div>
             </ScopedDialog>
 
-            {(["graphics", "uploads", "ai"] as const).map(panel => (
+            {(["graphics", "uploads", "ai", "templates"] as const).map(panel => (
               <div
                 key={panel}
                 className={`max-dlg:hidden absolute z-30 inset-y-[4px] left-[4px] w-[375px] rounded-[12px] bg-white shadow-[32px_0px_50px_0px_rgba(0,0,0,0.05)] flex flex-col transition-transform duration-300 ease-out ${
@@ -7569,8 +7957,8 @@ export default function Designer({
               >
                 {/* No title on the AI panel, as in create-omat (its style grid
                     has its own); the Designs & Graphics panel carries its own
-                    title above its search. */}
-                {panel === "uploads" && (
+                    title above its search. Templates is only its title for now. */}
+                {(panel === "uploads" || panel === "templates") && (
                   <h2 className="font-display text-[18px] font-medium text-black px-6 pt-6 pb-4 capitalize flex-shrink-0">
                     {panel}
                   </h2>
@@ -9776,6 +10164,7 @@ export default function Designer({
         onTextClick={() => startAdd("text")}
         onUploadsClick={() => startAdd("uploads")}
         onAIClick={() => togglePanel("ai")}
+        onTemplatesClick={() => togglePanel("templates")}
         onFinish={() => {
           // Same refusal as handleAddToBasket: an embroidery warning shakes and
           // the size sheet stays shut.

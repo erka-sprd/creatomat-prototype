@@ -526,3 +526,22 @@ html:has(.handoff) {
         opacity: 0;
     }
 }
+
+/* ---------------------------------------------------------------------------
+   The lit "If → Then" step's dashed outline (embroidery-scene.tsx's StepList):
+   its dashes march round it, one dash + gap (6 + 4) per turn of the loop.
+--------------------------------------------------------------------------- */
+@keyframes ho-march {
+    to {
+        stroke-dashoffset: -10;
+    }
+}
+.ho-march {
+    stroke-dasharray: 6 4;
+    animation: ho-march 0.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .ho-march {
+        animation: none;
+    }
+}

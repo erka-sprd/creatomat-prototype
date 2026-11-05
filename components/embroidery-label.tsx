@@ -339,7 +339,7 @@ export function EmbroideryPreviewStatus({
   return <CanvasStatusSlot className={className}>{pill}</CanvasStatusSlot>
 }
 
-export type EmbroiderySizeStatus = "too-large" | "good" | EmbroideryDesignIssue
+export type EmbroiderySizeStatus = "too-large" | "good" | "print-switched" | EmbroideryDesignIssue
 
 // Problems with the design itself rather than its size — each warns with a
 // "See options" row and blocks add to basket.
@@ -363,6 +363,12 @@ const SIZE_BADGE = {
     frame: "border-[#16A34A] text-[#15803D]",
     dot: "bg-[#16A34A]",
   },
+  "print-switched": {
+    label: "Switched to standard print",
+    icon: "✓",
+    frame: "border-[#16A34A] text-[#15803D]",
+    dot: "bg-[#16A34A]",
+  },
   "thin-line": {
     label: "Design has too thin lines for embroidery",
     icon: "!",
@@ -382,6 +388,8 @@ const SIZE_BADGE = {
 //   (lib/embroidery-limits) — the prototype's stand-in for the decoration
 //   service's DESIGN_TOO_LARGE.
 // - "good": the design fits again after a too-large warning this session.
+// - "print-switched": a design issue's "Switch to print" was taken — said
+//   once, then the bottom row comes back.
 // - "thin-line": the design's lines are too thin to stitch (mocked — the pink
 //   cat graphic).
 // - "too-complex": the design has too much detail to stitch — the stand-in for
@@ -400,6 +408,7 @@ export function EmbroiderySizeBadge({
   shakeSignal = 0,
   combination = false,
   onSeeOptions,
+  onFitToSize,
   dockedOnDesktop = [],
 }: {
   status: EmbroiderySizeStatus | null
@@ -410,6 +419,7 @@ export function EmbroiderySizeBadge({
   /** Several objects: too large reads as the combination being too large. */
   combination?: boolean
   onSeeOptions?: () => void
+  onFitToSize?: () => void
   /**
    * Statuses EmbroideryIssueDock shows at the bottom on desktop instead — the
    * badge sits them out there, retracting included, so none flashes up here.
@@ -438,6 +448,7 @@ export function EmbroiderySizeBadge({
           status={status ?? shown}
           hidden={!show}
           onSeeOptions={onSeeOptions}
+          onFitToSize={onFitToSize}
           label={
             combination && (status ?? shown) === "too-large"
               ? "Combination of designs too large for embroidery"
@@ -522,15 +533,23 @@ export function EmbroideryPreviewDock({
   )
 }
 
-// "Simplify with AI" at work, in the same spot and pill as "Creating preview"
-// (the gradient line circling it), its text still and only the three dots
-// pulsing in turn (.loading-dot).
-const SIMPLIFY_STATUS = "Simplifying design for embroidery"
+// "Simplify with AI" / "Fix with AI" at work, in the same spot and pill as
+// "Creating preview" (the gradient line circling it), its text still and only
+// the three dots pulsing in turn (.loading-dot). Its text by the issue it
+// answers (`issue`).
+const SIMPLIFY_STATUS = {
+  "thin-line": "Fixing thin lines for embroidery",
+  "too-complex": "Simplifying design for embroidery",
+} as const
 const LOADING_DOT_STAGGER_MS = 200
 
-export function EmbroiderySimplifyDock({ active }: { active: boolean }) {
-  const { mounted, entered } = useDockPresence(active)
+export function EmbroiderySimplifyDock({ issue }: { issue: EmbroideryDesignIssue | null }) {
+  // Kept through the exit slide, so it doesn't empty out on the way down.
+  const [shownIssue, setShownIssue] = useState<EmbroideryDesignIssue>(issue ?? "too-complex")
+  if (issue && issue !== shownIssue) setShownIssue(issue)
+  const { mounted, entered } = useDockPresence(issue !== null)
   if (!mounted) return null
+  const status = SIMPLIFY_STATUS[shownIssue]
   return (
     <div
       aria-hidden={!entered}
@@ -539,12 +558,12 @@ export function EmbroiderySimplifyDock({ active }: { active: boolean }) {
     >
       <div
         role="status"
-        aria-label={`${SIMPLIFY_STATUS}...`}
+        aria-label={`${status}...`}
         className={PILL + "preview-status-ring border border-white bg-white px-4 py-2.5 text-black"}
       >
         <span aria-hidden="true" className="preview-status-glow" />
         <span aria-hidden="true" className="text-sm leading-none font-semibold whitespace-nowrap">
-          {SIMPLIFY_STATUS}
+          {status}
           {[0, 1, 2].map(i => (
             <span
               key={i}
@@ -560,15 +579,67 @@ export function EmbroiderySimplifyDock({ active }: { active: boolean }) {
   )
 }
 
+// The first stitched preview's tip, in the bottom row's place (desktop),
+// swapping with it like the messages: a green message and, centred under it,
+// the kit's secondary button "Zoom in" — the only way on.
+export function EmbroideryZoomTipDock({
+  text,
+  onZoomIn,
+}: {
+  text: string | null
+  onZoomIn: () => void
+}) {
+  const [shownText, setShownText] = useState(text ?? "")
+  if (text && text !== shownText) setShownText(text)
+  const { mounted, entered } = useDockPresence(text !== null)
+  if (!mounted) return null
+  return (
+    <div
+      aria-hidden={!entered}
+      className={dockClass(entered)}
+      style={{ transitionDelay: dockDelay(entered) }}
+    >
+      {/* A green message — the docked SizeBadgePill's frame, ✓ and type —
+          with "Zoom in" where the warnings put their action. */}
+      <div
+        role="status"
+        className={`flex flex-col items-start gap-4 rounded-2xl border bg-white p-4 ${SIZE_BADGE.good.frame}`}
+      >
+        <div className="flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className={`flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] leading-none font-bold text-white ${SIZE_BADGE.good.dot}`}
+          >
+            {SIZE_BADGE.good.icon}
+          </span>
+          <span className="text-sm leading-none font-semibold whitespace-nowrap">{shownText}</span>
+        </div>
+        <div className="flex self-stretch justify-center">
+          <KitButton
+            variant="ghost"
+            onClick={onZoomIn}
+            tabIndex={entered ? 0 : -1}
+            className="whitespace-nowrap"
+          >
+            Zoom in
+          </KitButton>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function EmbroideryIssueDock({
   status,
   onSeeOptions,
+  onFitToSize,
   shakeSignal = 0,
   combination = false,
   concealed = false,
 }: {
   status: EmbroiderySizeStatus | null
   onSeeOptions: () => void
+  onFitToSize?: () => void
   shakeSignal?: number
   /** Several objects: too large reads as the combination being too large. */
   combination?: boolean
@@ -595,6 +666,7 @@ export function EmbroideryIssueDock({
         <SizeBadgePill
           status={shownStatus}
           onSeeOptions={onSeeOptions}
+          onFitToSize={onFitToSize}
           docked
           label={
             combination && shownStatus === "too-large"
@@ -661,24 +733,38 @@ export function EmbroideryMaxSizeBadge({
 // One badge pill. A
 // design-issue warning adds, centred under its message, a secondary "See what
 // you can do" that opens its options (`onSeeOptions`) — in the same orange frame, 16px
-// in all round, so it rounds as a box rather than a full pill.
+// in all round, so it rounds as a box rather than a full pill. "Too large"
+// adds "Fit to best size" there the same way (`onFitToSize`).
 export function SizeBadgePill({
   status,
   hidden = false,
   onSeeOptions,
+  onFitToSize,
   label,
   docked = false,
 }: {
   status: EmbroiderySizeStatus
   hidden?: boolean
   onSeeOptions?: () => void
+  /** Shrinks the design into the hoop frame — offered under "too-large". */
+  onFitToSize?: () => void
   /** In place of the status's own message. */
   label?: string
   /** In the bottom row's place (EmbroideryIssueDock): the 16px frame, options or not. */
   docked?: boolean
 }) {
   const badge = SIZE_BADGE[status]
-  const withOptions = isDesignIssue(status) && !!onSeeOptions
+  const action =
+    isDesignIssue(status) && onSeeOptions
+      ? { label: "See solutions", onClick: onSeeOptions }
+      : status === "too-large" && onFitToSize
+        ? { label: "Fit to best size", onClick: onFitToSize }
+        : null
+  const withOptions = action !== null
+  // The button's label, kept while its row folds away, so it doesn't empty
+  // out mid-fold.
+  const [actionLabel, setActionLabel] = useState(action?.label ?? null)
+  if (action && action.label !== actionLabel) setActionLabel(action.label)
   return (
     <div
       role="status"
@@ -689,7 +775,7 @@ export function SizeBadgePill({
         "flex flex-col items-start border bg-white transition-all duration-300 ease-out " +
         // pl-1.5 matches py-1.5: the icon sits as far from the left edge as
         // from the top (the 16px icon is the first row's tallest item).
-        (withOptions || docked ? "gap-3 rounded-2xl p-4 " : "rounded-full py-1.5 pr-3 pl-1.5 ") +
+        (withOptions || docked ? "rounded-2xl p-4 " : "rounded-full py-1.5 pr-3 pl-1.5 ") +
         `${badge.frame} ` +
         visibility(!hidden)
       }
@@ -705,20 +791,31 @@ export function SizeBadgePill({
           {label ?? badge.label}
         </span>
       </div>
-      {withOptions && (
-        // The kit's secondary button (ghost). mt-1 on the frame's gap-3: 16px
-        // above it, as below (p-4).
-        <KitButton
-          variant="ghost"
-          onClick={onSeeOptions}
-          tabIndex={hidden ? -1 : 0}
+      {actionLabel && (
+        // The kit's secondary button (ghost), 16px under the message, as below
+        // it (p-4). Its row folds open and shut with the frame's own 300ms
+        // (grid rows 0fr ↔ 1fr), fading, rather than the frame jumping.
+        <div
           className={
-            "mt-1 self-center whitespace-nowrap transition-colors " +
-            (hidden ? "pointer-events-none" : "pointer-events-auto")
+            "grid self-stretch transition-[grid-template-rows,opacity] duration-300 ease-out " +
+            (action ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")
           }
         >
-          See solutions
-        </KitButton>
+          <div className="flex min-h-0 justify-center overflow-hidden">
+            <KitButton
+              variant="ghost"
+              onClick={action?.onClick}
+              tabIndex={hidden || !action ? -1 : 0}
+              aria-hidden={!action}
+              className={
+                "mt-4 whitespace-nowrap transition-colors " +
+                (hidden || !action ? "pointer-events-none" : "pointer-events-auto")
+              }
+            >
+              {actionLabel}
+            </KitButton>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -876,6 +973,7 @@ export function ThinLineHelpPopover({
         }}
       >
         <EmbroiderySolutions
+          issue={issue}
           designSrc={designSrc}
           printSavingLabel={printSavingLabel}
           onClose={onClose}

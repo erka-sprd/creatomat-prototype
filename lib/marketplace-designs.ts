@@ -192,12 +192,6 @@ export const MARKETPLACE_DESIGNS: MarketplaceDesign[] = [
         backgroundColor: "#666666",
     },
     {
-        src: "/img/marketplace/314234417.png",
-        designId: 314234417,
-        name: "Team Marathon Viewing FR red",
-        tags: ["Team"],
-    },
-    {
         src: "/img/marketplace/135850709.png",
         designId: 135850709,
         name: "Volleyball Player",

@@ -74,7 +74,7 @@ const TemplateIcon = () => (
 // Templates / Graphics) in one card above it. When an element is selected on the
 // canvas, the whole dock swaps to the "Done ✓" pill (create-omat's
 // DockUnselectButton — its general.unselect string reads "Done").
-// Templates is a placeholder for now: the button is there but triggers nothing.
+// Templates opens a panel holding only its title for now.
 
 type MobileDockProps = {
     inspectorMode: boolean
@@ -84,6 +84,7 @@ type MobileDockProps = {
     onTextClick: () => void
     onUploadsClick: () => void
     onAIClick: () => void
+    onTemplatesClick: () => void
     onFinish: () => void
     onUnselect: () => void
 }
@@ -151,6 +152,7 @@ export default function MobileDock({
     onTextClick,
     onUploadsClick,
     onAIClick,
+    onTemplatesClick,
     onFinish,
     onUnselect,
 }: MobileDockProps) {
@@ -278,11 +280,10 @@ export default function MobileDock({
                                     onClick={runAndClose(onTextClick)}
                                     disabled={actionDisabled}
                                 />
-                                {/* Placeholder: no templates panel in the proto yet. */}
                                 <DockItem
                                     icon={<TemplateIcon />}
                                     label="Templates"
-                                    onClick={() => {}}
+                                    onClick={runAndClose(onTemplatesClick)}
                                     disabled={actionDisabled}
                                 />
                                 <DockItem

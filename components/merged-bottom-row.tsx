@@ -65,7 +65,7 @@ const TILE_ACTIVE = "bg-neutral-100"
 
 // The zoom's tooltips: the existing zoom tooltip, moved above its button.
 const TOOLTIP =
-  "pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 rounded-md bg-neutral-900 p-3 text-sm whitespace-nowrap text-neutral-100 shadow-sm opacity-0 transition-opacity after:absolute after:top-full after:left-1/2 after:h-0 after:w-0 after:-translate-x-1/2 after:border-x-[4px] after:border-x-transparent after:border-t-[4px] after:border-t-neutral-900 after:content-['']"
+  "pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 rounded-md bg-neutral-900 p-3 text-sm whitespace-nowrap text-neutral-100 opacity-0 shadow-sm transition-opacity after:absolute after:top-full after:left-1/2 after:h-0 after:w-0 after:-translate-x-1/2 after:border-x-[4px] after:border-x-transparent after:border-t-[4px] after:border-t-neutral-900 after:content-['']"
 
 /**
  * `thumb` renders the view's preview at a given size — tile and hover preview.
@@ -175,7 +175,9 @@ export function MergedBottomRow({
     >
       <div
         ref={zoomRef}
-        className="pointer-events-auto justify-self-end"
+        // Over the views and the technique: its translate makes it its own
+        // stacking layer, which would otherwise keep the zoom tip under them.
+        className="pointer-events-auto relative z-10 justify-self-end"
         style={{ translate: zoomOnlyShown ? `${centreOffset}px 0` : "0 0" }}
       >
         <ZoomControl
