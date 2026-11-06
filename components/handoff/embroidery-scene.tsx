@@ -52,16 +52,17 @@ import {
   type CanvasProduct,
   type Corner,
 } from "@/components/handoff/embroidery-canvas"
+import { StepList } from "@/components/handoff/step-list"
 import { KitButton } from "@/components/kit-button"
 import { MergedBottomRow } from "@/components/merged-bottom-row"
 import { printAreaTotal } from "@/lib/print-area-pricing"
 import { simplifyImage, thickenLines } from "@/lib/simplify-image"
 
 /** The product shot's box (px) — the canvas zoomed in a little, so designs read. */
-const PRODUCT_PX = 720
+export const PRODUCT_PX = 720
 /** Where the print area's centre sits, px from the stage's top. */
 const FOCUS_Y = 200
-const STAGE_HEIGHT_PX = 420
+export const STAGE_HEIGHT_PX = 420
 const HANDLE_POS: Record<Corner, string> = {
   nw: "-top-[7.5px] -left-[7.5px]",
   ne: "-top-[7.5px] -right-[7.5px]",
@@ -109,8 +110,9 @@ export type SceneDesign = {
   /** Being dragged: no handles at all. */
   dragging?: boolean
   stitched?: boolean
-  /** Removed: fades out. */
+  /** Removed: fades out — or, `cut`, goes at once (a typed text's frames). */
   gone?: boolean
+  cut?: boolean
   /** Simplify / Fix with AI's result, up for review, showing this side. */
   review?: "before" | "after" | null
   /** The AI's result, shown from review on (and after accepting). */
@@ -141,6 +143,8 @@ export type SceneState = {
   row: boolean
   zoomOnly: boolean
   technique: "standard" | "embroidery"
+  /** The technique dropdown, open — for a scripted switch. */
+  techniqueMenu: boolean
   issue: EmbroiderySizeStatus | null
   combination: boolean
   fit: boolean
@@ -164,6 +168,7 @@ export const BASE_STATE: SceneState = {
   row: true,
   zoomOnly: false,
   technique: "embroidery",
+  techniqueMenu: false,
   issue: null,
   combination: false,
   fit: false,
@@ -197,25 +202,34 @@ export const all =
   (s: SceneState): SceneState =>
     updates.reduce<SceneState>((acc, u) => (typeof u === "function" ? u(acc) : { ...acc, ...u }), s)
 
-/** A text as an image, so it's placed, sized and stitched like a graphic. */
-export function useTextImage(text: string) {
-  const [src, setSrc] = useState<string | null>(null)
+/**
+ * A text being typed, as images — placed, sized and stitched like a graphic:
+ * one per letter typed (with the caret), then the whole text without it. All
+ * on the full text's width, so the box holds still while the letters come.
+ */
+export function useTypedText(text: string, color: string) {
+  const [frames, setFrames] = useState<string[] | null>(null)
   useEffect(() => {
     const canvas = document.createElement("canvas")
     const ctx = canvas.getContext("2d")
     if (!ctx) return
     const font = "800 160px system-ui, sans-serif"
     ctx.font = font
-    const w = Math.ceil(ctx.measureText(text).width) + 16
-    canvas.width = w
+    canvas.width = Math.ceil(ctx.measureText(text).width) + 40
     canvas.height = 200
-    ctx.font = font
-    ctx.fillStyle = "#111111"
-    ctx.textBaseline = "middle"
-    ctx.fillText(text, 8, 104)
-    setSrc(canvas.toDataURL("image/png"))
-  }, [text])
-  return src
+    const draw = (typed: string, caret: boolean) => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.font = font
+      ctx.fillStyle = color
+      ctx.textBaseline = "middle"
+      ctx.fillText(typed, 8, 104)
+      if (caret) ctx.fillRect(14 + ctx.measureText(typed).width, 30, 8, 148)
+      return canvas.toDataURL("image/png")
+    }
+    const typing = Array.from({ length: text.length + 1 }, (_, n) => draw(text.slice(0, n), true))
+    setFrames([...typing, draw(text, false)])
+  }, [text, color])
+  return frames
 }
 
 /** The AI's result for `src` (Fix with AI thickens, Simplify simplifies), once made. */
@@ -241,9 +255,9 @@ function useAiResults(designs: SceneDesign[]) {
 
 /* --------------------------------------------------------------- geometry */
 
-type Geo = { left: number; top: number; width: number; height: number }
+export type Geo = { left: number; top: number; width: number; height: number }
 
-function useStageWidth(ref: React.RefObject<HTMLDivElement | null>) {
+export function useStageWidth(ref: React.RefObject<HTMLDivElement | null>) {
   const [width, setWidth] = useState(0)
   useLayoutEffect(() => {
     const el = ref.current
@@ -258,7 +272,7 @@ function useStageWidth(ref: React.RefObject<HTMLDivElement | null>) {
 }
 
 /** The print area on the stage, px. */
-function areaGeo(product: CanvasProduct, stageW: number) {
+export function areaGeo(product: CanvasProduct, stageW: number) {
   const { area } = product
   // Centred across like the designer's canvas (the print area needn't sit
   // mid-shirt); placed down so the print area sits at FOCUS_Y.
@@ -275,7 +289,7 @@ function areaGeo(product: CanvasProduct, stageW: number) {
 }
 
 /** A design's box in the print area, px. */
-function designGeo(d: SceneDesign, aspect: number, product: CanvasProduct, area: Geo): Geo {
+export function designGeo(d: SceneDesign, aspect: number, product: CanvasProduct, area: Geo): Geo {
   const fitW = Math.min(product.hoop * area.width, (product.hoop * area.height) / aspect)
   const width = fitW * d.size
   const height = width * aspect
@@ -320,7 +334,7 @@ function DesignView({
         opacity: d.gone ? 0 : 1,
         transition: ["left", "top", "width", "height"]
           .map(p => `${p} ${ms}ms ${ease}`)
-          .concat("opacity 300ms ease-out")
+          .concat(`opacity ${d.cut ? 0 : 300}ms ease-out`)
           .join(", "),
       }}
     >
@@ -437,90 +451,6 @@ function ReviewControls({ before }: { before: boolean }) {
   )
 }
 
-// How much of the neighbouring steps shows above and below the lit one.
-const STEP_PEEK_PX = 34
-
-/**
- * The scene's "If → Then" list, the step on the stage lit — in a window of
- * one fixed height, whatever the count: the tallest step plus a glimpse of a
- * neighbour above and below. The list glides so the lit step sits in the
- * middle; the others are faded, slightly blurred, and cut by the window's
- * soft edges.
- */
-function StepList({ steps, active }: { steps: Step[]; active: number }) {
-  const rows = useRef<(HTMLLIElement | null)[]>([])
-  const [box, setBox] = useState({ centre: 0, tallest: 0 })
-  useLayoutEffect(() => {
-    const measure = () => {
-      const row = rows.current[active]
-      const tallest = Math.max(0, ...rows.current.map(r => r?.offsetHeight ?? 0))
-      if (row) setBox({ centre: row.offsetTop + row.offsetHeight / 2, tallest })
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    rows.current.forEach(r => r && ro.observe(r))
-    return () => ro.disconnect()
-  }, [active, steps])
-  const windowH = box.tallest + STEP_PEEK_PX * 2
-
-  return (
-    <div
-      className="overflow-hidden"
-      style={{
-        height: windowH || undefined,
-        maskImage: "linear-gradient(to bottom, transparent, black 30%, black 70%, transparent)",
-        WebkitMaskImage: "linear-gradient(to bottom, transparent, black 30%, black 70%, transparent)",
-      }}
-    >
-    <ol
-      className="m-0 flex list-none flex-col gap-1 p-0 transition-[translate] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-      style={{ translate: `0 ${windowH / 2 - box.centre}px` }}
-    >
-      {steps.map((s, i) => (
-        <li
-          key={s.when}
-          ref={el => {
-            rows.current[i] = el
-          }}
-          // The lit step: the lightest purple, black text, and a dashed
-          // outline two steps darker marching round it (.ho-march) — an SVG,
-          // so the dashes follow the rounded corners and take no room.
-          className={`relative grid grid-cols-[22px_minmax(0,1fr)_auto_minmax(0,1.25fr)] items-start gap-3 rounded-[10px] px-3 py-2 text-[13.5px] leading-snug transition-[color,background-color,filter,opacity] duration-300 ${
-            i === active ? "bg-purple-50 text-black" : "text-[var(--ho-muted)] opacity-70 blur-[1px]"
-          }`}
-        >
-          {i === active && (
-            <svg
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 size-full overflow-visible text-purple-400"
-            >
-              <rect
-                width="100%"
-                height="100%"
-                rx="10"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1"
-                className="ho-march"
-              />
-            </svg>
-          )}
-          <span
-            className={`flex size-[20px] items-center justify-center rounded-full font-[family-name:var(--ho-mono)] text-[11px] transition-colors duration-300 ${
-              i === active ? "bg-purple-200 text-black" : "bg-[var(--ho-ground)]"
-            }`}
-          >
-            {i + 1}
-          </span>
-          <span className="first-letter:uppercase">{s.when}</span>
-          <span aria-hidden="true" className="px-4">→</span>
-          <span className="first-letter:uppercase">{s.then}</span>
-        </li>
-      ))}
-    </ol>
-    </div>
-  )
-}
 
 /** Whether `ref` is (mostly) on screen — scenes play only then, from the top. */
 function useInView(ref: React.RefObject<HTMLDivElement | null>) {
@@ -734,6 +664,7 @@ export function Scene({
             onSelectView={() => {}}
             printTechnique={state.technique}
             onPrintTechnique={() => {}}
+            techniqueMenuOpen={state.techniqueMenu}
             embroiderySupported
             hidden={!state.row}
             zoomOnly={state.zoomOnly}

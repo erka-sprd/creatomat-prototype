@@ -176,7 +176,7 @@ function Beats({ product }: { product: ReturnType<typeof useCanvasProduct> }): B
       id: "handoff",
       heading: "The handoff writes itself — I just make a few tweaks",
       prompt: "[[Build the handoff.]]",
-      reply: "Built /handoff/embroidery — 17 rules, each played on the canvas.",
+      reply: "Built /handoff/embroidery — 19 rules, each played on the canvas.",
       render: () => <HandoffCard art={<EmbroideryArt />} title="Embroidery, without dead ends" href="/handoff/embroidery" />,
       brings: "Developers start from working code and exact rules. Less rework.",
     },

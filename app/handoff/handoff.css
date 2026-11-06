@@ -278,6 +278,11 @@ html:has(.handoff) {
 .ho-prose > :where(p:last-child) {
     margin-bottom: 0;
 }
+/* The kicker above a section's heading sits close to it — a class, as the
+   rule above is unlayered and would outrank a utility. */
+.ho-prose > p.ho-kicker {
+    margin-bottom: 6px;
+}
 .ho-prose > :where(p) b {
     font-weight: 640;
 }

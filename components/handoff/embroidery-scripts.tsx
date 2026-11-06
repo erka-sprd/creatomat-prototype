@@ -7,6 +7,7 @@
  * them; the rest are beats long enough to follow.
  */
 
+import { useMemo } from "react"
 import {
   COMPLEX_GRAPHIC_SRCS,
   EMBROIDERY_MIN_LOADER_MS,
@@ -20,7 +21,7 @@ import {
   Scene,
   all,
   design,
-  useTextImage,
+  useTypedText,
   type SceneDesign,
   type SceneState,
   type Step,
@@ -89,24 +90,12 @@ type SceneProps = { product: CanvasProduct | null; showSteps?: boolean }
 
 const CHECK_STEPS: Step[] = [
   {
-    when: "embroidery is on and a design (upload or graphic) is added",
-    then: "it's placed unselected and checked at once — “Creating preview” takes the bottom row's place",
+    when: "a design is dropped in",
+    then: "checked at once",
   },
-  { when: "the check passes", then: "the stitched preview replaces the design" },
-  {
-    when: "it's the session's first stitched preview, and the user hasn't zoomed in yet",
-    then: "the green “Preview is done…” holds the row's place — no ×, only “Zoom in”",
-  },
-  {
-    when: "“Zoom in” is clicked (or the user zooms any other way)",
-    then: "one zoom step; the message slides out, the row slides back — never again this session",
-  },
-  {
-    when: "a later preview is made",
-    then: "no message — the row comes straight back",
-  },
+  { when: "the check passes", then: "stitched preview" },
 ]
-const CHECK_START: Partial<SceneState> = { designs: [] }
+const CHECK_START: Partial<SceneState> = { designs: [], zoomTip: false }
 const CHECK = timeline(
   [
     800,
@@ -117,46 +106,98 @@ const CHECK = timeline(
       designs: [{ id: "a", src: MUSHROOM, cx: 0.5, cy: 0.38, size: 0.85 }],
     },
   ],
-  [EMBROIDERY_MIN_LOADER_MS, all({ step: 1, loader: false, zoomTip: true }, design("a", { stitched: true }))],
-  [1800, { step: 2 }],
-  ...click({ button: "Zoom in" }, { step: 3, zoomTip: false, zoom: ZOOM_STOPS[1], row: true }, 1200),
-  ...click({ label: "Zoom out" }, { zoom: 1 }, 2200),
-  ...click({ design: "a", at: "c" }, all({ row: true }, design("a", { selected: true, stitched: false })), 600),
-  ...click(OUTSIDE, all({ step: 4, row: false, loader: true }, design("a", { selected: false })), 900),
-  [EMBROIDERY_MIN_LOADER_MS, all({ loader: false, row: true, cursor: null }, design("a", { stitched: true }))]
+  [EMBROIDERY_MIN_LOADER_MS, all({ step: 1, loader: false, row: true }, design("a", { stitched: true }))]
 )
 
 export function CheckScene({ product, showSteps }: SceneProps) {
   return <Scene product={product} steps={CHECK_STEPS} initial={CHECK_START} showSteps={showSteps} {...CHECK} />
 }
 
+/* ------------------------------------------------------------- zoom tip */
+
+const ZOOM_TIP_STEPS: Step[] = [
+  {
+    when: "first stitched preview of the session",
+    then: "“Zoom in” is the only way on",
+  },
+  {
+    when: "“Zoom in” is clicked, or any zoom",
+    then: "one zoom step — never again this session",
+  },
+]
+const ZOOM_TIP_START: Partial<SceneState> = {
+  row: false,
+  loader: true,
+  designs: [{ id: "a", src: MUSHROOM, cx: 0.5, cy: 0.38, size: 0.85 }],
+}
+const ZOOM_TIP = timeline(
+  [EMBROIDERY_MIN_LOADER_MS, all({ step: 0, loader: false, zoomTip: true }, design("a", { stitched: true }))],
+  ...click({ button: "Zoom in" }, { step: 1, zoomTip: false, zoom: ZOOM_STOPS[1], row: true, cursor: null }, 2200)
+)
+
+export function ZoomTipScene({ product, showSteps }: SceneProps) {
+  return (
+    <Scene product={product} steps={ZOOM_TIP_STEPS} initial={ZOOM_TIP_START} showSteps={showSteps} {...ZOOM_TIP} />
+  )
+}
+
 /* --------------------------------------------------------------- §2 text */
 
 const TEXT_STEPS: Step[] = [
   {
-    when: "a text is added in embroidery",
-    then: "it's selected straight away (desktop: ready to type), as in standard print — and not checked yet",
+    when: "a text is added",
+    then: "selected for typing, not checked yet",
   },
-  { when: "it's deselected", then: "now it's checked — “Creating preview”" },
-  { when: "the check passes", then: "stitched, like any design" },
+  { when: "it's deselected", then: "checked" },
+  { when: "the check passes", then: "stitched" },
 ]
-const TEXT = timeline(
-  [800, all({ step: 0 }, design("t", { gone: false, selected: true }))],
-  ...click(OUTSIDE, all({ step: 1, row: false, loader: true }, design("t", { selected: false })), 1800),
-  [EMBROIDERY_MIN_LOADER_MS, all({ step: 2, loader: false, row: true, cursor: null }, design("t", { stitched: true }))]
-)
+const TEXT_WORD = "Hello"
+/** Light purple, so the typed text stands apart from the shirt and the UI. */
+const TEXT_COLOR = "#C084FC"
+/** One letter per beat while typing. */
+const TYPE_MS = 220
+
+// One design per typing frame (useTypedText), all in the same spot: each beat
+// shows the next and hides the last. The last frame is the text without its
+// caret, deselected and checked.
+const textDesign = (src: string, i: number): SceneDesign => ({
+  id: `t${i}`,
+  src,
+  cx: 0.5,
+  cy: 0.36,
+  size: 0.9,
+  gone: true,
+  cut: true,
+  selected: i < TEXT_WORD.length + 1,
+})
+const textTimeline = (frames: string[]) => {
+  const last = frames.length - 1
+  const typing: [number, Update][] = frames
+    .slice(1, last)
+    .map((_, n) => [TYPE_MS, all(design(`t${n}`, { gone: true }), design(`t${n + 1}`, { gone: false }))])
+  return timeline(
+    [800, all({ step: 0 }, design("t0", { gone: false }))],
+    ...typing,
+    ...click(
+      OUTSIDE,
+      all(
+        { step: 1, row: false, loader: true },
+        design(`t${last - 1}`, { gone: true }),
+        design(`t${last}`, { gone: false })
+      ),
+      1400
+    ),
+    [EMBROIDERY_MIN_LOADER_MS, all({ step: 2, loader: false, row: true, cursor: null }, design(`t${last}`, { stitched: true }))]
+  )
+}
 
 export function TextScene({ product, showSteps }: SceneProps) {
-  const src = useTextImage("Hello")
-  if (!src) return null
+  const frames = useTypedText(TEXT_WORD, TEXT_COLOR)
+  const script = useMemo(() => frames && textTimeline(frames), [frames])
+  const initial = useMemo(() => ({ designs: frames?.map(textDesign) ?? [] }), [frames])
+  if (!frames || !script) return null
   return (
-    <Scene
-      product={product}
-      steps={TEXT_STEPS}
-      initial={{ designs: [{ id: "t", src, cx: 0.5, cy: 0.36, size: 0.9, gone: true }] }}
-      showSteps={showSteps}
-      {...TEXT}
-    />
+    <Scene product={product} steps={TEXT_STEPS} initial={initial} showSteps={showSteps} {...script} />
   )
 }
 
@@ -164,17 +205,17 @@ export function TextScene({ product, showSteps }: SceneProps) {
 
 const MID_CHECK_STEPS: Step[] = [
   {
-    when: "the design is selected while “Creating preview” runs",
-    then: "the check carries on in the background; its result is held back — no loader, preview or warning while selected",
+    when: "selected mid-check",
+    then: "the check runs on, result held back",
   },
-  { when: "it's only moved meanwhile", then: "the running check still stands — a move isn't a change" },
+  { when: "only moved", then: "the check stands — a move isn't a change" },
   {
-    when: "it's deselected and the check has finished",
-    then: "the result shows at once (not finished yet: the loader comes back for the rest only — no restart)",
+    when: "deselected",
+    then: "the result at once — no restart",
   },
   {
-    when: "it was changed while selected — resized, edited, recoloured",
-    then: "the old result is stale: a fresh check on deselect",
+    when: "changed while selected",
+    then: "a fresh check on deselect",
   },
 ]
 const MID_CHECK_START: Partial<SceneState> = {
@@ -211,12 +252,12 @@ export function MidCheckScene({ product }: SceneProps) {
 
 const SWITCH_ON_STEPS: Step[] = [
   {
-    when: "embroidery is switched on while a design is past the hoop frame",
-    then: "no preview and no check — warning, selection, hoop guide + arrow and the blur all arrive in one frame",
+    when: "embroidery switched on, design too large",
+    then: "no check — the warning at once",
   },
   {
-    when: "the user clicks outside to deselect",
-    then: "ignored — it stays selected until it fits (move, resize, rotate and trash all still work)",
+    when: "clicked outside",
+    then: "stays selected until it fits",
   },
 ]
 const SWITCH_ON_START: Partial<SceneState> = {
@@ -224,10 +265,12 @@ const SWITCH_ON_START: Partial<SceneState> = {
   designs: [{ id: "a", src: MUSHROOM, cx: 0.5, cy: 0.4, size: 1.6 }],
 }
 const SWITCH_ON = timeline(
+  // The technique pill opens its menu; Embroidery is picked from it.
+  ...click({ label: "Print technique: Standard print" }, { techniqueMenu: true }, 1000),
   ...click(
-    { label: "Print technique: Standard print" },
-    all({ step: 0, technique: "embroidery", ...TOO_LARGE }, design("a", selectedTooLarge)),
-    1000
+    { button: "Embroidery" },
+    all({ step: 0, technique: "embroidery", techniqueMenu: false, ...TOO_LARGE }, design("a", selectedTooLarge)),
+    900
   ),
   [1200, { cursor: null }],
   ...click(OUTSIDE, { step: 1 }, 1600),
@@ -242,17 +285,17 @@ export function SwitchOnScene({ product }: SceneProps) {
 
 const RESIZE_STEPS: Step[] = [
   {
-    when: "a corner handle is hovered",
-    then: "the guide and arrow re-anchor to that corner at once, and stay there",
+    when: "a corner is hovered",
+    then: "the guide moves to it",
   },
   {
-    when: "it's resized down past the hoop size",
-    then: "free both ways, no cap — it snaps onto the hoop size: frame and handles green, the orange message slides out and a green “Good design size” slides up, handle still held",
+    when: "resized to the hoop size",
+    then: "snaps, turns green",
   },
-  { when: "it's pulled past the frame again", then: "it swaps back, as live" },
+  { when: "pulled past again", then: "orange again, live" },
   {
-    when: "it's released inside",
-    then: `the green holds ${RECOVERED_GOOD_SIZE_MS / 1000} s, the frame eases back to blue; deselected, it's checked`,
+    when: "released inside",
+    then: `green for ${RECOVERED_GOOD_SIZE_MS / 1000} s, checked on deselect`,
   },
 ]
 const RESIZE_START: Partial<SceneState> = {
@@ -297,10 +340,10 @@ export function ResizeScene({ product }: SceneProps) {
 
 const MOVE_STEPS: Step[] = [
   {
-    when: "a design past the frame is moved (dragged by itself)",
-    then: "guide, arrow, blur and orange go — blue frame, no handles, no editor bar; the message stays",
+    when: "too large and moved",
+    then: "guide and handles go, the message stays",
   },
-  { when: "it's released", then: "all of it comes back" },
+  { when: "released", then: "all back" },
 ]
 const MOVE_START: Partial<SceneState> = {
   ...TOO_LARGE,
@@ -324,16 +367,16 @@ export function MoveScene({ product }: SceneProps) {
 
 const FIT_STEPS: Step[] = [
   {
-    when: "a single design is past the frame — however it got there (a check, the user's own resize)",
-    then: "it's selected for you, and “Fit to best size” sits under the message (still there while it's moved or resized)",
+    when: "a design is too large",
+    then: "selected, with “Fit to best size”",
   },
   {
-    when: "“Fit to best size” is clicked",
-    then: "it shrinks about its centre to exactly the hoop size, with a small bounce — the overshoot goes smaller, never past",
+    when: "“Fit to best size” clicked",
+    then: "shrinks to the hoop size, small bounce",
   },
   {
-    when: "it lands",
-    then: `as after a resize: green frame + “Good design size” for ${RECOVERED_GOOD_SIZE_MS / 1000} s, then it's checked`,
+    when: "it fits",
+    then: `green for ${RECOVERED_GOOD_SIZE_MS / 1000} s, then checked`,
   },
 ]
 const FIT_START: Partial<SceneState> = {
@@ -359,12 +402,12 @@ export function FitScene({ product, showSteps }: SceneProps) {
 
 const MIN_STEPS: Step[] = [
   {
-    when: "a design is shrunk to its own minimum (set per design — here 4 cm)",
-    then: "the resize stops there with a small bounce and “Min. size for embroidery”",
+    when: "shrunk to its own minimum",
+    then: "stops, “Min. size for embroidery”",
   },
   {
-    when: "it's grown instead",
-    then: "free — there's no maximum; the hoop frame only warns (§4–§7)",
+    when: "grown",
+    then: "no maximum — the frame only warns",
   },
 ]
 const MIN_START: Partial<SceneState> = {
@@ -392,16 +435,16 @@ export function MinSizeScene({ product }: SceneProps) {
 
 const GROUP_STEPS: Step[] = [
   {
-    when: "a 2nd (or 3rd) design is added",
-    then: "it's placed inside the frame beside the others — no green message — and checked as usual",
+    when: "a 2nd design is added",
+    then: "placed inside the frame, checked",
   },
   {
-    when: "a move takes the group past the frame",
-    then: "orange group frame + “Combination of designs too large” replace the check — live, mid-move — and no check on release",
+    when: "the group moved past the frame",
+    then: "combination warning, live — no check",
   },
   {
-    when: "it's brought back within",
-    then: "green group frame + “Good design size”, then the check runs again",
+    when: "back within",
+    then: "green, then checked",
   },
 ]
 const GROUP_START: Partial<SceneState> = {
@@ -440,14 +483,14 @@ export function GroupScene({ product }: SceneProps) {
 
 const GROUP_FIT_STEPS: Step[] = [
   {
-    when: "“Fit to best size” is clicked under the combination warning",
-    then: "the designs first draw together towards the group's centre — only as far as needed",
+    when: "“Fit to best size” on a combination",
+    then: "they draw together first",
   },
   {
-    when: "even stacked on each other they don't fit",
-    then: "they then shrink about that same centre to the hoop size, with the small bounce (the first step doesn't bounce: they never cross)",
+    when: "still too large",
+    then: "then they shrink",
   },
-  { when: "they fit", then: "green, and the check runs as after a manual move" },
+  { when: "they fit", then: "green, then checked" },
 ]
 const GROUP_FIT_START: Partial<SceneState> = {
   ...TOO_LARGE,
@@ -485,14 +528,14 @@ export function GroupFitScene({ product }: SceneProps) {
 
 const ISSUE_STEPS: Step[] = [
   {
-    when: "the check finds lines too thin (or too much detail)",
-    then: "no stitched preview — the design stays as it is, under the named warning and its “See solutions”",
+    when: "lines too thin, or too complex",
+    then: "no preview — the warning names it",
   },
   {
-    when: "the design is selected",
-    then: "frame and (orange) trash only — no resize, rotate or move handles: resizing doesn't solve it",
+    when: "selected",
+    then: "no handles — resizing won't fix it",
   },
-  { when: "it's dragged by the design itself", then: "it moves as usual" },
+  { when: "dragged", then: "moves as usual" },
 ]
 const ISSUE_START: Partial<SceneState> = {
   designs: [{ id: "a", src: CAT, cx: 0.45, cy: 0.4, size: 0.85 }],
@@ -518,20 +561,20 @@ export function IssueScene({ product, showSteps }: SceneProps) {
 
 const AI_STEPS: Step[] = [
   {
-    when: "“See solutions” is clicked",
-    then: "two ways out: Fix with AI (thin lines — thickens them; too complex: Simplify with AI) or Switch to print",
+    when: "“See solutions”",
+    then: "fix with AI, or switch to print",
   },
   {
-    when: "“Fix now” is clicked",
-    then: "no AI panel — it runs at once: the design lets go, “Fixing thin lines…” takes the row's place, the trash stays over it",
+    when: "“Fix now”",
+    then: "runs at once, no AI panel",
   },
   {
     when: "the result is in",
-    then: "up for review on the canvas — Before / After, Cancel / Accept — the row shows only the zoom, centred",
+    then: "reviewed on the canvas",
   },
   {
-    when: "Accept is clicked (Cancel: the warning comes back)",
-    then: "the zoom slides out, the result is checked (“Creating preview”), then the whole row slides back",
+    when: "accepted",
+    then: "checked again",
   },
 ]
 const AI_START: Partial<SceneState> = {
@@ -570,8 +613,8 @@ export function AiScene({ product, showSteps }: SceneProps) {
 /* ------------------------------------------ §13 removed while the AI runs */
 
 const AI_TRASH_STEPS: Step[] = [
-  { when: "Fix / Simplify with AI is running", then: "the trash sits over the design" },
-  { when: "the trash is clicked", then: "the design goes and the run stops — no result, no review; the row comes back" },
+  { when: "the AI is running", then: "the trash stays" },
+  { when: "trash clicked", then: "design and run gone" },
 ]
 const AI_TRASH_START: Partial<SceneState> = {
   ai: "too-complex",
@@ -595,12 +638,12 @@ export function AiTrashScene({ product }: SceneProps) {
 
 const PRINT_STEPS: Step[] = [
   {
-    when: "“Switch to print” is clicked in the solutions",
-    then: "the warning slides out; only a green “Switched to standard print” slides up",
+    when: "“Switch to print”",
+    then: "a green confirmation",
   },
   {
     when: `${RECOVERED_GOOD_SIZE_MS / 1000} s later`,
-    then: "it slides out and the row comes back — already on Standard print",
+    then: "the row is back, on Standard print",
   },
 ]
 const PRINT_START: Partial<SceneState> = {
@@ -626,8 +669,8 @@ export function PrintScene({ product }: SceneProps) {
 
 const BASKET_STEPS: Step[] = [
   {
-    when: "add to basket is clicked while any warning is up (too large, thin lines, too complex)",
-    then: "refused — the warning shakes and the canvas edge flashes orange; the size sheet doesn't even open",
+    when: "add to basket with a warning up",
+    then: "refused — the warning shakes",
   },
 ]
 const BASKET_START: Partial<SceneState> = {

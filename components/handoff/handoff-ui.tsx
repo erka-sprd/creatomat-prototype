@@ -231,7 +231,7 @@ export function Section({
 
 export function Kicker({ children }: { children: ReactNode }) {
   return (
-    <p className="mb-2.5 font-[family-name:var(--ho-mono)] text-[14px] tracking-[0.1em] text-[var(--ho-muted)] uppercase">
+    <p className="ho-kicker font-[family-name:var(--ho-mono)] text-[14px] tracking-[0.1em] text-[var(--ho-muted)] uppercase">
       {children}
     </p>
   )
@@ -240,7 +240,7 @@ export function Kicker({ children }: { children: ReactNode }) {
 /** Section heading, with the code-tip button parked on its right when there is one. */
 export function SectionHead({ title, tip }: { title: string; tip?: string }) {
   return (
-    <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+    <div className="mb-1.5 flex flex-wrap items-center justify-between gap-3">
       <h2 className="m-0 text-[25px] font-[640] tracking-[-0.015em] text-balance">{title}</h2>
       {tip && <CodeTipButton tipKey={tip} />}
     </div>

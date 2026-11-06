@@ -96,6 +96,7 @@ export function MergedBottomRow({
   hidden = false,
   swapDelayMs = 0,
   techniqueConfirmed = false,
+  techniqueMenuOpen = false,
   zoomOnly = false,
 }: {
   zoom: number
@@ -123,6 +124,8 @@ export function MergedBottomRow({
   swapDelayMs?: number
   /** The technique switcher's green tick in place of its technique icon (TechniqueSwitcher). */
   techniqueConfirmed?: boolean
+  /** Holds the technique menu open — the handoff's scenes, which script the choice. */
+  techniqueMenuOpen?: boolean
   /**
    * Only the zoom, at the row's centre — while a Simplify with AI result is up
    * for review. The change shows only while the row is out of view (`hidden`),
@@ -202,6 +205,7 @@ export function MergedBottomRow({
             onChange={onPrintTechnique}
             embroiderySupported={embroiderySupported}
             confirmed={techniqueConfirmed}
+            pinnedOpen={techniqueMenuOpen}
           />
         )}
       </div>
