@@ -83,7 +83,7 @@ const release = (s: SceneState): SceneState => ({
 const TOO_LARGE: Partial<SceneState> = { issue: "too-large", fit: true, row: false }
 const selectedTooLarge: Partial<SceneDesign> = { selected: true, tone: "orange", guide: "se" }
 
-type SceneProps = { product: CanvasProduct | null }
+type SceneProps = { product: CanvasProduct | null; showSteps?: boolean }
 
 /* ---------------------------------------------------------- §1 the check */
 
@@ -126,8 +126,8 @@ const CHECK = timeline(
   [EMBROIDERY_MIN_LOADER_MS, all({ loader: false, row: true, cursor: null }, design("a", { stitched: true }))]
 )
 
-export function CheckScene({ product }: SceneProps) {
-  return <Scene product={product} steps={CHECK_STEPS} initial={CHECK_START} {...CHECK} />
+export function CheckScene({ product, showSteps }: SceneProps) {
+  return <Scene product={product} steps={CHECK_STEPS} initial={CHECK_START} showSteps={showSteps} {...CHECK} />
 }
 
 /* --------------------------------------------------------------- §2 text */
@@ -146,7 +146,7 @@ const TEXT = timeline(
   [EMBROIDERY_MIN_LOADER_MS, all({ step: 2, loader: false, row: true, cursor: null }, design("t", { stitched: true }))]
 )
 
-export function TextScene({ product }: SceneProps) {
+export function TextScene({ product, showSteps }: SceneProps) {
   const src = useTextImage("Hello")
   if (!src) return null
   return (
@@ -154,6 +154,7 @@ export function TextScene({ product }: SceneProps) {
       product={product}
       steps={TEXT_STEPS}
       initial={{ designs: [{ id: "t", src, cx: 0.5, cy: 0.36, size: 0.9, gone: true }] }}
+      showSteps={showSteps}
       {...TEXT}
     />
   )
@@ -350,8 +351,8 @@ const FIT = timeline(
   [EMBROIDERY_MIN_LOADER_MS, all({ loader: false, row: true }, design("a", { stitched: true }))]
 )
 
-export function FitScene({ product }: SceneProps) {
-  return <Scene product={product} steps={FIT_STEPS} initial={FIT_START} {...FIT} />
+export function FitScene({ product, showSteps }: SceneProps) {
+  return <Scene product={product} steps={FIT_STEPS} initial={FIT_START} showSteps={showSteps} {...FIT} />
 }
 
 /* ---------------------------------------------------------- §8 min size */
@@ -509,8 +510,8 @@ const ISSUE = timeline(
   [1300, release]
 )
 
-export function IssueScene({ product }: SceneProps) {
-  return <Scene product={product} steps={ISSUE_STEPS} initial={ISSUE_START} {...ISSUE} />
+export function IssueScene({ product, showSteps }: SceneProps) {
+  return <Scene product={product} steps={ISSUE_STEPS} initial={ISSUE_START} showSteps={showSteps} {...ISSUE} />
 }
 
 /* --------------------------------------------- §12 solutions + AI fix */
@@ -562,8 +563,8 @@ const AI = timeline(
   [EMBROIDERY_MIN_LOADER_MS, all({ loader: false, row: true }, design("a", { stitched: true }))]
 )
 
-export function AiScene({ product }: SceneProps) {
-  return <Scene product={product} steps={AI_STEPS} initial={AI_START} {...AI} />
+export function AiScene({ product, showSteps }: SceneProps) {
+  return <Scene product={product} steps={AI_STEPS} initial={AI_START} showSteps={showSteps} {...AI} />
 }
 
 /* ------------------------------------------ §13 removed while the AI runs */

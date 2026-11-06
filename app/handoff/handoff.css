@@ -545,3 +545,47 @@ html:has(.handoff) {
         animation: none;
     }
 }
+
+/* /ux-new-way-of-work — the QA list's red cross, drawn stroke by stroke, and
+   the typed prompt's caret. */
+@keyframes ho-wow-draw {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+.ho-wow-stroke {
+    stroke: #dc2626;
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    animation: ho-wow-draw 450ms ease-out forwards;
+}
+@keyframes ho-wow-caret {
+    50% {
+        opacity: 0;
+    }
+}
+.ho-wow-caret {
+    animation: ho-wow-caret 0.9s step-end infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .ho-wow-stroke {
+        animation: none;
+        stroke-dashoffset: 0;
+    }
+    .ho-wow-caret {
+        animation: none;
+    }
+}
+
+/* A block easing in as a step changes — the art tick's motion without its
+   inline-block, so a grid keeps its columns. */
+.ho-wow-in {
+    animation: ho-art-tick 260ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+    .ho-wow-in {
+        animation: none;
+    }
+}

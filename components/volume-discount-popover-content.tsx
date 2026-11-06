@@ -81,20 +81,6 @@ export default function VolumeDiscountPopoverContent({
   onClose,
 }: Props) {
   const [quantity, setQuantity] = useState(1)
-  // WedgeSlider is sized in pixels (it draws an SVG track), so the wrapper's
-  // width is measured and handed to it — the popover can be narrowed by Radix
-  // when the rail is tight.
-  const trackRef = useRef<HTMLDivElement>(null)
-  const [trackWidth, setTrackWidth] = useState(DEFAULT_TRACK_WIDTH)
-  useEffect(() => {
-    const el = trackRef.current
-    if (!el) return
-    const measure = () => setTrackWidth(el.clientWidth || DEFAULT_TRACK_WIDTH)
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
 
   // Scroll shadow over the sticky total, mirroring the size sheet: while there
   // is more panel below, the row casts the kit's shadow-up-xs; once the end is
@@ -140,40 +126,10 @@ export default function VolumeDiscountPopoverContent({
     []
   )
 
-  const stops = sliderStops(productId)
-  const lastIndex = stops.length - 1
-  const maxQuantity = stops[lastIndex].from
-
-  // Track position (0…lastIndex, fractional) <-> quantity, piecewise-linear
-  // between neighbouring stops so every segment is the same width on screen.
-  const positionForQuantity = (q: number) => {
-    if (q >= maxQuantity) return lastIndex
-    const i = stops.findIndex((s, idx) => idx < lastIndex && q < stops[idx + 1].from)
-    if (i < 0) return lastIndex
-    const span = stops[i + 1].from - stops[i].from
-    return i + (span > 0 ? (q - stops[i].from) / span : 0)
-  }
-  const quantityForPosition = (pos: number) => {
-    const i = Math.min(lastIndex - 1, Math.max(0, Math.floor(pos)))
-    const frac = pos - i
-    return Math.round(stops[i].from + frac * (stops[i + 1].from - stops[i].from))
-  }
-
   const pct = volumeDiscountPercentage(quantity, productId)
   // Unit is discounted and multiplied out (create-omat/basket rounding), so
   // per-item × quantity always reconciles with the total below it.
   const discountedUnit = discountedPrice(unitPrice, pct)
-  // Quantities above the top tier can be typed in the stepper; the thumb then
-  // rests on the end of the track.
-  const position = positionForQuantity(quantity)
-  // Dot, handle and label all share the handle's travel, so landing on a stop
-  // puts the circle exactly over its dot and the number exactly under both.
-  const markLeft = (i: number) => thumbCentreX(lastIndex > 0 ? i / lastIndex : 0, trackWidth)
-  // A badge is live only when its percentage is the one ACTUALLY applied —
-  // every tier is marked, so that is always exactly one of them. Below the
-  // first tier (pct 0) nothing is claimed yet, so they all stay live as an
-  // offer.
-  const badgeIsLive = (percentage: number) => pct === 0 || percentage === pct
 
   return (
     // Three bands inside the popover's fixed height: header at the top, the
@@ -217,89 +173,12 @@ export default function VolumeDiscountPopoverContent({
           />
         </div>
 
-        {/* Same slider as the canvas zoom dock (WedgeSlider: ringed white
-            handle, drag-relative with jump-on-track-click) — horizontal instead
-            of rotated -90°, on a track that rakes from 6px on the left to 16px
-            on the right, filled black up to the handle.
-            It takes a pixel width, so the wrapper is measured and the marks are
-            positioned in the same pixel space as the thumb. */}
-        {/* 12px in from the band's own padding on each side — the measured
-            width follows, so ticks and labels stay on the handle. */}
-        <div ref={trackRef} className="mx-3 w-auto">
-          {/* The stops are drawn INSIDE the track (white dots punched into it,
-              2px clear of its edges) rather than as separate ticks crossing it,
-              so the marks taper with the rail. Every tier is marked, so the
-              labels below already say what is being chosen — no readout rides
-              along with the handle. */}
-          <WedgeSlider
-            min={0}
-            max={lastIndex}
-            value={position}
-            width={trackWidth}
-            track="taper"
-            trackFill={TRACK_FILL}
-            marks={stops.map((_, i) => (lastIndex > 0 ? i / lastIndex : 0))}
-            jumpOnTrackClick
-            onChange={v => setQuantity(quantityForPosition(v))}
-            onJump={v => setQuantity(quantityForPosition(v))}
-          />
-          {/* Labels under each tick: the quantity, then the percentage it
-              unlocks. The first stop is quantity 1, where nothing is off yet.
-              Clicking one jumps the slider to it. */}
-          <div className="relative mt-3 h-8" style={{ width: trackWidth }}>
-            {stops.map((stop, i) => {
-              const active = quantity >= stop.from
-              return (
-                <button
-                  key={stop.from}
-                  type="button"
-                  onClick={() => setQuantity(stop.from)}
-                  aria-label={
-                    stop.percentage > 0
-                      ? `${stop.from} products, ${stop.percentage}% off`
-                      : `${stop.from} product`
-                  }
-                  style={{ left: markLeft(i) }}
-                  className="group absolute top-0 flex -translate-x-1/2 cursor-pointer flex-col items-center gap-2 outline-none"
-                >
-                  {/* The chosen quantity's number swells to 22px, so it is the
-                      largest figure on the track however it was picked.
-                      Hovering one previews the same growth, since clicking it
-                      is what selects that quantity. Quantity 1 is exempt from
-                      both: it is the resting position, not a tier worth
-                      announcing. */}
-                  <span
-                    className={`leading-none transition-[font-size,color] duration-150 ${
-                      active ? "text-black" : "text-[var(--sprd-neutral-600)]"
-                    } ${quantity === stop.from && stop.from !== 1 ? "text-[22px]" : "text-[14px]"} ${
-                      stop.from !== 1 ? "group-hover:text-[22px]" : ""
-                    }`}
-                  >
-                    {stop.from}
-                  </span>
-                  {/* A badge rather than bare text — the lightest red ground
-                      (--sprd-red-50) under red type, 4px of padding all round.
-                      Kept present but invisible on the first stop, where
-                      nothing is off yet, so every label block is the same
-                      height. Once a tier is actually reached only that one
-                      keeps its colour: the rest are offers not taken, so they
-                      drop to grey rather than competing with the live figure. */}
-                  <span
-                    className={`rounded-[2px] p-1 text-[14px] leading-none font-semibold transition-colors duration-150 ${
-                      stop.percentage === 0
-                        ? "invisible"
-                        : badgeIsLive(stop.percentage)
-                          ? "bg-[var(--sprd-red-50)] text-[var(--sprd-red-600)]"
-                          : "bg-[var(--sprd-neutral-100)] text-[var(--sprd-neutral-600)]"
-                    }`}
-                  >
-                    %{stop.percentage}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        {/* The slider and its labels — shared with the way-of-work page. */}
+        <VolumeDiscountTrack
+          productId={productId}
+          quantity={quantity}
+          onQuantityChange={setQuantity}
+        />
       </div>
 
       {/* Price list — the same rows as the price-details breakdown, so the two
@@ -410,6 +289,157 @@ export default function VolumeDiscountPopoverContent({
           with less than that left to scroll reported "at the end" from the
           start and the shadow never appeared. */}
       <div ref={setEndSentinel} aria-hidden className="h-px w-full flex-shrink-0" />
+    </div>
+  )
+}
+
+/**
+ * The tier track on its own: the slider and, under each stop, the quantity and
+ * the percentage it unlocks. Shared by the popover above and the way-of-work
+ * page's discount demo, so the two cannot drift.
+ */
+export function VolumeDiscountTrack({
+  productId,
+  quantity,
+  onQuantityChange,
+  animate = false,
+}: {
+  productId?: string
+  quantity: number
+  onQuantityChange: (quantity: number) => void
+  /** Glide the handle between values — for a scripted demo, not a drag. */
+  animate?: boolean
+}) {
+  // WedgeSlider is sized in pixels (it draws an SVG track), so the wrapper's
+  // width is measured and handed to it — the popover can be narrowed by Radix
+  // when the rail is tight.
+  const trackRef = useRef<HTMLDivElement>(null)
+  const [trackWidth, setTrackWidth] = useState(DEFAULT_TRACK_WIDTH)
+  useEffect(() => {
+    const el = trackRef.current
+    if (!el) return
+    const measure = () => setTrackWidth(el.clientWidth || DEFAULT_TRACK_WIDTH)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const stops = sliderStops(productId)
+  const lastIndex = stops.length - 1
+  const maxQuantity = stops[lastIndex].from
+
+  // Track position (0…lastIndex, fractional) <-> quantity, piecewise-linear
+  // between neighbouring stops so every segment is the same width on screen.
+  const positionForQuantity = (q: number) => {
+    if (q >= maxQuantity) return lastIndex
+    const i = stops.findIndex((s, idx) => idx < lastIndex && q < stops[idx + 1].from)
+    if (i < 0) return lastIndex
+    const span = stops[i + 1].from - stops[i].from
+    return i + (span > 0 ? (q - stops[i].from) / span : 0)
+  }
+  const quantityForPosition = (pos: number) => {
+    const i = Math.min(lastIndex - 1, Math.max(0, Math.floor(pos)))
+    const frac = pos - i
+    return Math.round(stops[i].from + frac * (stops[i + 1].from - stops[i].from))
+  }
+
+  const pct = volumeDiscountPercentage(quantity, productId)
+  // Quantities above the top tier can be typed in the stepper; the thumb then
+  // rests on the end of the track.
+  const position = positionForQuantity(quantity)
+  // Dot, handle and label all share the handle's travel, so landing on a stop
+  // puts the circle exactly over its dot and the number exactly under both.
+  const markLeft = (i: number) => thumbCentreX(lastIndex > 0 ? i / lastIndex : 0, trackWidth)
+  // A badge is live only when its percentage is the one ACTUALLY applied —
+  // every tier is marked, so that is always exactly one of them. Below the
+  // first tier (pct 0) nothing is claimed yet, so they all stay live as an
+  // offer.
+  const badgeIsLive = (percentage: number) => pct === 0 || percentage === pct
+
+  return (
+    // Same slider as the canvas zoom dock (WedgeSlider: ringed white handle,
+    // drag-relative with jump-on-track-click) — horizontal instead of rotated
+    // -90°, on a track that rakes from 6px on the left to 16px on the right,
+    // filled black up to the handle. It takes a pixel width, so the wrapper is
+    // measured and the marks are positioned in the same pixel space as the
+    // thumb. 12px in from the band's own padding on each side — the measured
+    // width follows, so ticks and labels stay on the handle.
+    <div ref={trackRef} className="mx-3 w-auto">
+      {/* The stops are drawn INSIDE the track (white dots punched into it,
+          2px clear of its edges) rather than as separate ticks crossing it,
+          so the marks taper with the rail. Every tier is marked, so the
+          labels below already say what is being chosen — no readout rides
+          along with the handle. */}
+      <WedgeSlider
+        min={0}
+        max={lastIndex}
+        value={position}
+        width={trackWidth}
+        track="taper"
+        trackFill={TRACK_FILL}
+        marks={stops.map((_, i) => (lastIndex > 0 ? i / lastIndex : 0))}
+        jumpOnTrackClick
+        animate={animate}
+        onChange={v => onQuantityChange(quantityForPosition(v))}
+        onJump={v => onQuantityChange(quantityForPosition(v))}
+      />
+      {/* Labels under each tick: the quantity, then the percentage it
+          unlocks. The first stop is quantity 1, where nothing is off yet.
+          Clicking one jumps the slider to it. */}
+      <div className="relative mt-3 h-8" style={{ width: trackWidth }}>
+        {stops.map((stop, i) => {
+          const active = quantity >= stop.from
+          return (
+            <button
+              key={stop.from}
+              type="button"
+              onClick={() => onQuantityChange(stop.from)}
+              aria-label={
+                stop.percentage > 0
+                  ? `${stop.from} products, ${stop.percentage}% off`
+                  : `${stop.from} product`
+              }
+              style={{ left: markLeft(i) }}
+              className="group absolute top-0 flex -translate-x-1/2 cursor-pointer flex-col items-center gap-2 outline-none"
+            >
+              {/* The chosen quantity's number swells to 22px, so it is the
+                  largest figure on the track however it was picked.
+                  Hovering one previews the same growth, since clicking it
+                  is what selects that quantity. Quantity 1 is exempt from
+                  both: it is the resting position, not a tier worth
+                  announcing. */}
+              <span
+                className={`leading-none transition-[font-size,color] duration-150 ${
+                  active ? "text-black" : "text-[var(--sprd-neutral-600)]"
+                } ${quantity === stop.from && stop.from !== 1 ? "text-[22px]" : "text-[14px]"} ${
+                  stop.from !== 1 ? "group-hover:text-[22px]" : ""
+                }`}
+              >
+                {stop.from}
+              </span>
+              {/* A badge rather than bare text — the lightest red ground
+                  (--sprd-red-50) under red type, 4px of padding all round.
+                  Kept present but invisible on the first stop, where
+                  nothing is off yet, so every label block is the same
+                  height. Once a tier is actually reached only that one
+                  keeps its colour: the rest are offers not taken, so they
+                  drop to grey rather than competing with the live figure. */}
+              <span
+                className={`rounded-[2px] p-1 text-[14px] leading-none font-semibold transition-colors duration-150 ${
+                  stop.percentage === 0
+                    ? "invisible"
+                    : badgeIsLive(stop.percentage)
+                      ? "bg-[var(--sprd-red-50)] text-[var(--sprd-red-600)]"
+                      : "bg-[var(--sprd-neutral-100)] text-[var(--sprd-neutral-600)]"
+                }`}
+              >
+                %{stop.percentage}
+              </span>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
