@@ -42,6 +42,7 @@ export function EmbroiderySolutions({
   onSimplifyWithAI,
   onSwitchToPrint,
   inDrawer = false,
+  compact = inDrawer,
 }: {
   issue: EmbroideryDesignIssue
   designSrc: string | null
@@ -55,6 +56,8 @@ export function EmbroiderySolutions({
    * close: no header here, and the two cards stay side by side, compact.
    */
   inDrawer?: boolean
+  /** Tighter cards, the header kept — where height is short (the handoff's frame). */
+  compact?: boolean
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -71,9 +74,13 @@ export function EmbroiderySolutions({
         </button>
       </div>
       )}
-      <div className={inDrawer ? "grid grid-cols-2 gap-2" : "grid grid-cols-2 gap-4 max-sm:grid-cols-1"}>
+      <div
+        className={
+          inDrawer ? "grid grid-cols-2 gap-2" : compact ? "grid grid-cols-2 gap-3" : "grid grid-cols-2 gap-4 max-sm:grid-cols-1"
+        }
+      >
         <SolutionCard
-          compact={inDrawer}
+          compact={compact}
           title={AI_CARD[issue].title}
           text={AI_CARD[issue].text}
           visual={designSrc && <SimplifyPreview src={designSrc} />}
@@ -83,7 +90,7 @@ export function EmbroiderySolutions({
           </KitButton>
         </SolutionCard>
         <SolutionCard
-          compact={inDrawer}
+          compact={compact}
           title="Print it instead"
           text="Digital print keeps every detail."
           visual={

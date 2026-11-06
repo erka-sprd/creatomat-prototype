@@ -1358,6 +1358,15 @@ export default function Designer({
   // Signature of the design the stitched preview was last revealed for — an
   // unchanged design skips the loader and shows its preview at once.
   const lastShownEmbroiderySigRef = useRef<string | null>(null)
+  // The check behind "Creating preview" runs only once asked for: when a
+  // design is let go (deselected, or its editing ended), when an AI result is
+  // accepted, or when add to basket is tried with a design not checked yet.
+  // Switching to embroidery, or adding a design, doesn't start it by itself.
+  // Armed until the result is on show (lastShownEmbroiderySigRef).
+  const [checkArmed, setCheckArmed] = useState(false)
+  // Add to basket with a design not checked yet: the canvas edge flashes
+  // orange — as for a refused basket — while the design is let go and checked.
+  const [canvasFlash, setCanvasFlash] = useState(0)
   // Source image fed to the embroidery renderer. Only updated when the design's
   // *appearance* (not its position) changes, so moving never regenerates it.
   const [embroiderySrc, setEmbroiderySrc] = useState<string | null>(null)
@@ -1577,20 +1586,6 @@ export default function Designer({
   const newElementHoopFrame =
     effectivePrintTechnique === "embroidery" ? embroideryHoopFrame : null
 
-  // With embroidery selected, every new design (upload or graphic) is placed
-  // unselected, so the stitched preview — and the embroidery checks behind
-  // "Creating preview" — run straight away instead of waiting for a deselect.
-  // Selecting it afterwards works as usual. Not a new text: it's selected
-  // (and on desktop typed into) as ever, the check waiting for its deselect.
-  const previewOnAdd = () => effectivePrintTechnique === "embroidery"
-  // In place of selecting the new element: nothing selected or in editing, so
-  // an element still selected from before can't hold the preview back either.
-  const clearSelectionForPreview = () => {
-    setSelectedTextId(null)
-    setSelectedGraphicId(null)
-    setEditingTextId(null)
-  }
-
   const addTextElement = () => {
     if (!currentPrintAreaId) return
     const id = uid("text")
@@ -1692,7 +1687,7 @@ export default function Designer({
     ])
     // Defer to next tick so the document click handler (firing in the same
     // event's bubble phase) doesn't clear the selection we're about to set.
-    // Embroidery too: no check yet (see previewOnAdd).
+    // Embroidery too: no check yet — it runs once the text is let go.
     setTimeout(() => {
       setSelectedTextId(id)
       // Desktop drops straight into typing. Mobile does not: a new text is
@@ -2079,10 +2074,10 @@ export default function Designer({
         { id, printAreaId, src, x, y, width, height, z: nextZ(), isAi: isAiImage(src) },
       ])
       setActivePanel(null)
-      const previewFirst = previewOnAdd()
+      // Selected, as in standard print — in embroidery too: the check behind
+      // "Creating preview" runs once it's let go.
       // Defer so the same click's document handler doesn't clear the new selection.
       setTimeout(() => {
-        if (previewFirst) return clearSelectionForPreview()
         setSelectedGraphicId(id)
         setSelectedTextId(null)
       }, 0)
@@ -2912,9 +2907,9 @@ export default function Designer({
   }, [])
 
   const startTextDrag = (e: React.PointerEvent, el: TextElement) => {
-    // No grabbing — so no selecting on release — while "Creating preview"
-    // runs: the preview and its checks go on unless the design is removed.
-    if (designTrash) return
+    // Free to grab while "Creating preview" runs — the check carries on in the
+    // background (a move isn't a change); not while Simplify with AI runs.
+    if (simplifying) return
     if (editingTextId === el.id) return
     e.preventDefault()
     dragStateRef.current = {
@@ -2930,7 +2925,7 @@ export default function Designer({
   // Move a text while it's being edited — grabbing its border. No editing guard,
   // and preventDefault keeps the textarea focused so editing continues.
   const startTextMove = (e: React.PointerEvent, el: TextElement) => {
-    if (designTrash) return
+    if (simplifying) return
     e.preventDefault()
     e.stopPropagation()
     dragStateRef.current = {
@@ -2944,7 +2939,7 @@ export default function Designer({
     }
   }
   const startGraphicDrag = (e: React.PointerEvent, el: GraphicElement) => {
-    if (designTrash) return
+    if (simplifying) return
     e.preventDefault()
     dragStateRef.current = {
       kind: "graphic",
@@ -2967,12 +2962,11 @@ export default function Designer({
   // size (guide smaller than it): an object at or under the maximum — snapped
   // onto it included — needs no guide. resizeHoopGuide itself stays live
   // either way — it drives the frame's green/orange verdict (resizeFitsHoop).
-  // At rest, a lone object measured too large (e.g. just switched to
-  // embroidery) shows the guide too, before any resize; a resize's own guide
-  // takes over from it.
+  // Only while a corner handle is held — a design measured too large at rest
+  // (e.g. just switched to embroidery) shows the warning alone, as everywhere.
   // Not while a design issue's warning is up (thin lines, too complex): the
   // size was judged first and passed, and the design can't be resized then.
-  const activeHoopGuide = () => resizeHoopGuide ?? restHoopGuide
+  const activeHoopGuide = () => resizeHoopGuide
   const hoopGuideShown = (id: string) => {
     if (thinLineWarning) return false
     const guide = activeHoopGuide()
@@ -3797,6 +3791,14 @@ export default function Designer({
     // Decided here, at the moment of reveal: this effect runs before the flatten
     // effect, so it is the one that first sees a deselect.
     if (embroiderySignature !== lastShownEmbroiderySigRef.current) {
+      // Not asked for yet (just switched to embroidery, say): the design stays
+      // as it is, flat, no loader — until it's let go or the basket asks.
+      // The DTF version keeps its preview flow and checks whenever it can.
+      if (!checkArmed && !dtf) {
+        setEmbroideryShown(false)
+        setEmbroideryLoading(false)
+        return
+      }
       if (embroideryHold?.sig !== embroiderySignature) {
         setEmbroideryHold({
           sig: embroiderySignature,
@@ -3830,7 +3832,10 @@ export default function Designer({
     setEmbroideryShown(true)
     setEmbroideryLoading(false)
     lastShownEmbroiderySigRef.current = embroiderySignature
+    setCheckArmed(false)
   }, [
+    checkArmed,
+    dtf,
     printTechnique,
     embroiderySupported,
     designBbox,
@@ -3843,6 +3848,16 @@ export default function Designer({
     embroideryHold,
     embroiderySignature,
   ])
+
+  // Let go — deselected, or a text's editing ended — in embroidery: the check
+  // may run. (A move alone keeps the signature, so a design let go unchanged
+  // after its preview isn't checked again.)
+  const heldRef = useRef(elementSelected || !!editingTextId)
+  useEffect(() => {
+    const held = elementSelected || !!editingTextId
+    if (heldRef.current && !held && effectivePrintTechnique === "embroidery") setCheckArmed(true)
+    heldRef.current = held
+  }, [elementSelected, editingTextId, effectivePrintTechnique])
 
   // How much embroidery has to shrink the design to fit the hoop frame (1 = it fits).
   const embroideryScale = designBbox
@@ -4009,13 +4024,6 @@ export default function Designer({
   // is fresh) — see the effects below the guide.
   const prevTechniqueRef = useRef(effectivePrintTechnique)
   const [selectOnMeasure, setSelectOnMeasure] = useState(false)
-  // The corner the resting guide points from: the last corner handle hovered
-  // (or pressed — a press hovers first), so it shows what dragging that handle
-  // would do; bottom-right until then.
-  const [guideCorner, setGuideCorner] = useState<{
-    id: string
-    corner: "nw" | "ne" | "sw" | "se"
-  } | null>(null)
   // A lone object past the hoop frame, and the scale that brings it to the
   // hoop-frame size (`ratio`). Measured from the object as it is now — its
   // ink, unrotated — so it holds while the object shrinks towards the hoop
@@ -4050,19 +4058,12 @@ export default function Designer({
     const ratio = embroideryHoopFillScale(ink.w, ink.h, newElementHoopFrame)
     return ratio < 1 ? { id: el.id, ratio } : null
   })()
-  // Its guide at the hoop-frame size, from that corner (the guide sits in
-  // the object's own box) — once measured too large, and not while it's being
-  // moved.
-  const restHoopGuide =
-    loneHoopFit && embroideryTooLarge && !movingLoneDesign
-      ? {
-          ...loneHoopFit,
-          corner: guideCorner?.id === loneHoopFit.id ? guideCorner.corner : ("se" as const),
-        }
-      : null
   useEffect(() => {
     if (prevTechniqueRef.current !== "embroidery" && effectivePrintTechnique === "embroidery") {
       setSelectOnMeasure(true)
+      // Nothing held: the design is checked straight away (unless it's too
+      // large — the size warning comes first). Held, it waits to be let go.
+      if (!elementSelected && !editingTextId) setCheckArmed(true)
     }
     prevTechniqueRef.current = effectivePrintTechnique
   }, [effectivePrintTechnique])
@@ -5468,6 +5469,7 @@ export default function Designer({
           ? Math.min(1, (was.r - was.l) / (now.r - now.l), (was.b - was.t) / (now.b - now.t))
           : 1
       setAcceptCheck("pending")
+      setCheckArmed(true)
       setGraphicElements(prev =>
         prev.map(g =>
           g.id === graphicId
@@ -5503,6 +5505,26 @@ export default function Designer({
   const mobileDockHidden =
     mergedDesigner && (bottomSpotTaken || zoomTipShown || simplifyReview !== null)
 
+  // Add to basket before an embroidery design has been checked (just switched
+  // to embroidery, or still selected since it was added or changed): not yet.
+  // Like a missing size, the basket points at what's needed first — the canvas
+  // edge flashes orange, the design is let go and its check runs. True when
+  // that's what happened, so the basket stops there.
+  const embroideryCheckFirst = () => {
+    if (
+      effectivePrintTechnique === "embroidery" &&
+      designEls.length > 0 &&
+      lastShownEmbroiderySigRef.current !== embroiderySignature
+    ) {
+      setSelectedTextId(null)
+      setSelectedGraphicId(null)
+      setEditingTextId(null)
+      setCheckArmed(true)
+      setCanvasFlash(n => n + 1)
+      return true
+    }
+    return false
+  }
   const handleAddToBasket = () => {
     if (addingToBasket || flashSize) return
     // A design embroidery can't take — too large, or too thin lines — isn't
@@ -5512,6 +5534,7 @@ export default function Designer({
       setEmbroideryShakeSignal(n => n + 1)
       return
     }
+    if (embroideryCheckFirst()) return
     if (totalSelected === 0) {
       // basketHypotheses: with the dropdown closed, the CTA's most helpful
       // response is to open it — the user's next step, not a reprimand. The
@@ -6879,7 +6902,6 @@ export default function Designer({
                                 <span
                                   key={corner}
                                   style={{ cursor }} onPointerDown={e => startResize(e, el, corner)}
-                                  onPointerEnter={() => setGuideCorner({ id: el.id, corner })}
                                   className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 scale-[var(--inv-zoom,1)] ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
                                 />
                               )
@@ -7025,7 +7047,6 @@ export default function Designer({
                               <span
                                 key={corner}
                                 style={{ cursor }} onPointerDown={e => startResize(e, el, corner)}
-                                onPointerEnter={() => setGuideCorner({ id: el.id, corner })}
                                 className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 scale-[var(--inv-zoom,1)] ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
                               />
                             )
@@ -7123,7 +7144,6 @@ export default function Designer({
                             <span
                               key={corner}
                               style={{ cursor }} onPointerDown={e => startResize(e, el, corner, "graphic")}
-                              onPointerEnter={() => setGuideCorner({ id: el.id, corner })}
                               className={`absolute ${pos} ${cursor} z-30 block size-[15px] touch-none rounded-full border-2 scale-[var(--inv-zoom,1)] ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
                             />
                           )
@@ -7309,12 +7329,12 @@ export default function Designer({
                       }}
                     />
                   )}
-                  {/* Also while it runs: the design can't be selected or moved —
-                      a layer over the print area takes the clicks (and
-                      selection is refused besides: designTrash). It can still
-                      be removed, by the trash button, placed as for a
-                      selection. */}
-                  {(creatingPreview || simplifyRun) && (
+                  {/* While Simplify with AI runs or its result is up for review,
+                      the design can't be selected or moved — a layer over the
+                      print area takes the clicks. It can still be removed, by
+                      the trash button. ("Creating preview" doesn't hold it:
+                      it can be selected and moved while the check runs.) */}
+                  {simplifyRun && (
                     <div
                       aria-hidden="true"
                       className="pointer-events-auto absolute inset-0 cursor-default"
@@ -7324,31 +7344,6 @@ export default function Designer({
                       onClick={e => e.stopPropagation()}
                       onDoubleClick={e => e.stopPropagation()}
                     />
-                  )}
-                  {/* Hovering the design meanwhile says why it can't be picked
-                      up: a tooltip under it, the app's dark one, arrow up. */}
-                  {creatingPreview && designBbox && (
-                    <div
-                      className="group/tooltip pointer-events-auto absolute cursor-default"
-                      style={{
-                        left: `${designBbox.x * 100}%`,
-                        top: `${designBbox.y * 100}%`,
-                        width: `${designBbox.w * 100}%`,
-                        height: `${designBbox.h * 100}%`,
-                        zIndex: designMaxZ + 3,
-                      }}
-                      onPointerDown={e => e.stopPropagation()}
-                      onMouseDown={e => e.stopPropagation()}
-                      onClick={e => e.stopPropagation()}
-                      onDoubleClick={e => e.stopPropagation()}
-                    >
-                      <span
-                        role="tooltip"
-                        className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 -translate-x-1/2 rounded-md bg-neutral-900 p-3 text-sm whitespace-nowrap text-neutral-100 opacity-0 shadow-sm transition-opacity group-hover/tooltip:opacity-100 before:absolute before:bottom-full before:left-1/2 before:h-0 before:w-0 before:-translate-x-1/2 before:border-x-[4px] before:border-b-[4px] before:border-x-transparent before:border-b-neutral-900 before:content-['']"
-                      >
-                        Wait for the quality check
-                      </span>
-                    </div>
                   )}
                   {/* Simplify with AI's result, up for review: the graphic
                       framed as when selected but without its handles, and
@@ -7629,9 +7624,9 @@ export default function Designer({
             {/* Refused add to basket: alongside the shaking warning, an orange
                 inner border around the canvas that fades out over 2s. A new key
                 per refusal restarts it. */}
-            {embroideryShakeSignal > 0 && (
+            {embroideryShakeSignal + canvasFlash > 0 && (
               <div
-                key={embroideryShakeSignal}
+                key={`${embroideryShakeSignal}-${canvasFlash}`}
                 aria-hidden="true"
                 className="canvas-alert-border pointer-events-none absolute inset-0 z-40 rounded-[inherit]"
               />
@@ -10295,6 +10290,7 @@ export default function Designer({
             setEmbroideryShakeSignal(n => n + 1)
             return
           }
+          if (embroideryCheckFirst()) return
           setMobileSizeSheetOpen(true)
         }}
         onUnselect={() => {
