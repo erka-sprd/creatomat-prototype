@@ -41,11 +41,33 @@ function useReducedMotion() {
 /* ------------------------------------------------------- canvas-bottom-row */
 
 const PILL = "absolute bottom-3 flex h-5 items-center rounded-full bg-white shadow-xs"
-// The designer's default product, in one of its catalogue colours.
+// The designer's default product, in one of its catalogue colours — and the
+// colour the canvas-row card shows its large shirt in (BigTee).
 const CANVAS_PRODUCT_ID = "812"
 const CANVAS_PRODUCT_COLOR = "mauve"
 // Front, back and side: the catalogue's first three views.
 const STRIP_VIEWS = 3
+
+// The Unisex Premium Oversized Organic T-Shirt: shown large, its chest in the
+// frame, cut off by the frame's bottom edge (ART_BLEED).
+const BIG_TEE_ID = "2940"
+const BIG_TEE_PX = 260
+// Runs 32px into the frame's bottom padding (ArtFrame's py-8, which clips),
+// so the shirt is cut off by the frame's own edge.
+const ART_BLEED = "relative -mb-8 h-[182px] w-full overflow-hidden"
+
+/** The large shirt, centred at the top, with whatever sits on it (in its own box, so it stays on the chest). */
+function BigTee({ src, children }: { src?: string; children?: React.ReactNode }) {
+  return (
+    <div
+      className="absolute top-0 left-1/2 -translate-x-1/2"
+      style={{ width: BIG_TEE_PX, height: BIG_TEE_PX }}
+    >
+      {src && <img src={src} alt="" draggable={false} className="absolute inset-0 size-full object-contain" />}
+      {children}
+    </div>
+  )
+}
 
 /** A catalogue product's view shots in one of its colours, front first; empty until loaded, or if the catalogue is out of reach. */
 export function useProductViews(id: string, color = CANVAS_PRODUCT_COLOR) {
@@ -103,18 +125,11 @@ function ZoomGlyph({ d, className }: { d: string; className: string }) {
  * lies down beside the views, and print technique arrives on their other side.
  */
 export function CanvasRowArt() {
-  const views = useProductViews(CANVAS_PRODUCT_ID)
+  const views = useProductViews(BIG_TEE_ID, CANVAS_PRODUCT_COLOR)
   const [front] = views
   return (
-    <div className={ART} aria-hidden="true">
-      {front && (
-        <img
-          src={front}
-          alt=""
-          draggable={false}
-          className="absolute top-2 left-1/2 h-[100px] w-[100px] -translate-x-1/2 object-contain"
-        />
-      )}
+    <div className={ART_BLEED} aria-hidden="true">
+      <BigTee src={front} />
       {/* − and + alone, the gap between them where the percentage sits. */}
       <div className={`${PILL} ho-art-zoom left-[31px] w-11 justify-between px-1.5`}>
         {[ZOOM_ICON_PATH.minus, ZOOM_ICON_PATH.plus].map(d => (
@@ -362,8 +377,11 @@ export function PriceCalcArt() {
 /* -------------------------------------------------------------- embroidery */
 
 const EMBROIDERY_STEP_MS = 2200
-// The design past the hoop frame, against its size once it fits.
-const EMBROIDERY_LARGE_SCALE = 1.5
+// The design past the hoop frame, against its size once it fits — still on
+// the shirt.
+const EMBROIDERY_LARGE_SCALE = 1.3
+// The large shirt (BigTee), in beige.
+const EMBROIDERY_PRODUCT_COLOR = "beige"
 
 /**
  * A design too large for the hoop: orange, with its warning — then brought
@@ -371,7 +389,7 @@ const EMBROIDERY_LARGE_SCALE = 1.5
  */
 export function EmbroideryArt() {
   const reduced = useReducedMotion()
-  const [front] = useProductViews(CANVAS_PRODUCT_ID, "white")
+  const [front] = useProductViews(BIG_TEE_ID, EMBROIDERY_PRODUCT_COLOR)
   const [fits, setFits] = useState(false)
   useEffect(() => {
     if (reduced) return setFits(true)
@@ -381,20 +399,13 @@ export function EmbroideryArt() {
   const tone = fits ? "#16A34A" : "#EA580C"
 
   return (
-    <div className={ART} aria-hidden="true">
-      {front && (
-        <img
-          src={front}
-          alt=""
-          draggable={false}
-          className="absolute top-1 left-1/2 h-[110px] w-[110px] -translate-x-1/2 object-contain"
-        />
-      )}
+    <div className={ART_BLEED} aria-hidden="true">
+      <BigTee src={front}>
       {/* The hoop frame on the chest, the design pinned to its top-left corner. */}
-      <div className="absolute top-[34px] left-[106px] size-7">
+      <div className="absolute top-[24%] left-[39%] size-[22%]">
         <span className="hoop-guide-stripes absolute inset-0 border border-[#16A34A] opacity-60" />
         <div
-          className="absolute top-0 left-0 size-7 origin-top-left transition-[scale] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          className="absolute inset-0 origin-top-left transition-[scale] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
           style={{ scale: fits ? 1 : EMBROIDERY_LARGE_SCALE }}
         >
           <img
@@ -407,8 +418,18 @@ export function EmbroideryArt() {
             className="absolute inset-0 transition-[box-shadow] duration-300"
             style={{ boxShadow: `0 0 0 1px ${tone}` }}
           />
+          {/* The selection's corner handles, in the frame's tone — undoing the
+              design's scale, so they keep their size as it grows. */}
+          {(["-top-1 -left-1", "-top-1 -right-1", "-bottom-1 -left-1", "-bottom-1 -right-1"] as const).map(pos => (
+            <span
+              key={pos}
+              className={`absolute ${pos} size-2 rounded-full border-[1.5px] bg-white transition-[border-color,scale] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]`}
+              style={{ borderColor: tone, scale: fits ? 1 : 1 / EMBROIDERY_LARGE_SCALE }}
+            />
+          ))}
         </div>
       </div>
+      </BigTee>
       <div
         className="absolute bottom-3 left-1/2 flex h-5 -translate-x-1/2 items-center gap-1 rounded-full border bg-white pr-2 pl-1 whitespace-nowrap transition-colors duration-300"
         style={{ borderColor: tone, color: tone }}
