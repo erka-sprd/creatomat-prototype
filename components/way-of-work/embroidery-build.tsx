@@ -24,7 +24,7 @@ import { OneSystem, QaToThree, ServiceMap, TierDemo, VariantsDemo, type Variant 
 const noop = () => {}
 
 const NOTES = [
-  "Checked the moment a design is added; text waits until it's deselected",
+  "Selected as in standard print; checked once it's let go",
   "Too large ⇒ no check, the message at once; auto-selected until it fits",
   "Fit to best size: shrinks to the hoop, small bounce, green for 2 s",
   "Thin lines / too complex: no preview, a message and See solutions",
@@ -120,7 +120,7 @@ function Beats({ product }: { product: ReturnType<typeof useCanvasProduct> }): B
     {
       id: "check",
       heading: "Built on the [[real product]], with [[real interactions]]",
-      prompt: "Add embroidery. Check every design as soon as it lands and show a stitched preview.",
+      prompt: "Add embroidery. Check every design once it's let go and show a stitched preview.",
       reply: "Done. A loader, then the stitched render on the T-shirt.",
       render: () => <CheckScene product={product} showSteps={false} />,
       brings: "User tests on the real thing — [[before any development time is spent]].",
@@ -176,7 +176,7 @@ function Beats({ product }: { product: ReturnType<typeof useCanvasProduct> }): B
       id: "handoff",
       heading: "The handoff writes itself — I just make a few tweaks",
       prompt: "[[Build the handoff.]]",
-      reply: "Built /handoff/embroidery — 19 rules, each played on the canvas.",
+      reply: "Built /handoff/embroidery — 16 rules, each played on the canvas.",
       render: () => <HandoffCard art={<EmbroideryArt />} title="Embroidery, without dead ends" href="/handoff/embroidery" />,
       brings: "Developers start from working code and exact rules. Less rework.",
     },

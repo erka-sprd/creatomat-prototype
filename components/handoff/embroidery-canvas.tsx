@@ -185,8 +185,29 @@ export function AutoPlay({ on, onChange }: { on: boolean; onChange: (on: boolean
   )
 }
 
-/** Runs `beats` on a loop while `on`; each beat's `at` is ms from the top. */
-export function useLoop(on: boolean, beats: { at: number; run: () => void }[], cycleMs: number) {
+/** Plays a scene again from the top — beside Auto play, in its shape and height. */
+export function StartOver({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="cursor-pointer rounded-full bg-[var(--ho-ground)] px-4 text-base font-semibold text-black transition-colors hover:bg-[var(--ho-line)]"
+    >
+      Start over
+    </button>
+  )
+}
+
+/**
+ * Runs `beats` on a loop while `on`; each beat's `at` is ms from the top.
+ * A new `restart` value starts it over from the top.
+ */
+export function useLoop(
+  on: boolean,
+  beats: { at: number; run: () => void }[],
+  cycleMs: number,
+  restart = 0
+) {
   const beatsRef = useRef(beats)
   beatsRef.current = beats
   useEffect(() => {
@@ -201,5 +222,5 @@ export function useLoop(on: boolean, beats: { at: number; run: () => void }[], c
     }
     cycle()
     return () => timers.forEach(clearTimeout)
-  }, [on, cycleMs])
+  }, [on, cycleMs, restart])
 }

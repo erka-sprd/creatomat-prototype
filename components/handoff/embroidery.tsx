@@ -12,7 +12,7 @@
  */
 
 import { Fragment, useEffect, useState } from "react"
-import { EMBROIDERY_MIN_LOADER_MS, RECOVERED_GOOD_SIZE_MS } from "@/components/designer"
+import { EMBROIDERY_MIN_LOADER_MS } from "@/components/designer"
 import {
   EmbroideryMaxSizeBadge,
   EmbroideryPreviewStatus,
@@ -22,18 +22,15 @@ import {
 } from "@/components/embroidery-label"
 import { useCanvasProduct } from "@/components/handoff/embroidery-canvas"
 import { HoopSizeStill } from "@/components/handoff/hoop-size-still"
+import { ShineStill } from "@/components/handoff/shine-still"
 import {
   AiScene,
   AiTrashScene,
   BasketScene,
-  CheckScene,
   FitScene,
   GroupFitScene,
   GroupScene,
   IssueScene,
-  MidCheckScene,
-  MinSizeScene,
-  MoveScene,
   PrintScene,
   ResizeScene,
   SwitchOnScene,
@@ -60,27 +57,23 @@ const REPO = "https://github.com/erka-sprd/creatomat-prototype"
 const NAV: NavItem[] = [
   { id: "brief", mark: "◆", label: "Problem & Hypotheses" },
   { id: "s1", mark: "1", label: "Added at the hoop size" },
-  { id: "s2", mark: "2", label: "Checked at once" },
-  { id: "s3", mark: "3", label: "Zoom tip" },
+  { id: "s2", mark: "2", label: "Zoom tip" },
+  { id: "s3", mark: "3", label: "Design shine" },
   { id: "s4", mark: "4", label: "Text waits" },
-  { id: "s5", mark: "5", label: "Selected mid-check" },
-  { id: "s6", mark: "6", label: "The messages" },
-  { id: "s7", mark: "7", label: "Too large on switch" },
-  { id: "s8", mark: "8", label: "Resize and snap" },
-  { id: "s9", mark: "9", label: "Moving" },
-  { id: "s10", mark: "10", label: "Fit to best size" },
-  { id: "s11", mark: "11", label: "Own minimum" },
-  { id: "s12", mark: "12", label: "Combinations" },
-  { id: "s13", mark: "13", label: "Combination fit" },
-  { id: "s14", mark: "14", label: "Design issues" },
-  { id: "s15", mark: "15", label: "Fix / Simplify with AI" },
-  { id: "s16", mark: "16", label: "Removed mid-run" },
-  { id: "s17", mark: "17", label: "Switch to print" },
-  { id: "s18", mark: "18", label: "Add to basket" },
-  { id: "s19", mark: "19", label: "At a glance" },
+  { id: "s5", mark: "5", label: "The messages" },
+  { id: "s6", mark: "6", label: "Too large on switch" },
+  { id: "s7", mark: "7", label: "Resize and snap" },
+  { id: "s8", mark: "8", label: "Fit to best size" },
+  { id: "s9", mark: "9", label: "Combinations" },
+  { id: "s10", mark: "10", label: "Combination fit" },
+  { id: "s11", mark: "11", label: "Design issues" },
+  { id: "s12", mark: "12", label: "Fix / Simplify with AI" },
+  { id: "s13", mark: "13", label: "Removed mid-run" },
+  { id: "s14", mark: "14", label: "Switch to print" },
+  { id: "s15", mark: "15", label: "Add to basket" },
 ]
 
-/** The messages §6 lists, each with the situation that brings it up. */
+/** The messages §5 lists, each with the situation that brings it up. */
 const MESSAGES: { note: string; status: EmbroiderySizeStatus; label?: string; action?: boolean }[] = [
   { note: "past the hoop frame", status: "too-large", action: true },
   {
@@ -93,38 +86,6 @@ const MESSAGES: { note: string; status: EmbroiderySizeStatus; label?: string; ac
   { note: "too much detail", status: "too-complex", action: true },
   { note: "back within the frame", status: "good" },
   { note: "after Switch to print", status: "print-switched" },
-]
-
-/** §19 — every rule in one line, pointing at its scene. */
-const RULES: { when: string; then: string; at: string }[] = [
-  { when: "Design or text added in embroidery", then: "At the hoop frame's size, by what's drawn", at: "s1" },
-  { when: "Design added in embroidery", then: "Placed unselected, checked at once", at: "s2" },
-  { when: "First stitched preview of the session", then: "“Preview is done…” + Zoom in, row held back", at: "s3" },
-  { when: "Already zoomed in this session", then: "No zoom message", at: "s3" },
-  { when: "Text added in embroidery", then: "Selected, not checked until deselected", at: "s4" },
-  { when: "Selected while checking", then: "Check continues, result held until deselect", at: "s5" },
-  { when: "Changed while selected (not just moved)", then: "Fresh check on deselect", at: "s5" },
-  { when: "Past the hoop frame", then: "No preview, no check — the message at once", at: "s7" },
-  { when: "Too large", then: "Selected for you, can’t be deselected until it fits", at: "s7" },
-  { when: "Corner handle hovered", then: "Guide + arrow move to it", at: "s8" },
-  { when: "Resized across the hoop size", then: "Snaps; orange ↔ green messages slide-swap live", at: "s8" },
-  { when: "Back within the frame", then: `Green for ${RECOVERED_GOOD_SIZE_MS / 1000} s, then blue and checked`, at: "s8" },
-  { when: "Moved while too large", then: "Guide/blur/handles go, message stays", at: "s9" },
-  { when: "Fit to best size (single)", then: "Shrinks about its centre to the hoop, bounce", at: "s10" },
-  { when: "Shrunk to its own minimum", then: "Stops with a bounce + “Min. size”", at: "s11" },
-  { when: "Grown", then: "No maximum — the frame only warns", at: "s11" },
-  { when: "2nd design added", then: "Placed inside the frame, checked", at: "s12" },
-  { when: "Group moved past the frame", then: "Combination message live, no check", at: "s12" },
-  { when: "Fit to best size (combination)", then: "Draw together, then shrink if needed", at: "s13" },
-  { when: "Thin lines / too complex", then: "No stitched preview, message + See solutions", at: "s14" },
-  { when: "Issue design selected", then: "No resize/rotate/move handles", at: "s14" },
-  { when: "Fix / Simplify now", then: "Runs at once, no AI panel", at: "s15" },
-  { when: "AI result in", then: "Review on canvas, zoom alone in the row", at: "s15" },
-  { when: "Accepted", then: "Checked, then the whole row back", at: "s15" },
-  { when: "Cancelled", then: "The warning comes back", at: "s15" },
-  { when: "Trash while the AI runs", then: "Design removed, run stopped", at: "s16" },
-  { when: "Switch to print", then: "Green message only, then the row on Standard print", at: "s17" },
-  { when: "Add to basket with a warning up", then: "Refused — shake + canvas flash", at: "s18" },
 ]
 
 /* ------------------------------------------------------------------ demos */
@@ -165,7 +126,7 @@ function LanguagePills() {
   )
 }
 
-/** §6 — every message, with what brings it up. */
+/** §5 — every message, with what brings it up. */
 function Messages() {
   return (
     <div className="flex justify-center">
@@ -199,29 +160,6 @@ function Messages() {
           <EmbroideryMaxSizeBadge show label="Min. size for embroidery" />
         </div>
       </div>
-    </div>
-  )
-}
-
-/** §19 — the rules in one table, each pointing at its scene. */
-function AtAGlance() {
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1.2fr)_auto] items-baseline gap-x-3 gap-y-2.5 rounded-[12px] bg-white px-5 py-5">
-      {RULES.map(({ when, then, at }) => (
-        <Fragment key={`${when}-${at}`}>
-          <span className="text-[13px] leading-snug text-[var(--ho-muted)]">{when}</span>
-          <span aria-hidden className="text-[13px] text-[var(--ho-line-strong)]">
-            →
-          </span>
-          <span className="text-[13px] leading-snug text-black">{then}</span>
-          <a
-            href={`#${at}`}
-            className="font-[family-name:var(--ho-mono)] text-[11px] text-green-700 no-underline hover:underline"
-          >
-            {at.slice(1)}
-          </a>
-        </Fragment>
-      ))}
     </div>
   )
 }
@@ -350,13 +288,14 @@ export default function Embroidery() {
       <Rule
         id="s2"
         n={2}
-        kicker="Checked at once"
-        title="Checked the moment it's on the product"
-        line="As soon as a design is dropped in — no waiting for add to basket"
+        kicker="Zoom tip"
+        title="The first preview asks to be looked at closely"
+        line="Once per session — “Zoom in” is the only way on"
         note={
           <>
-            &ldquo;Checking quality&rdquo; needs a new translation key; &ldquo;Creating
-            preview&rdquo; has one in every locale.
+            &ldquo;Preview is done…&rdquo; and &ldquo;Checking quality&rdquo; need new translation
+            keys; &ldquo;Creating preview&rdquo; has one in every locale. Once per session:
+            sessionStorage <code>embroidery-zoom-hint-seen</code>.
           </>
         }
         after={
@@ -370,23 +309,17 @@ export default function Embroidery() {
           </>
         }
       >
-        <CheckScene product={product} />
+        <ZoomTipScene product={product} />
       </Rule>
 
       <Rule
         id="s3"
         n={3}
-        kicker="Zoom tip"
-        title="The first preview asks to be looked at closely"
-        line="Once per session — “Zoom in” is the only way on"
-        note={
-          <>
-            &ldquo;Preview is done…&rdquo; needs a new translation key. Once per session:
-            sessionStorage <code>embroidery-zoom-hint-seen</code>.
-          </>
-        }
+        kicker="Design shine"
+        title="The design shines while it's checked"
+        line="A light sweep over the design's own pixels, never the product — with “Creating preview”"
       >
-        <ZoomTipScene product={product} />
+        <ShineStill />
       </Rule>
 
       <Rule
@@ -399,19 +332,9 @@ export default function Embroidery() {
         <TextScene product={product} />
       </Rule>
 
-      <Rule
-        id="s5"
-        n={5}
-        kicker="Selected mid-check"
-        title="Selecting doesn't cancel the check"
-        line="It runs on in the background; only a real change makes it start over"
-      >
-        <MidCheckScene product={product} />
-      </Rule>
-
-      <Section id="s6">
+      <Section id="s5">
         <Kicker>
-          <Num n={6} />
+          <Num n={5} />
           The messages
         </Kicker>
         <SectionHead title="Every message names its problem — and its way out" />
@@ -422,8 +345,8 @@ export default function Embroidery() {
       </Section>
 
       <Rule
-        id="s7"
-        n={7}
+        id="s6"
+        n={6}
         kicker="Too large on switch"
         title="Too large — size wins, nothing else runs"
         line="Past the hoop frame there's no preview and no check: the size message, at once"
@@ -432,8 +355,8 @@ export default function Embroidery() {
       </Rule>
 
       <Rule
-        id="s8"
-        n={8}
+        id="s7"
+        n={7}
         kicker="Resize and snap"
         title="Resize back to the hoop size — it snaps and turns green"
         line="The guide shows the size that fits; the messages swap live while the handle is held"
@@ -442,18 +365,8 @@ export default function Embroidery() {
       </Rule>
 
       <Rule
-        id="s9"
-        n={9}
-        kicker="Moving"
-        title="Moving clears the way — the message stays"
-        line="Everything that's about the size steps aside for the move"
-      >
-        <MoveScene product={product} />
-      </Rule>
-
-      <Rule
-        id="s10"
-        n={10}
+        id="s8"
+        n={8}
         kicker="Fit to best size"
         title="Fit to best size — one click to the hoop size"
         line="The secondary button under “Design too large”, always there with it"
@@ -462,18 +375,8 @@ export default function Embroidery() {
       </Rule>
 
       <Rule
-        id="s11"
-        n={11}
-        kicker="Own minimum"
-        title="A design's own minimum stops the resize"
-        line="Some designs can't be stitched below a size — set per design, the only size stop"
-      >
-        <MinSizeScene product={product} />
-      </Rule>
-
-      <Rule
-        id="s12"
-        n={12}
+        id="s9"
+        n={9}
         kicker="Combinations"
         title="Several designs are measured as one"
         line="The hoop frame holds the whole group; the verdict is live while one is moved"
@@ -482,8 +385,8 @@ export default function Embroidery() {
       </Rule>
 
       <Rule
-        id="s13"
-        n={13}
+        id="s10"
+        n={10}
         kicker="Combination fit"
         title="Fit to best size for a combination — closer first, smaller only if needed"
         line="Both steps anchored on the group's centre"
@@ -492,8 +395,8 @@ export default function Embroidery() {
       </Rule>
 
       <Rule
-        id="s14"
-        n={14}
+        id="s11"
+        n={11}
         kicker="Design issues"
         title="Thin lines or too complex — named, and nothing to resize"
         line="Shown on the customer's own upload: the check flags it, it keeps its look, its handles step back"
@@ -502,8 +405,8 @@ export default function Embroidery() {
       </Rule>
 
       <Rule
-        id="s15"
-        n={15}
+        id="s12"
+        n={12}
         kicker="Fix / Simplify with AI"
         title="Fix with AI — runs at once, reviewed on the canvas"
         line="The AI reworks the customer's own file — no new design. Kept only once accepted"
@@ -512,8 +415,8 @@ export default function Embroidery() {
       </Rule>
 
       <Rule
-        id="s16"
-        n={16}
+        id="s13"
+        n={13}
         kicker="Removed mid-run"
         title="The trash stays while the AI runs"
         line="Removing the design is still one click — and it ends the run"
@@ -522,8 +425,8 @@ export default function Embroidery() {
       </Rule>
 
       <Rule
-        id="s17"
-        n={17}
+        id="s14"
+        n={14}
         kicker="Switch to print"
         title="Switch to print — said once, then back to normal"
         line="A green message alone, then the row already on standard print"
@@ -532,26 +435,14 @@ export default function Embroidery() {
       </Rule>
 
       <Rule
-        id="s18"
-        n={18}
+        id="s15"
+        n={15}
         kicker="Add to basket"
-        title="Add to basket — refused, pointing at the warning"
-        line="While any warning is up the basket refuses the design"
+        title="Add to basket — checked first, refused with a warning up"
+        line="A design not checked yet is checked; a warning refuses it"
       >
         <BasketScene product={product} />
       </Rule>
-
-      <Section id="s19">
-        <Kicker>
-          <Num n={19} />
-          At a glance
-        </Kicker>
-        <SectionHead title="Every rule in one line" />
-        <p>For the review — each points at its scene</p>
-        <Demo padding="p-3.5" className="overflow-x-auto">
-          <AtAGlance />
-        </Demo>
-      </Section>
 
       <HandoffEnd />
     </HandoffShell>

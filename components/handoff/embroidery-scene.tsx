@@ -44,6 +44,7 @@ import { EmbroideryPreview } from "@/components/embroidery-preview"
 import { EmbroiderySolutions } from "@/components/embroidery-solutions"
 import {
   AutoPlay,
+  StartOver,
   CORNERS,
   DemoCursor,
   HoopGuide,
@@ -53,6 +54,7 @@ import {
   type Corner,
 } from "@/components/handoff/embroidery-canvas"
 import { StepList } from "@/components/handoff/step-list"
+import { useTweenedSizes } from "@/components/handoff/tweened-sizes"
 import { KitButton } from "@/components/kit-button"
 import { MergedBottomRow } from "@/components/merged-bottom-row"
 import { printAreaTotal } from "@/lib/print-area-pricing"
@@ -320,7 +322,9 @@ function DesignView({
   shownSrc: string
   instant: boolean
 }) {
-  const ms = instant ? 0 : (d.motionMs ?? DEFAULT_MOTION_MS)
+  // Held by a corner, its size is played frame by frame (useTweenedSizes) —
+  // the box follows that, with no CSS tween of its own.
+  const ms = instant || d.resizing ? 0 : (d.motionMs ?? DEFAULT_MOTION_MS)
   const ease = d.bounce ? EASE_BOUNCE : EASE
   const tone = d.tone ?? "blue"
   const guided = !!d.guide && d.selected && d.size > 1 + HOOP_RESIZE_FIT_TOLERANCE
@@ -493,12 +497,15 @@ export function Scene({
   const [state, setState] = useState<SceneState>(start)
   const [instant, setInstant] = useState(true)
   const [autoPlay, setAutoPlay] = useState(true)
+  const [restart, setRestart] = useState(0)
   const boxRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const inView = useInView(boxRef)
   const stageW = useStageWidth(stageRef)
   const aspects = useAspects(state.designs.map(d => d.src))
   const aiResult = useAiResults(state.designs)
+  // The designs as they are this frame: a corner resize played out live.
+  const designs = useTweenedSizes(state.designs, instant)
 
   useLoop(
     autoPlay && inView,
@@ -517,7 +524,8 @@ export function Scene({
         run: () => setState(s => (typeof b.set === "function" ? b.set(s) : { ...s, ...b.set })),
       })),
     ],
-    cycleMs
+    cycleMs,
+    restart
   )
 
   const area = product && stageW ? areaGeo(product, stageW) : null
@@ -550,7 +558,7 @@ export function Scene({
   let cursorAt: { x: number; y: number } | null = null
   if (aim && "x" in aim) cursorAt = { x: aim.x * stageW, y: aim.y * STAGE_HEIGHT_PX }
   else if (aim && "design" in aim && area) {
-    const d = state.designs.find(x => x.id === aim.design)
+    const d = designs.find(x => x.id === aim.design)
     const g = d && geoOf(d)
     if (g) {
       const fx = aim.at === "c" ? 0.5 : aim.at.endsWith("e") ? 1 : 0
@@ -559,7 +567,8 @@ export function Scene({
     }
   } else if (aim) cursorAt = measured
 
-  const shown = state.designs.filter(d => !d.gone)
+  const shown = designs.filter(d => !d.gone)
+  const aimResizing = !!aim && "design" in aim && !!designs.find(x => x.id === aim.design)?.resizing
   const boxes = shown.map(geoOf).filter((g): g is Geo => g !== null)
   const groupBox =
     state.group && boxes.length > 1
@@ -609,7 +618,7 @@ export function Scene({
               className="absolute"
               style={{ left: area.left, top: area.top, width: area.width, height: area.height }}
             >
-              {state.designs.map(d => {
+              {designs.map(d => {
                 const g = geoOf(d)
                 return (
                   g && (
@@ -685,8 +694,11 @@ export function Scene({
         {state.solutions && (
           // ThinLineHelpPopover's panel, docked over the warning — a plain
           // panel here, so the drawn cursor sits above it.
-          <div className="animate-in fade-in slide-in-from-bottom-3 absolute inset-x-4 bottom-6 z-[50] mx-auto flex max-w-[640px] flex-col rounded-2xl bg-white p-6 shadow-xl duration-300">
+          // At the bottom, the same 16px from the sides and the bottom; as tall
+          // as its content, so the space above is whatever is left.
+          <div className="animate-in fade-in slide-in-from-bottom-3 absolute inset-x-4 bottom-4 z-[50] mx-auto flex max-w-[640px] flex-col rounded-2xl bg-white p-5 shadow-xl duration-300">
             <EmbroiderySolutions
+              compact
               issue={state.solutions}
               designSrc={issueDesign?.src ?? null}
               printSavingLabel={PRINT_SAVING_LABEL}
@@ -708,11 +720,18 @@ export function Scene({
           y={cursorAt?.y ?? STAGE_HEIGHT_PX}
           shown={!!cursorAt}
           pressed={state.pressed}
-          moveMs={instant ? 0 : state.cursorMs}
+          // On a corner being resized it rides the live size, frame by frame.
+          moveMs={instant || aimResizing ? 0 : state.cursorMs}
         />
       </div>
-      <div className="flex justify-center">
+      <div className="flex items-stretch justify-center gap-2">
         <AutoPlay on={autoPlay} onChange={setAutoPlay} />
+        <StartOver
+          onClick={() => {
+            setAutoPlay(true)
+            setRestart(n => n + 1)
+          }}
+        />
       </div>
     </div>
   )

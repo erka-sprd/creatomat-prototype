@@ -187,7 +187,7 @@ export const ENTRIES: Entry[] = [
     problem:
       "“Why can't I add this to my basket?” — embroidery problems surface only at checkout, say little about what's wrong, and offer no way to fix them.",
     created: "2026-10-29",
-    updated: { date: "November 6, 2026", time: "2:19 PM" },
+    updated: { date: "November 6, 2026", time: "4:12 PM" },
     status: "live",
     tint: TINTS.green,
   },

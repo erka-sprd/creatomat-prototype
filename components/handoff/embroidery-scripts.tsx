@@ -29,8 +29,6 @@ import {
 
 const MUSHROOM = "/img/graphics/graphics5.png"
 const ROSE = "/img/graphics/graphics11.png"
-/** Its own minimum (DESIGN_MIN_MM) — the one design that has one. */
-const BEAVER = "/img/graphics/graphics9.png"
 const CAT = THIN_LINE_GRAPHIC_SRC
 const BOY = COMPLEX_GRAPHIC_SRCS[1]
 
@@ -82,31 +80,27 @@ const release = (s: SceneState): SceneState => ({
 })
 
 const TOO_LARGE: Partial<SceneState> = { issue: "too-large", fit: true, row: false }
-const selectedTooLarge: Partial<SceneDesign> = { selected: true, tone: "orange", guide: "se" }
+// Too large at rest: selected, orange — the hoop guide comes only once a
+// corner handle is held, as in any resize.
+const selectedTooLarge: Partial<SceneDesign> = { selected: true, tone: "orange" }
 
 type SceneProps = { product: CanvasProduct | null; showSteps?: boolean }
 
 /* ---------------------------------------------------------- §1 the check */
 
 const CHECK_STEPS: Step[] = [
-  {
-    when: "a design is dropped in",
-    then: "checked at once",
-  },
+  { when: "a design is added", then: "selected, as in standard print" },
+  { when: "it's let go", then: "checked" },
   { when: "the check passes", then: "stitched preview" },
 ]
-const CHECK_START: Partial<SceneState> = { designs: [], zoomTip: false }
+const CHECK_START: Partial<SceneState> = {
+  zoomTip: false,
+  designs: [{ id: "a", src: MUSHROOM, cx: 0.5, cy: 0.38, size: 0.85, gone: true }],
+}
 const CHECK = timeline(
-  [
-    800,
-    {
-      step: 0,
-      row: false,
-      loader: true,
-      designs: [{ id: "a", src: MUSHROOM, cx: 0.5, cy: 0.38, size: 0.85 }],
-    },
-  ],
-  [EMBROIDERY_MIN_LOADER_MS, all({ step: 1, loader: false, row: true }, design("a", { stitched: true }))]
+  [800, all({ step: 0 }, design("a", { gone: false, selected: true }))],
+  ...click(OUTSIDE, all({ step: 1, row: false, loader: true }, design("a", { selected: false })), 1800),
+  [EMBROIDERY_MIN_LOADER_MS, all({ step: 2, loader: false, row: true, cursor: null }, design("a", { stitched: true }))]
 )
 
 export function CheckScene({ product, showSteps }: SceneProps) {
@@ -126,12 +120,14 @@ const ZOOM_TIP_STEPS: Step[] = [
   },
 ]
 const ZOOM_TIP_START: Partial<SceneState> = {
-  row: false,
-  loader: true,
-  designs: [{ id: "a", src: MUSHROOM, cx: 0.5, cy: 0.38, size: 0.85 }],
+  designs: [{ id: "a", src: MUSHROOM, cx: 0.5, cy: 0.38, size: 0.85, selected: true }],
 }
 const ZOOM_TIP = timeline(
-  [EMBROIDERY_MIN_LOADER_MS, all({ step: 0, loader: false, zoomTip: true }, design("a", { stitched: true }))],
+  ...click(OUTSIDE, all({ row: false, loader: true }, design("a", { selected: false })), 1200),
+  [
+    EMBROIDERY_MIN_LOADER_MS,
+    all({ step: 0, loader: false, zoomTip: true, cursor: null }, design("a", { stitched: true })),
+  ],
   ...click({ button: "Zoom in" }, { step: 1, zoomTip: false, zoom: ZOOM_STOPS[1], row: true, cursor: null }, 2200)
 )
 
@@ -201,53 +197,6 @@ export function TextScene({ product, showSteps }: SceneProps) {
   )
 }
 
-/* ------------------------------------------------- §3 selected mid-check */
-
-const MID_CHECK_STEPS: Step[] = [
-  {
-    when: "selected mid-check",
-    then: "the check runs on, result held back",
-  },
-  { when: "only moved", then: "the check stands — a move isn't a change" },
-  {
-    when: "deselected",
-    then: "the result at once — no restart",
-  },
-  {
-    when: "changed while selected",
-    then: "a fresh check on deselect",
-  },
-]
-const MID_CHECK_START: Partial<SceneState> = {
-  designs: [{ id: "a", src: MUSHROOM, cx: 0.45, cy: 0.38, size: 0.8 }],
-}
-const MID_CHECK = timeline(
-  [700, { row: false, loader: true }],
-  ...click({ design: "a", at: "c" }, all({ step: 0, loader: false, row: true }, design("a", { selected: true })), 700),
-  [700, { pressed: true }],
-  [200, all({ step: 1 }, drag("a", "c", { cx: 0.56 }, 1000))],
-  [1100, release],
-  ...click(OUTSIDE, all({ step: 2 }, design("a", { selected: false, stitched: true })), 600),
-  ...click({ design: "a", at: "c" }, design("a", { selected: true, stitched: false }), 1800),
-  [600, { cursor: { design: "a", at: "se" }, cursorMs: 500 }],
-  [600, { pressed: true }],
-  [
-    200,
-    all(
-      { step: 3 },
-      design("a", { pin: { corner: "nw", size: 0.8 } }),
-      drag("a", "se", { size: 0.62 }, 900)
-    ),
-  ],
-  [1000, release],
-  ...click(OUTSIDE, all({ row: false, loader: true }, design("a", { selected: false })), 700),
-  [EMBROIDERY_MIN_LOADER_MS, all({ loader: false, row: true, cursor: null }, design("a", { stitched: true }))]
-)
-
-export function MidCheckScene({ product }: SceneProps) {
-  return <Scene product={product} steps={MID_CHECK_STEPS} initial={MID_CHECK_START} {...MID_CHECK} />
-}
-
 /* ------------------------------------------------- §4 switched too large */
 
 const SWITCH_ON_STEPS: Step[] = [
@@ -285,8 +234,8 @@ export function SwitchOnScene({ product }: SceneProps) {
 
 const RESIZE_STEPS: Step[] = [
   {
-    when: "a corner is hovered",
-    then: "the guide moves to it",
+    when: "a corner handle is held",
+    then: "the guide shows the size that fits",
   },
   {
     when: "resized to the hoop size",
@@ -315,18 +264,15 @@ const RESIZE_START: Partial<SceneState> = {
 const goodSize = all({ issue: null, green: "good" }, design("a", { tone: "green" }))
 const tooLarge = all({ issue: "too-large", green: null }, design("a", { tone: "orange" }))
 const RESIZE = timeline(
-  [900, { cursor: { design: "a", at: "nw" }, cursorMs: 600 }],
-  [700, all({ step: 0 }, design("a", { hot: "nw", guide: "nw" }))],
-  [1500, { cursor: { design: "a", at: "se" }, cursorMs: 600 }],
-  [700, design("a", { hot: "se", guide: "se" })],
-  [900, { pressed: true }],
-  [200, all({ step: 1 }, drag("a", "se", { size: 1 }, 1400))],
+  [900, { cursor: { design: "a", at: "se" }, cursorMs: 600 }],
+  [800, all({ step: 0, pressed: true }, design("a", { hot: "se", guide: "se" }))],
+  [1600, all({ step: 1 }, drag("a", "se", { size: 1 }, 1400))],
   [1400, goodSize],
   [1500, all({ step: 2 }, drag("a", "se", { size: 1.3 }, 800))],
   [250, tooLarge],
   [1500, drag("a", "se", { size: 1 }, 800)],
   [800, goodSize],
-  [900, all({ step: 3 }, release, design("a", { hot: null }))],
+  [900, all({ step: 3 }, release, design("a", { hot: null, guide: null }))],
   [RECOVERED_GOOD_SIZE_MS, all({ green: null }, design("a", { tone: "blue" }))],
   ...click(OUTSIDE, all({ loader: true }, design("a", { selected: false })), 600),
   [EMBROIDERY_MIN_LOADER_MS, all({ loader: false, row: true, cursor: null }, design("a", { stitched: true }))]
@@ -334,33 +280,6 @@ const RESIZE = timeline(
 
 export function ResizeScene({ product }: SceneProps) {
   return <Scene product={product} steps={RESIZE_STEPS} initial={RESIZE_START} {...RESIZE} />
-}
-
-/* -------------------------------------------------------------- §6 moving */
-
-const MOVE_STEPS: Step[] = [
-  {
-    when: "too large and moved",
-    then: "guide and handles go, the message stays",
-  },
-  { when: "released", then: "all back" },
-]
-const MOVE_START: Partial<SceneState> = {
-  ...TOO_LARGE,
-  designs: [{ id: "a", src: MUSHROOM, cx: 0.44, cy: 0.42, size: 1.5, ...selectedTooLarge }],
-}
-const MOVE = timeline(
-  [900, { cursor: { design: "a", at: "c" }, cursorMs: 600 }],
-  [800, { pressed: true }],
-  [
-    200,
-    all({ step: 0 }, design("a", { tone: "blue", guide: null, handles: false }), drag("a", "c", { cx: 0.6 }, 1300)),
-  ],
-  [1700, all({ step: 1 }, release, design("a", { ...selectedTooLarge, handles: true }))]
-)
-
-export function MoveScene({ product }: SceneProps) {
-  return <Scene product={product} steps={MOVE_STEPS} initial={MOVE_START} {...MOVE} />
 }
 
 /* ------------------------------------------------------- §7 fit (single) */
@@ -376,7 +295,7 @@ const FIT_STEPS: Step[] = [
   },
   {
     when: "it fits",
-    then: `green for ${RECOVERED_GOOD_SIZE_MS / 1000} s, then checked`,
+    then: `green for ${RECOVERED_GOOD_SIZE_MS / 1000} s; checked once let go`,
   },
 ]
 const FIT_START: Partial<SceneState> = {
@@ -390,45 +309,13 @@ const FIT = timeline(
     1800
   ),
   [700, all({ step: 2 }, goodSize)],
-  [RECOVERED_GOOD_SIZE_MS, all({ green: null, loader: true }, design("a", { tone: "blue", selected: false }))],
-  [EMBROIDERY_MIN_LOADER_MS, all({ loader: false, row: true }, design("a", { stitched: true }))]
+  [RECOVERED_GOOD_SIZE_MS, all({ green: null }, design("a", { tone: "blue" }))],
+  ...click(OUTSIDE, all({ loader: true }, design("a", { selected: false })), 600),
+  [EMBROIDERY_MIN_LOADER_MS, all({ loader: false, row: true, cursor: null }, design("a", { stitched: true }))]
 )
 
 export function FitScene({ product, showSteps }: SceneProps) {
   return <Scene product={product} steps={FIT_STEPS} initial={FIT_START} showSteps={showSteps} {...FIT} />
-}
-
-/* ---------------------------------------------------------- §8 min size */
-
-const MIN_STEPS: Step[] = [
-  {
-    when: "shrunk to its own minimum",
-    then: "stops, “Min. size for embroidery”",
-  },
-  {
-    when: "grown",
-    then: "no maximum — the frame only warns",
-  },
-]
-const MIN_START: Partial<SceneState> = {
-  designs: [
-    { id: "a", src: BEAVER, cx: 0.5, cy: 0.4, size: 0.9, pin: { corner: "nw", size: 0.9 }, selected: true },
-  ],
-}
-const MIN = timeline(
-  [900, { cursor: { design: "a", at: "se" }, cursorMs: 600 }],
-  [800, { pressed: true }],
-  [200, drag("a", "se", { size: 0.55 }, 1100)],
-  [1100, all({ step: 0 }, design("a", { size: 0.51, motionMs: 140, minNotice: true }))],
-  [140, design("a", { size: 0.55, motionMs: 220 })],
-  [1600, all(release, design("a", { minNotice: false }))],
-  [900, { pressed: true }],
-  [200, all({ step: 1 }, drag("a", "se", { size: 1.25 }, 1400))],
-  [1500, all(release, design("a", { tone: "orange", guide: "se" }), { issue: "too-large", row: false })]
-)
-
-export function MinSizeScene({ product }: SceneProps) {
-  return <Scene product={product} steps={MIN_STEPS} initial={MIN_START} {...MIN} />
 }
 
 /* ------------------------------------------------------ §9 combinations */
@@ -436,7 +323,7 @@ export function MinSizeScene({ product }: SceneProps) {
 const GROUP_STEPS: Step[] = [
   {
     when: "a 2nd design is added",
-    then: "placed inside the frame, checked",
+    then: "placed inside the frame, selected",
   },
   {
     when: "the group moved past the frame",
@@ -444,7 +331,7 @@ const GROUP_STEPS: Step[] = [
   },
   {
     when: "back within",
-    then: "green, then checked",
+    then: "green; checked once let go",
   },
 ]
 const GROUP_START: Partial<SceneState> = {
@@ -454,10 +341,9 @@ const GROUP_START: Partial<SceneState> = {
   ],
 }
 const GROUP = timeline(
-  [900, all({ step: 0, row: false, loader: true }, design("a", { stitched: false }), design("b", { gone: false }))],
-  [EMBROIDERY_MIN_LOADER_MS, all({ loader: false, row: true }, design("a", { stitched: true }), design("b", { stitched: true }))],
-  ...click({ design: "b", at: "c" }, design("b", { selected: true, stitched: false }), 1000),
-  [300, all({ step: 1, pressed: true }, design("a", { stitched: false }))],
+  [900, all({ step: 0 }, design("a", { stitched: false }), design("b", { gone: false, selected: true }))],
+  [1600, { cursor: { design: "b", at: "c" }, cursorMs: 500 }],
+  [700, all({ step: 1, pressed: true })],
   [200, all({ group: "blue" }, drag("b", "c", { cx: 0.84 }, 1400))],
   [700, { group: "orange", issue: "too-large", combination: true, row: false }],
   [1300, release],
@@ -465,13 +351,11 @@ const GROUP = timeline(
   [200, all({ step: 2 }, drag("b", "c", { cx: 0.6 }, 1200))],
   [700, { group: "green", issue: null, green: "good" }],
   [900, release],
-  [
-    RECOVERED_GOOD_SIZE_MS,
-    all({ group: null, green: null, loader: true, cursor: null }, design("b", { selected: false })),
-  ],
+  [RECOVERED_GOOD_SIZE_MS, { group: null, green: null }],
+  ...click(OUTSIDE, all({ loader: true }, design("b", { selected: false })), 600),
   [
     EMBROIDERY_MIN_LOADER_MS,
-    all({ loader: false, row: true }, design("a", { stitched: true }), design("b", { stitched: true })),
+    all({ loader: false, row: true, cursor: null }, design("a", { stitched: true }), design("b", { stitched: true })),
   ]
 )
 
@@ -490,7 +374,7 @@ const GROUP_FIT_STEPS: Step[] = [
     when: "still too large",
     then: "then they shrink",
   },
-  { when: "they fit", then: "green, then checked" },
+  { when: "they fit", then: "green; checked once let go" },
 ]
 const GROUP_FIT_START: Partial<SceneState> = {
   ...TOO_LARGE,
@@ -498,7 +382,7 @@ const GROUP_FIT_START: Partial<SceneState> = {
   group: "orange",
   designs: [
     { id: "a", src: MUSHROOM, cx: 0.3, cy: 0.4, size: 1.3 },
-    { id: "b", src: ROSE, cx: 0.74, cy: 0.42, size: 1.2 },
+    { id: "b", src: ROSE, cx: 0.74, cy: 0.42, size: 1.2, selected: true, tone: "orange" },
   ],
 }
 const GROUP_FIT = timeline(
@@ -512,11 +396,12 @@ const GROUP_FIT = timeline(
     1400
   ),
   [1100, all({ step: 1 }, design("a", { size: 1, motionMs: 500, bounce: true }), design("b", { size: 0.92, motionMs: 500, bounce: true }))],
-  [800, { step: 2, group: "green", issue: null, green: "good" }],
-  [RECOVERED_GOOD_SIZE_MS, { group: null, green: null, loader: true }],
+  [800, all({ step: 2, group: "green", issue: null, green: "good" }, design("b", { tone: "green" }))],
+  [RECOVERED_GOOD_SIZE_MS, all({ group: null, green: null }, design("b", { tone: "blue" }))],
+  ...click(OUTSIDE, all({ loader: true }, design("b", { selected: false })), 600),
   [
     EMBROIDERY_MIN_LOADER_MS,
-    all({ loader: false, row: true }, design("a", { stitched: true }), design("b", { stitched: true })),
+    all({ loader: false, row: true, cursor: null }, design("a", { stitched: true }), design("b", { stitched: true })),
   ]
 )
 
@@ -538,11 +423,11 @@ const ISSUE_STEPS: Step[] = [
   { when: "dragged", then: "moves as usual" },
 ]
 const ISSUE_START: Partial<SceneState> = {
-  designs: [{ id: "a", src: CAT, cx: 0.45, cy: 0.4, size: 0.85 }],
+  designs: [{ id: "a", src: CAT, cx: 0.45, cy: 0.4, size: 0.85, selected: true }],
 }
 const ISSUE = timeline(
-  [700, { row: false, loader: true }],
-  [EMBROIDERY_MIN_LOADER_MS, { step: 0, loader: false, issue: "thin-line" }],
+  ...click(OUTSIDE, all({ row: false, loader: true }, design("a", { selected: false })), 900),
+  [EMBROIDERY_MIN_LOADER_MS, { step: 0, loader: false, issue: "thin-line", cursor: null }],
   ...click(
     { design: "a", at: "c" },
     all({ step: 1 }, design("a", { selected: true, handles: false, trash: "warning" })),
@@ -669,17 +554,33 @@ export function PrintScene({ product }: SceneProps) {
 
 const BASKET_STEPS: Step[] = [
   {
+    when: "add to basket, design not checked yet",
+    then: "the canvas flashes orange; let go and checked",
+  },
+  {
     when: "add to basket with a warning up",
     then: "refused — the warning shakes",
   },
 ]
 const BASKET_START: Partial<SceneState> = {
-  issue: "too-complex",
-  row: false,
-  designs: [{ id: "a", src: BOY, cx: 0.5, cy: 0.4, size: 0.85 }],
+  designs: [{ id: "a", src: BOY, cx: 0.5, cy: 0.4, size: 0.85, selected: true }],
 }
 const refuse = (s: SceneState) => ({ ...s, shake: s.shake + 1, flash: s.flash + 1 })
-const BASKET = timeline([1200, refuse], [3200, refuse])
+// The basket button is off the canvas: its click is told by the flash alone.
+const checkFirst = (s: SceneState): SceneState => ({
+  ...s,
+  step: 0,
+  flash: s.flash + 1,
+  row: false,
+  loader: true,
+  designs: s.designs.map(d => ({ ...d, selected: false })),
+})
+const BASKET = timeline(
+  [1600, checkFirst],
+  [EMBROIDERY_MIN_LOADER_MS, { loader: false, issue: "too-complex" }],
+  [2200, all({ step: 1 }, refuse)],
+  [3000, refuse]
+)
 
 export function BasketScene({ product }: SceneProps) {
   return <Scene product={product} steps={BASKET_STEPS} initial={BASKET_START} {...BASKET} />
