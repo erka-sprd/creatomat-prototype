@@ -229,6 +229,6 @@ function Beats({ product }: { product: ReturnType<typeof useCanvasProduct> }): B
 
 export default function EmbroideryBuild() {
   const product = useCanvasProduct()
-  // Slower than the curve-text page: the scenes are heavier, and the page should settle before they play.
-  return <BuildPage beats={Beats({ product })} pace={1.6} />
+  // A touch slower than the engine's default, so the page settles before a scene plays.
+  return <BuildPage beats={Beats({ product })} pace={1.15} />
 }
