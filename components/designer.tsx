@@ -338,9 +338,33 @@ const lightProductImageShadow = (scale = 1) =>
   `drop-shadow(0px 0px ${1 / scale}px rgba(0, 0, 0, 0.35))`
 export const LIGHT_PRODUCT_IMAGE_SHADOW = lightProductImageShadow()
 
-// The mocked design-issue warnings apply to these designs only: thin lines to
-// the pink cat, too complex to the mountain lake (next to it in the panel).
+// The mocked design-issue warnings: thin lines to the pink cat (the handoff's
+// example) and the marketplace designs in THIN_LINE_GRAPHIC_SRCS, too complex
+// to the mountain lake, the boy with the fish and the rest of
+// COMPLEX_GRAPHIC_SRCS. Everything else in the panel stitches without a verdict.
 export const THIN_LINE_GRAPHIC_SRC = "/img/graphics/graphics1.png"
+// Marketplace designs drawn with hairline strokes — pen outlines, engraved
+// feathers, script tails, dashed rays — that a needle can't follow.
+export const THIN_LINE_GRAPHIC_SRCS = [
+  THIN_LINE_GRAPHIC_SRC,
+  "/img/marketplace/136609547.png", // card symbols — hairline crossing lines
+  "/img/marketplace/584243.png", // Palms and Car — palm fronds, chrome details
+  "/img/marketplace/135816734.png", // racing car — single-stroke outline, wheel spokes
+  "/img/marketplace/16646016.png", // Hand drawn Arrow — ornate pen line
+  "/img/marketplace/631560.png", // Surfer — spray lines off the wave
+  "/img/marketplace/6273337.png", // White waveforms — hairline audio spikes
+  "/img/marketplace/1621193.png", // Gemini — fine engraved figures
+  "/img/marketplace/137633023.png", // wings — thin feather barbs
+  "/img/marketplace/16644940.png", // Moto Skull with Wings — thin feather barbs
+  "/img/marketplace/425445.png", // Mom with Flower — pen-outline rose
+  "/img/marketplace/2124148.png", // wolf — scratchy fur outline
+  "/img/marketplace/16645900.png", // Hand drawn light Circle — thin dashed rays
+  "/img/marketplace/135461518.png", // Teddy — thin sketch outline
+  "/img/marketplace/16647063.png", // Amerindian Symbol — thin arrow shafts
+  "/img/marketplace/136038370.png", // ornament — calligraphic hairline tails
+  "/img/marketplace/140859068.png", // Dream Team — script connectors thin out
+  "/img/marketplace/135706569.png", // frame — hand-drawn thin strokes
+]
 // How long the technique switcher's green tick holds in its icon's place
 // (TechniqueSwitcher's `confirmed`) — shown on the handoff.
 export const SWITCH_CONFIRM_MS = 2000
@@ -367,10 +391,32 @@ const fitEaseInOut = (p: number) => (p < 0.5 ? 4 * p ** 3 : 1 - (-2 * p + 2) ** 
 // Bisection steps for how close a combination's objects must come.
 const FIT_GROUP_SEARCH_STEPS = 24
 // Too complex: the mountain lake, and the boy with the fish (8th in the
-// Graphics panel) — the one to try "Simplify with AI" on.
-export const COMPLEX_GRAPHIC_SRCS = ["/img/graphics/graphics2.png", "/img/graphics/graphics8.png"]
+// Graphics panel) — the one to try "Simplify with AI" on (the handoff relies
+// on it being second here) — then the marketplace designs with watercolour
+// shading, photographic detail, engraving hatching or dense tiny pieces that
+// no stitch count resolves.
+export const COMPLEX_GRAPHIC_SRCS = [
+  "/img/graphics/graphics2.png",
+  "/img/graphics/graphics8.png",
+  "/img/marketplace/136195447.png", // Tribal — dense interlocking dragons
+  "/img/marketplace/137454017.png", // Vintage Camera — sketch hatching
+  "/img/marketplace/306567432.png", // Orange Marmelade — speckle texture, script
+  "/img/marketplace/330660490.png", // Tiny Adventures Moon — watercolour
+  "/img/marketplace/195186171.png", // Call of Cthulhu — sketched, shaded eye
+  "/img/marketplace/195185430.png", // Dagon — dense ink illustration
+  "/img/marketplace/136299843.png", // Fox — zentangle mandala fur
+  "/img/marketplace/137184475.png", // compass — engraving hatching
+  "/img/marketplace/196221931.png", // Street Art — ink splatter, fine feathers
+  "/img/marketplace/302177058.png", // Robin Family — watercolour
+  "/img/marketplace/327536495.png", // Tiny Adventures Lion — watercolour
+  "/img/marketplace/327526047.png", // Tiny Adventures Funny Lion — watercolour
+  "/img/marketplace/171016667.png", // Bowhead Whale — watercolour, tiny caption
+  "/img/marketplace/306472629.png", // Birthday Party Monkey — confetti bits
+  "/img/marketplace/319384555.png", // Mama Bear — soft painted shading
+  "/img/marketplace/7876182.png", // audio cassette — glitch layers, tiny parts
+]
 const isComplexGraphic = (src: string) => COMPLEX_GRAPHIC_SRCS.some(s => src.endsWith(s))
-const isThinLineGraphic = (src: string) => src.endsWith(THIN_LINE_GRAPHIC_SRC)
+const isThinLineGraphic = (src: string) => THIN_LINE_GRAPHIC_SRCS.some(s => src.endsWith(s))
 // Designs whose lines become too thin to stitch below a size: in embroidery
 // they can't be made smaller than this (mm, on their longer side) — the
 // resize stops there with a bounce and "Min. size for embroidery". The beaver's
@@ -3802,13 +3848,14 @@ export default function Designer({
   const embroideryScale = designBbox
     ? embroideryHoopFitScale(designBbox.w, designBbox.h, embroideryHoopFrame)
     : 1
-  // Mocked design issues, by graphic: the pink cat (THIN_LINE_GRAPHIC_SRC) has
-  // lines too thin to stitch, the mountain lake and the boy with the fish
-  // (COMPLEX_GRAPHIC_SRCS) are too complex — which wins when both are in the design, as DESIGN_TOO_COMPLEX
-  // outranks the other precheck verdicts in create-omat.
-  // An issue outranks the size too: a design with one is never "too large"
-  // (nor "good size") — no size badge, hoop guide or size verdict at all, and
-  // its design check runs whatever its size, so the issue shows instead.
+  // Mocked design issues, by graphic: THIN_LINE_GRAPHIC_SRCS have lines too
+  // thin to stitch, COMPLEX_GRAPHIC_SRCS are too complex — which wins when
+  // both are in the design, as DESIGN_TOO_COMPLEX outranks the other precheck
+  // verdicts in create-omat.
+  // Size comes first, for these too: a design with an issue that's too large
+  // gets the size warning, hoop guide and "Fit to best size", and no check.
+  // Only once it fits is it checked — and then the issue shows; while its
+  // warning is up (thinLineWarning) the size isn't judged again.
   // None in the DTF version.
   const designIssue: EmbroideryDesignIssue | null = dtf
     ? null
