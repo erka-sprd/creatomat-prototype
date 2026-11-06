@@ -63,6 +63,8 @@ import ProductsDrawer, { type SelectedProduct } from "@/components/products-draw
 import VolumeDiscountPopoverContent from "@/components/volume-discount-popover-content"
 import MobileActionHeader from "@/components/mobile/mobile-action-header"
 import MobileColorDrawer from "@/components/mobile/mobile-color-drawer"
+import MobileDrawer from "@/components/mobile/mobile-drawer"
+import { EmbroiderySolutions } from "@/components/embroidery-solutions"
 import SoldOutStrike from "@/components/sold-out-strike"
 import MobileDock from "@/components/mobile/mobile-dock"
 import {
@@ -255,7 +257,11 @@ export function SelectionBottomHandles({
 }) {
   const BOTTOM_HANDLE_CLASS = `${BOTTOM_HANDLE_BASE} ${BOTTOM_HANDLE_TONE[warning ? "warning" : "default"]}`
   return (
-    <span className="absolute top-full left-1/2 z-30 mt-5 flex -translate-x-1/2 gap-3">
+    // pt-5 rather than mt-5, and scaled from the top: a phone's pinch zoom is
+    // undone (--inv-zoom, set on its zoomed wrapper) for the gap and the
+    // buttons alike, so both keep their size on screen. The gap itself lets
+    // touches through.
+    <span className="pointer-events-none absolute top-full left-1/2 z-30 flex origin-top -translate-x-1/2 scale-[var(--inv-zoom,1)] gap-3 pt-5 *:pointer-events-auto">
       <span
         onPointerDown={onRotateStart}
         style={{ cursor: ROTATE_CURSOR }}
@@ -6283,6 +6289,10 @@ export default function Designer({
                     mobileZoom === 1
                         ? undefined
                         : `translate3d(${mobilePan.x}px, ${mobilePan.y}px, 0) scale(${mobileZoom})`,
+                // The pinch's inverse: selection handles inside scale by it, so
+                // they keep their size on screen like the trash (which is
+                // portaled outside the transform).
+                ["--inv-zoom" as string]: 1 / mobileZoom,
                 // Snap back to fit is animated; live gestures are not.
                 transition:
                     gestureRef.current.mode !== "idle"
@@ -6819,7 +6829,7 @@ export default function Designer({
                                   key={corner}
                                   style={{ cursor }} onPointerDown={e => startResize(e, el, corner)}
                                   onPointerEnter={() => setGuideCorner({ id: el.id, corner })}
-                                  className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
+                                  className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 scale-[var(--inv-zoom,1)] ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
                                 />
                               )
                             })}
@@ -6965,7 +6975,7 @@ export default function Designer({
                                 key={corner}
                                 style={{ cursor }} onPointerDown={e => startResize(e, el, corner)}
                                 onPointerEnter={() => setGuideCorner({ id: el.id, corner })}
-                                className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
+                                className={`absolute ${pos} z-30 block size-[15px] touch-none rounded-full border-2 scale-[var(--inv-zoom,1)] ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
                               />
                             )
                           })}
@@ -7063,7 +7073,7 @@ export default function Designer({
                               key={corner}
                               style={{ cursor }} onPointerDown={e => startResize(e, el, corner, "graphic")}
                               onPointerEnter={() => setGuideCorner({ id: el.id, corner })}
-                              className={`absolute ${pos} ${cursor} z-30 block size-[15px] touch-none rounded-full border-2 ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
+                              className={`absolute ${pos} ${cursor} z-30 block size-[15px] touch-none rounded-full border-2 scale-[var(--inv-zoom,1)] ${cornerHandleColor} bg-white transition-colors duration-300 ease-out`}
                             />
                           )
                         })}
@@ -7555,7 +7565,9 @@ export default function Designer({
             )}
             <ThinLineHelpPopover
               issue={designIssue ?? "thin-line"}
-              open={thinLineHelpOpen}
+              // A phone gets the same solutions in a bottom drawer instead
+              // (MobileDrawer, beside the other mobile sheets).
+              open={thinLineHelpOpen && !isDlgMobile}
               onClose={closeThinLineHelp}
               onPresenceChange={setThinLineHelpPresent}
               designSrc={visibleGraphicElements.find(g => g.id === issueGraphicId)?.src ?? null}
@@ -9918,7 +9930,10 @@ export default function Designer({
           </div>
 
           <ScopedDialog
-            open={welcomeOpen && loadPhase === "done"}
+            // Desktop only. Its content is max-dlg:hidden, so on a phone an open
+            // dialog would be invisible yet still modal — the first tap
+            // anywhere (the dock's "Add", say) would only dismiss it.
+            open={welcomeOpen && loadPhase === "done" && !isDlgMobile}
             onOpenChange={open => {
               if (!open) window.history.pushState({ from: "onboarding" }, "")
               setWelcomeOpen(open)
@@ -10239,6 +10254,28 @@ export default function Designer({
         hidden={mobileDockHidden}
         swapDelayMs={SWAP_DELAY_MS}
       />
+      {/* A design issue's solutions on a phone — the desktop popover's
+          content (EmbroiderySolutions) in the mobile designer's drawer, the
+          two ways out side by side. */}
+      <MobileDrawer
+        open={isDlgMobile && thinLineHelpOpen}
+        onOpenChange={open => {
+          if (!open) closeThinLineHelp()
+        }}
+        title="Solutions"
+      >
+        <div className="px-4 pt-1 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <EmbroiderySolutions
+            inDrawer
+            issue={designIssue ?? "thin-line"}
+            designSrc={visibleGraphicElements.find(g => g.id === issueGraphicId)?.src ?? null}
+            printSavingLabel={printSavingLabel}
+            onClose={closeThinLineHelp}
+            onSimplifyWithAI={simplifyWithAI}
+            onSwitchToPrint={switchToStandardPrint}
+          />
+        </div>
+      </MobileDrawer>
       <MobileColorDrawer
         open={mobileColorDrawerOpen}
         onOpenChange={setMobileColorDrawerOpen}

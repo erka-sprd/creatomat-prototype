@@ -41,6 +41,7 @@ export function EmbroiderySolutions({
   onClose,
   onSimplifyWithAI,
   onSwitchToPrint,
+  inDrawer = false,
 }: {
   issue: EmbroideryDesignIssue
   designSrc: string | null
@@ -49,9 +50,15 @@ export function EmbroiderySolutions({
   onClose: () => void
   onSimplifyWithAI: () => void
   onSwitchToPrint: () => void
+  /**
+   * In the phone's bottom drawer (MobileDrawer), which has its own title and
+   * close: no header here, and the two cards stay side by side, compact.
+   */
+  inDrawer?: boolean
 }) {
   return (
     <div className="flex flex-col gap-4">
+      {!inDrawer && (
       <div className="flex items-start justify-between gap-4">
         <h2 className="font-display text-[18px] leading-tight font-[800] text-black">Solutions</h2>
         <button
@@ -63,8 +70,10 @@ export function EmbroiderySolutions({
           <X size={20} />
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+      )}
+      <div className={inDrawer ? "grid grid-cols-2 gap-2" : "grid grid-cols-2 gap-4 max-sm:grid-cols-1"}>
         <SolutionCard
+          compact={inDrawer}
           title={AI_CARD[issue].title}
           text={AI_CARD[issue].text}
           visual={designSrc && <SimplifyPreview src={designSrc} />}
@@ -74,9 +83,12 @@ export function EmbroiderySolutions({
           </KitButton>
         </SolutionCard>
         <SolutionCard
+          compact={inDrawer}
           title="Print it instead"
           text="Digital print keeps every detail."
-          visual={designSrc && <DesignPreview src={designSrc} badge={printSavingLabel} />}
+          visual={
+            designSrc && <DesignPreview src={designSrc} badge={printSavingLabel} compact={inDrawer} />
+          }
         >
           <KitButton variant="ghost" onClick={onSwitchToPrint}>
             Switch to print
@@ -92,19 +104,24 @@ function SolutionCard({
   text,
   visual,
   children,
+  compact = false,
 }: {
   title: string
   text: string
+  /** Half a phone's width: tighter padding and type. */
+  compact?: boolean
   /** Above the title. */
   visual?: ReactNode
   children?: ReactNode
 }) {
   return (
     // Centred throughout: visual, title, text and button.
-    <div className="flex flex-col items-center gap-2 rounded-xl bg-neutral-100 p-5 text-center">
+    <div
+      className={`flex flex-col items-center gap-2 rounded-xl bg-neutral-100 text-center ${compact ? "p-3" : "p-5"}`}
+    >
       {visual && <div className="mb-2 w-full">{visual}</div>}
-      <h3 className="text-base font-bold text-black">{title}</h3>
-      <p className="text-sm leading-snug text-neutral-700">{text}</p>
+      <h3 className={`font-bold text-black ${compact ? "text-sm" : "text-base"}`}>{title}</h3>
+      <p className={`leading-snug text-neutral-700 ${compact ? "text-xs" : "text-sm"}`}>{text}</p>
       {children && <div className="mt-auto pt-3">{children}</div>}
     </div>
   )
@@ -113,7 +130,16 @@ function SolutionCard({
 // The print card's visual: the design as it is, in the same box as the AI
 // card's preview (128px tall, 12px in), so the two sit level — with `badge`
 // in a small white pill at its top centre.
-function DesignPreview({ src, badge }: { src: string; badge: string | null }) {
+function DesignPreview({
+  src,
+  badge,
+  compact = false,
+}: {
+  src: string
+  badge: string | null
+  /** Half a phone's width: the badge may wrap to two lines. */
+  compact?: boolean
+}) {
   return (
     <div className="relative h-32">
       <img
@@ -123,7 +149,13 @@ function DesignPreview({ src, badge }: { src: string; badge: string | null }) {
         className="absolute inset-x-3 inset-y-3 h-[calc(100%-24px)] w-[calc(100%-24px)] object-contain"
       />
       {badge && (
-        <span className="absolute top-0 left-1/2 -translate-x-1/2 rounded-full bg-white px-2.5 py-1 text-xs leading-none font-semibold whitespace-nowrap text-black shadow-xs">
+        <span
+          className={`absolute top-0 left-1/2 -translate-x-1/2 bg-white px-2.5 py-1 text-xs font-semibold text-black shadow-xs ${
+            compact
+              ? "w-max max-w-full rounded-xl text-center text-[11px] leading-tight"
+              : "rounded-full leading-none whitespace-nowrap"
+          }`}
+        >
           {badge}
         </span>
       )}

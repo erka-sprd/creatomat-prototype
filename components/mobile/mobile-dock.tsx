@@ -276,8 +276,13 @@ export default function MobileDock({
                         above the main row. w-full so the card scrolls rather than
                         growing past the screen. */}
                     {showSubDock && (
-                        <div className="animate-in slide-in-from-bottom-4 fade-in flex w-full items-center justify-center gap-1 duration-300 ease-out">
-                            <DockList className="w-full justify-evenly">
+                        // pt-3: a transparent margin above the card that still
+                        // counts as the dock, so a tap that lands just above
+                        // a tool doesn't read as "outside" and close it.
+                        <div className="animate-in slide-in-from-bottom-4 fade-in flex w-full items-center justify-center gap-1 pt-3 duration-300 ease-out">
+                            {/* The tools fill the card edge to edge — no gaps
+                                between them that take a tap and do nothing. */}
+                            <DockList className="w-full *:flex-1">
                                 <DockItem
                                     icon={<img src="/icons/icon-sparkles-ai.svg" alt="" className="h-6 w-6" />}
                                     label="AI design"
