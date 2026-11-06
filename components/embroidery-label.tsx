@@ -506,7 +506,7 @@ const DOCK_SPOT = {
   raised: { bottom: "bottom-9", away: "translate-y-[calc(100%+4.25rem)]" },
 }
 const dockClass = (entered: boolean, spot: keyof typeof DOCK_SPOT = "row") =>
-  `max-dlg:hidden absolute ${DOCK_SPOT[spot].bottom} left-1/2 z-[5] max-w-[calc(100%-48px)] -translate-x-1/2 transition-transform duration-300 ease-out motion-reduce:transition-none ` +
+  `absolute ${DOCK_SPOT[spot].bottom} left-1/2 z-[5] max-w-[calc(100%-48px)] -translate-x-1/2 transition-transform duration-300 ease-out motion-reduce:transition-none ` +
   (entered ? "translate-y-0" : `pointer-events-none ${DOCK_SPOT[spot].away}`)
 const dockDelay = (entered: boolean) => (entered ? `${SWAP_DELAY_MS}ms` : "0ms")
 
@@ -549,32 +549,39 @@ export function EmbroiderySimplifyDock({ issue }: { issue: EmbroideryDesignIssue
   if (issue && issue !== shownIssue) setShownIssue(issue)
   const { mounted, entered } = useDockPresence(issue !== null)
   if (!mounted) return null
-  const status = SIMPLIFY_STATUS[shownIssue]
   return (
     <div
       aria-hidden={!entered}
       className={dockClass(entered, "raised")}
       style={{ transitionDelay: dockDelay(entered) }}
     >
-      <div
-        role="status"
-        aria-label={`${status}...`}
-        className={PILL + "preview-status-ring border border-white bg-white px-4 py-2.5 text-black"}
-      >
-        <span aria-hidden="true" className="preview-status-glow" />
-        <span aria-hidden="true" className="text-sm leading-none font-semibold whitespace-nowrap">
-          {status}
-          {[0, 1, 2].map(i => (
-            <span
-              key={i}
-              className="loading-dot"
-              style={{ animationDelay: `${i * LOADING_DOT_STAGGER_MS}ms` }}
-            >
-              .
-            </span>
-          ))}
-        </span>
-      </div>
+      <SimplifyPill issue={shownIssue} />
+    </div>
+  )
+}
+
+/** The AI at work: its status and three pulsing dots. */
+function SimplifyPill({ issue }: { issue: EmbroideryDesignIssue }) {
+  const status = SIMPLIFY_STATUS[issue]
+  return (
+    <div
+      role="status"
+      aria-label={`${status}...`}
+      className={PILL + "preview-status-ring border border-white bg-white px-4 py-2.5 text-black"}
+    >
+      <span aria-hidden="true" className="preview-status-glow" />
+      <span aria-hidden="true" className="text-sm leading-none font-semibold whitespace-nowrap">
+        {status}
+        {[0, 1, 2].map(i => (
+          <span
+            key={i}
+            className="loading-dot"
+            style={{ animationDelay: `${i * LOADING_DOT_STAGGER_MS}ms` }}
+          >
+            .
+          </span>
+        ))}
+      </span>
     </div>
   )
 }
@@ -599,31 +606,48 @@ export function EmbroideryZoomTipDock({
       className={dockClass(entered)}
       style={{ transitionDelay: dockDelay(entered) }}
     >
-      {/* A green message — the docked SizeBadgePill's frame, ✓ and type —
-          with "Zoom in" where the warnings put their action. */}
-      <div
-        role="status"
-        className={`flex flex-col items-start gap-4 rounded-2xl border bg-white p-4 ${SIZE_BADGE.good.frame}`}
-      >
-        <div className="flex items-center gap-1.5">
-          <span
-            aria-hidden="true"
-            className={`flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] leading-none font-bold text-white ${SIZE_BADGE.good.dot}`}
-          >
-            {SIZE_BADGE.good.icon}
-          </span>
-          <span className="text-sm leading-none font-semibold whitespace-nowrap">{shownText}</span>
-        </div>
-        <div className="flex self-stretch justify-center">
-          <KitButton
-            variant="ghost"
-            onClick={onZoomIn}
-            tabIndex={entered ? 0 : -1}
-            className="whitespace-nowrap"
-          >
-            Zoom in
-          </KitButton>
-        </div>
+      <ZoomTipCard text={shownText} onZoomIn={onZoomIn} focusable={entered} />
+    </div>
+  )
+}
+
+/**
+ * The zoom tip itself — a green message (the docked SizeBadgePill's frame, ✓
+ * and type) with "Zoom in" where the warnings put their action.
+ */
+function ZoomTipCard({
+  text,
+  onZoomIn,
+  focusable,
+}: {
+  text: string
+  onZoomIn: () => void
+  focusable: boolean
+}) {
+  return (
+    <div
+      role="status"
+      // On a phone its sentence wraps, at the screen's width less the dock's gutters.
+      className={`flex flex-col items-start gap-4 rounded-2xl border bg-white p-4 max-dlg:w-[calc(100vw-48px)] ${SIZE_BADGE.good.frame}`}
+    >
+      <div className="flex items-center gap-1.5 max-dlg:items-start">
+        <span
+          aria-hidden="true"
+          className={`flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] leading-none font-bold text-white ${SIZE_BADGE.good.dot}`}
+        >
+          {SIZE_BADGE.good.icon}
+        </span>
+        <span className="text-sm leading-none font-semibold whitespace-nowrap max-dlg:leading-tight max-dlg:whitespace-normal">{text}</span>
+      </div>
+      <div className="flex self-stretch justify-center">
+        <KitButton
+          variant="ghost"
+          onClick={onZoomIn}
+          tabIndex={focusable ? 0 : -1}
+          className="whitespace-nowrap"
+        >
+          Zoom in
+        </KitButton>
       </div>
     </div>
   )

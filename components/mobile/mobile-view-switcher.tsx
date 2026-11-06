@@ -14,6 +14,9 @@ type MobileViewSwitcherProps = {
     views: MobileViewOption[]
     activeIndex: number
     onSelect: (index: number) => void
+    /** Out of sight with the mobile dock (an embroidery message in their place). */
+    hidden?: boolean
+    swapDelayMs?: number
 }
 
 // The component kit's v2 Chevron glyph (points down; rotated for prev/next),
@@ -33,11 +36,22 @@ export default function MobileViewSwitcher({
     views,
     activeIndex,
     onSelect,
+    hidden = false,
+    swapDelayMs = 0,
 }: MobileViewSwitcherProps) {
     if (views.length < 2) return null
 
     return (
-        <div className="dlg:hidden absolute bottom-25 left-1/2 z-[13] flex -translate-x-1/2">
+        <div
+            aria-hidden={hidden}
+            // Out with the dock (see MobileDock's `hidden`): down past the
+            // canvas edge, its 100px above the bottom plus its own height.
+            className={
+                "dlg:hidden absolute bottom-25 left-1/2 z-[13] flex -translate-x-1/2 transition-[translate] duration-300 ease-out motion-reduce:transition-none " +
+                (hidden ? "pointer-events-none translate-y-[calc(100%+8rem)]" : "translate-y-0")
+            }
+            style={{ transitionDelay: hidden ? "0ms" : `${swapDelayMs}ms` }}
+        >
             <div className="flex items-center gap-9">
                 <button
                     type="button"

@@ -87,6 +87,14 @@ type MobileDockProps = {
     onTemplatesClick: () => void
     onFinish: () => void
     onUnselect: () => void
+    /**
+     * Out of sight while an embroidery message or loader takes its place —
+     * the phone's counterpart of the desktop bottom row's `hidden`: it slides
+     * down off the screen as the message slides up, and coming back waits
+     * `swapDelayMs` so the two pass rather than overlap.
+     */
+    hidden?: boolean
+    swapDelayMs?: number
 }
 
 function DockItem({
@@ -155,6 +163,8 @@ export default function MobileDock({
     onTemplatesClick,
     onFinish,
     onUnselect,
+    hidden = false,
+    swapDelayMs = 0,
 }: MobileDockProps) {
     const [showSubDock, setShowSubDock] = useState(false)
     const dockRef = useRef<HTMLDivElement>(null)
@@ -175,10 +185,11 @@ export default function MobileDock({
         }
     }, [showSubDock])
 
-    // Selecting an element on the canvas collapses the sub-dock.
+    // Selecting an element on the canvas collapses the sub-dock — and so does
+    // the dock going out of sight.
     useEffect(() => {
-        if (inspectorMode) setShowSubDock(false)
-    }, [inspectorMode])
+        if (inspectorMode || hidden) setShowSubDock(false)
+    }, [inspectorMode, hidden])
 
     const runAndClose = (fn: () => void) => () => {
         setShowSubDock(false)
@@ -190,7 +201,12 @@ export default function MobileDock({
     return (
         <div
             ref={dockRef}
-            className="dlg:hidden fixed bottom-2 left-1/2 z-40 flex w-full max-w-[400px] -translate-x-1/2 items-center justify-center gap-1 px-2 pb-[env(safe-area-inset-bottom)]"
+            aria-hidden={hidden}
+            className={
+                "dlg:hidden fixed bottom-2 left-1/2 z-40 flex w-full max-w-[400px] -translate-x-1/2 items-center justify-center gap-1 px-2 pb-[env(safe-area-inset-bottom)] transition-[translate] duration-300 ease-out motion-reduce:transition-none " +
+                (hidden ? "pointer-events-none translate-y-[calc(100%+2rem)]" : "translate-y-0")
+            }
+            style={{ transitionDelay: hidden ? "0ms" : `${swapDelayMs}ms` }}
         >
             {inspectorMode ? (
                 <div

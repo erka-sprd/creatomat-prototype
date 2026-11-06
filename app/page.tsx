@@ -11,10 +11,12 @@ export default async function Page({
   // embroidery's limits or warnings.
   // ?resize=guide — embroidery's earlier resize: a lone object may grow past
   // the hoop frame, with the green hoop guide pointing back to its size.
-  const { dtf, resize } = await searchParams
+  // ?embroidery=true — opens with embroidery already chosen as the print type.
+  const { dtf, resize, embroidery } = await searchParams
   return (
     <DesignerClient
       dtf={dtf === "true"}
+      startOnEmbroidery={embroidery === "true"}
       embroideryResizeGuide={resize === "guide"}
     />
   )

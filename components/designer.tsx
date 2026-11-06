@@ -175,6 +175,8 @@ const uid = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(uidCoun
 // angle. Wide enough that vertical/horizontal lock in sharply.
 const ROTATE_SNAP_DEG = 8
 
+// Where the zoom tip's "Zoom in" takes a phone's pinch zoom.
+const MOBILE_TIP_ZOOM = 2
 // Upper bound for every zoom path — slider, +/- stops, wheel, mobile pinch.
 // 1 = fit-to-canvas.
 export const MAX_ZOOM = 15
@@ -308,7 +310,7 @@ const isDarkProductColor = (hex?: string): boolean => {
 
 // White / near-white products blend into the light (#F4F4F4) tile, so only they
 // get a drop shadow to lift the product image off the background.
-const isLightProductColor = (hex?: string): boolean => {
+export const isLightProductColor = (hex?: string): boolean => {
   if (!hex) return false
   const h = hex.replace("#", "")
   if (h.length !== 6) return false
@@ -328,7 +330,7 @@ const isLightProductColor = (hex?: string): boolean => {
 // Same subtle shadow on the colour swatches and the view thumbnails.
 const lightProductImageShadow = (scale = 1) =>
   `drop-shadow(0px 0px ${1 / scale}px rgba(0, 0, 0, 0.35))`
-const LIGHT_PRODUCT_IMAGE_SHADOW = lightProductImageShadow()
+export const LIGHT_PRODUCT_IMAGE_SHADOW = lightProductImageShadow()
 
 // The mocked design-issue warnings apply to these designs only: thin lines to
 // the pink cat, too complex to the mountain lake (next to it in the panel).
@@ -465,6 +467,7 @@ export default function Designer({
   csMode = false,
   basketHypotheses = false,
   dtf = false,
+  startOnEmbroidery = false,
   embroideryResizeGuide = false,
   mergedDesigner = true,
 }: {
@@ -478,6 +481,8 @@ export default function Designer({
    * frame, no minimum size, no design issues.
    */
   dtf?: boolean
+  /** ?embroidery=true: the print type starts on embroidery (where the product allows it). */
+  startOnEmbroidery?: boolean
   /**
    * ?resize=guide: the earlier embroidery resize. A lone object may be dragged
    * past the hoop frame, and once the too-large warning has shown, the green
@@ -1333,7 +1338,7 @@ export default function Designer({
   // ?dtf=true version starts on embroidery and rides on it for its preview
   // flow (see the `dtf` prop).
   const [printTechnique, setPrintTechnique] = useState<"standard" | "embroidery">(
-    dtf ? "embroidery" : "standard"
+    dtf || startOnEmbroidery ? "embroidery" : "standard"
   )
   const [printTechniqueOpen, setPrintTechniqueOpen] = useState(false)
   const [printTechniqueMenuOpen, setPrintTechniqueMenuOpen] = useState(false)
@@ -4398,7 +4403,26 @@ export default function Designer({
   // closed should they zoom in some other way (pinch, wheel) while it's up.
   const [zoomHintOpen, setZoomHintOpen] = useState(false)
   const zoomHintSeenRef = useRef(false)
-  const zoomedIn = zoom > 1 + 0.001
+  // The zoom tip's "Zoom in" on a phone: the pinch zoom's transform, at
+  // MOBILE_TIP_ZOOM, panned so the print area sits in the middle (within the
+  // pan limits a pinch has).
+  const zoomMobileToPrintArea = () => {
+    const product = canvasScrollRef.current?.firstElementChild as HTMLElement | null
+    if (!product || !printAreaOverlay) return
+    const z = MOBILE_TIP_ZOOM
+    const w = product.offsetWidth
+    const h = product.offsetHeight
+    const cx = (printAreaOverlay.left + printAreaOverlay.width / 2) / 100 - 0.5
+    const cy = (printAreaOverlay.top + printAreaOverlay.height / 2) / 100 - 0.5
+    const lim = { x: (w * z - w) / 2, y: (h * z - h) / 2 }
+    setMobileZoom(z)
+    setMobilePan({
+      x: Math.max(-lim.x, Math.min(lim.x, -cx * w * z)),
+      y: Math.max(-lim.y, Math.min(lim.y, -cy * h * z)),
+    })
+  }
+  // A pinch on a phone counts too (mobileZoom; `zoom` stays 1 there).
+  const zoomedIn = zoom > 1 + 0.001 || mobileZoom > 1 + 0.001
   const markZoomHintSeen = () => {
     zoomHintSeenRef.current = true
     try {
@@ -5377,12 +5401,36 @@ export default function Designer({
     }
     if (acceptCheck === "running" && !creatingPreview) setAcceptCheck(null)
   }, [acceptCheck, creatingPreview])
+  // Thickened lines reach a little further out than the original's, so a
+  // design placed right at the hoop frame would come back "too large". The
+  // result is scaled about its centre so its ink keeps the original's size.
   const acceptSimplified = () => {
     if (!simplifyReview) return
     const { graphicId, after } = simplifyReview
-    setAcceptCheck("pending")
-    setGraphicElements(prev => prev.map(g => (g.id === graphicId ? { ...g, src: after! } : g)))
-    setSimplifyRun(null)
+    const graphic = graphicElements.find(g => g.id === graphicId)
+    if (!graphic || !after) return
+    Promise.all([graphicInkFractions(graphic.src), graphicInkFractions(after)]).then(([was, now]) => {
+      const k =
+        was && now
+          ? Math.min(1, (was.r - was.l) / (now.r - now.l), (was.b - was.t) / (now.b - now.t))
+          : 1
+      setAcceptCheck("pending")
+      setGraphicElements(prev =>
+        prev.map(g =>
+          g.id === graphicId
+            ? {
+                ...g,
+                src: after,
+                x: g.x + (g.width * (1 - k)) / 2,
+                y: g.y + (g.height * (1 - k)) / 2,
+                width: g.width * k,
+                height: g.height * k,
+              }
+            : g
+        )
+      )
+      setSimplifyRun(null)
+    })
   }
   const cancelSimplified = () => setSimplifyRun(null)
   const showSimplifyBefore = (showBefore: boolean) =>
@@ -5396,6 +5444,11 @@ export default function Designer({
   // until its "Zoom in".
   const zoomTipShown =
     zoomHintOpen && effectivePrintTechnique === "embroidery" && !bottomSpotTaken
+  // On a phone the mobile dock (and the view dots over it) is the bottom row:
+  // it makes way for the same messages and loaders, and — having no zoom to
+  // leave behind — for Simplify / Fix with AI's review too.
+  const mobileDockHidden =
+    mergedDesigner && (bottomSpotTaken || zoomTipShown || simplifyReview !== null)
 
   const handleAddToBasket = () => {
     if (addingToBasket || flashSize) return
@@ -7457,16 +7510,21 @@ export default function Designer({
                 views={productData.views.map(v => ({ id: v.id, name: v.name }))}
                 activeIndex={activeViewIndex}
                 onSelect={goToViewIndex}
+                hidden={mobileDockHidden}
+                swapDelayMs={SWAP_DELAY_MS}
               />
             )}
+            {/* The earlier designer's embroidery messages, at the top of the
+                canvas. The merged designer has them all in the bottom row's
+                place instead — on a phone too, where the mobile dock is that
+                row (the docks further down) — so these are for it alone. */}
+            {!mergedDesigner && (
+              <>
             {/* While the stitched render is being generated — create-omat's
-                "Creating preview" pill at the top of the canvas. In the merged
-                designer it takes the bottom row's place on desktop instead
-                (EmbroideryPreviewDock), so here it's mobile only. */}
+                "Creating preview" pill at the top of the canvas. */}
             <EmbroideryPreviewStatus
               loading={embroideryLoading && !!designBbox}
               durationMs={EMBROIDERY_MIN_LOADER_MS}
-              className={mergedDesigner ? "dlg:hidden" : ""}
             />
             {/* Too large for the hoop frame, or a good size again after that
                 warning — stacked under the editor bar or the loader while
@@ -7480,24 +7538,21 @@ export default function Designer({
               // Shakes only on a refused add to basket — which only happens
               // while a warning shows, so never as the green badge.
               shakeSignal={embroideryShakeSignal}
-              // At the bottom with the others in the merged designer.
-              dockedOnDesktop={mergedDesigner ? ["too-large", "good", "print-switched"] : []}
               onFitToSize={fitDesignToBestSize}
             />
             {/* Thin-line / too-complex warning: arrives in the badge spot with
                 "See solutions" under the message, which opens its
                 options (ThinLineHelpPopover), replacing the green size badge.
-                Shakes when add to basket is refused. In the merged
-                designer it lives at the bottom on desktop instead
-                (EmbroideryIssueDock), so here it's mobile only. */}
+                Shakes when add to basket is refused. */}
             <EmbroiderySizeBadge
               status={designIssueWarning}
               stack={embroideryBadgeStack}
               concealed={thinLineHelpOpen || thinLineHelpPresent}
               shakeSignal={embroideryShakeSignal}
               onSeeOptions={toggleThinLineHelp}
-              dockedOnDesktop={mergedDesigner ? ["thin-line", "too-complex"] : []}
             />
+              </>
+            )}
             <ThinLineHelpPopover
               issue={designIssue ?? "thin-line"}
               open={thinLineHelpOpen}
@@ -7636,7 +7691,9 @@ export default function Designer({
                 text={zoomTipShown ? ZOOM_HINT_TEXT : null}
                 onZoomIn={() => {
                   setZoomHintOpen(false)
-                  stepZoomStop(1)
+                  // A phone zooms by its pinch transform; `zoom` stays 1 there.
+                  if (isDlgMobile) zoomMobileToPrintArea()
+                  else stepZoomStop(1)
                 }}
               />
             )}
@@ -10179,6 +10236,8 @@ export default function Designer({
           setSelectedTextId(null)
           setSelectedGraphicId(null)
         }}
+        hidden={mobileDockHidden}
+        swapDelayMs={SWAP_DELAY_MS}
       />
       <MobileColorDrawer
         open={mobileColorDrawerOpen}
