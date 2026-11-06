@@ -303,7 +303,7 @@ html:has(.handoff) {
 @keyframes ho-art-zoom {
     0%,
     14% {
-        translate: -33px -12px;
+        translate: -14px -14px;
         rotate: -90deg;
     }
     34%,
@@ -312,7 +312,7 @@ html:has(.handoff) {
         rotate: 0deg;
     }
     100% {
-        translate: -33px -12px;
+        translate: -14px -14px;
         rotate: -90deg;
     }
 }

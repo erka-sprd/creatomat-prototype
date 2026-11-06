@@ -40,7 +40,7 @@ function useReducedMotion() {
 
 /* ------------------------------------------------------- canvas-bottom-row */
 
-const PILL = "absolute bottom-3 flex h-5 items-center rounded-full bg-white shadow-xs"
+const PILL = "absolute bottom-3 flex h-7 items-center rounded-full bg-white shadow-xs"
 // The designer's default product, in one of its catalogue colours — and the
 // colour the canvas-row card shows its large shirt in (BigTee).
 const CANVAS_PRODUCT_ID = "812"
@@ -131,19 +131,20 @@ export function CanvasRowArt() {
     <div className={ART_BLEED} aria-hidden="true">
       <BigTee src={front} />
       {/* − and + alone, the gap between them where the percentage sits. */}
-      <div className={`${PILL} ho-art-zoom left-[31px] w-11 justify-between px-1.5`}>
+      {/* 28px pills across the 240px art, 6px apart, the row centred. */}
+      <div className={`${PILL} ho-art-zoom left-[6px] w-14 justify-between px-2`}>
         {[ZOOM_ICON_PATH.minus, ZOOM_ICON_PATH.plus].map(d => (
-          <ZoomGlyph key={d} d={d} className="size-2.5 text-black" />
+          <ZoomGlyph key={d} d={d} className="size-3.5 text-black" />
         ))}
       </div>
-      <div className={`${PILL} left-[81px] w-16 justify-center gap-0.5`}>
+      <div className={`${PILL} left-[68px] w-[84px] justify-center gap-1`}>
         {views.slice(0, STRIP_VIEWS).map(src => (
-          <img key={src} src={src} alt="" draggable={false} className="size-4 object-contain" />
+          <img key={src} src={src} alt="" draggable={false} className="size-[22px] object-contain" />
         ))}
       </div>
-      <div className={`${PILL} ho-art-technique left-[151px] w-[58px] justify-center gap-1 px-2`}>
-        <img src="/icons/icon-droplet.svg" alt="" draggable={false} className="size-2.5 shrink-0" />
-        <span className="text-[9px] leading-none font-semibold text-black">Print</span>
+      <div className={`${PILL} ho-art-technique left-[158px] w-[76px] justify-center gap-1.5 px-2.5`}>
+        <img src="/icons/icon-droplet.svg" alt="" draggable={false} className="size-3.5 shrink-0" />
+        <span className="text-[12px] leading-none font-semibold text-black">Print</span>
       </div>
     </div>
   )
@@ -208,30 +209,32 @@ export function CurveTextArt() {
 export function ContactArt() {
   const [option] = CONTACT_OPTIONS
   return (
-    <div className={ART} aria-hidden="true">
+    // Placed against the frame itself (ArtFrame, relative and clipping), at
+    // its top right — larger than the 240px column would allow.
+    <div className="h-[150px]" aria-hidden="true">
       {/* The pill, as help-menu.tsx draws it: the phone and a chevron that flips. */}
-      <div className="absolute top-3 right-4 flex h-7 items-center gap-1 rounded-full bg-white px-2.5 text-neutral-700 shadow-xs">
-        <Phone className="size-3" strokeWidth={1.8} />
-        <ChevronDown className="ho-art-chev size-2.5" strokeWidth={2} />
+      <div className="absolute top-3 right-3 flex h-10 items-center gap-1.5 rounded-full bg-white px-3.5 text-neutral-700 shadow-xs">
+        <Phone className="size-[18px]" strokeWidth={1.8} />
+        <ChevronDown className="ho-art-chev size-3.5" strokeWidth={2} />
       </div>
-      <div className="ho-art-menu absolute top-[46px] right-4 w-[132px] origin-top-right rounded-[8px] bg-white p-1 shadow-lg">
-        <div className="flex items-start gap-1.5 px-2 py-1.5">
-          <option.Icon className="mt-px size-2.5 shrink-0 text-neutral-700" />
+      <div className="ho-art-menu absolute top-[60px] right-3 w-[200px] origin-top-right rounded-[12px] bg-white p-1.5 shadow-lg">
+        <div className="flex items-start gap-2 px-2.5 py-2">
+          <option.Icon className="mt-px size-3.5 shrink-0 text-neutral-700" />
           <span className="flex flex-col leading-tight">
-            <span className="text-[8px] text-black">{option.label}</span>
-            <span className="text-[6.5px] text-neutral-500">{option.sub}</span>
+            <span className="text-[12px] text-black">{option.label}</span>
+            <span className="text-[10px] text-neutral-500">{option.sub}</span>
           </span>
         </div>
         {/* The bulk-order panel: its purple, its headline, the address field. */}
         <div
-          className="mt-0.5 flex flex-col gap-1 rounded-[5px] px-2 py-2"
+          className="mt-1 flex flex-col gap-1.5 rounded-[8px] px-2.5 py-2.5"
           style={{ backgroundColor: `color-mix(in oklab, ${BULK_PURPLE} 30%, transparent)` }}
         >
-          <span className="font-display text-[7.5px] leading-tight font-medium text-black">
+          <span className="font-display text-[11px] leading-tight font-medium text-black">
             {BULK_ORDER_STRINGS.headline}
           </span>
           <div
-            className="flex items-center justify-between gap-1 rounded-[4px] px-1.5 py-1 text-[6.5px] text-black"
+            className="flex items-center justify-between gap-1.5 rounded-[6px] px-2 py-1.5 text-[10px] text-black"
             style={{ backgroundColor: `color-mix(in oklab, ${BULK_PURPLE} 18%, white)` }}
           >
             <span className="underline">{BULK_EMAIL}</span>
@@ -247,15 +250,21 @@ export function ContactArt() {
 
 // The designer's default product again, in another of its catalogue colours.
 export const ZOOM_PRODUCT_COLOR = "light blue"
+// The thumbnail's shirt: the large one (BigTee's), in khaki — apart from the
+// other cards' mauve and beige (it has no lighter blue).
+const ZOOM_ART_COLOR = "khaki"
 
 /**
  * The zoom dock's handle stepping up its track and back, the product growing
  * and shrinking with it — eased, never snapped.
  */
 export function ZoomArt() {
-  const [front] = useProductViews(CANVAS_PRODUCT_ID, ZOOM_PRODUCT_COLOR)
+  const [front] = useProductViews(BIG_TEE_ID, ZOOM_ART_COLOR)
   return (
-    <div className={ART} aria-hidden="true">
+    // The whole frame, no margin: the shirt and the dock are placed against
+    // the frame itself (ArtFrame, relative and clipping), not the 240px column
+    // — the zoomed shirt fills it edge to edge, the dock sits at its left.
+    <div className="h-[150px]" aria-hidden="true">
       {front && (
         <img
           src={front}
@@ -266,7 +275,7 @@ export function ZoomArt() {
       )}
       {/* The dock, bottom-left as the designer parks it: plus, the wedge
           track with its handle, minus. */}
-      <div className="absolute bottom-3 left-4 flex w-6 flex-col items-center gap-0.5 rounded-full bg-white py-1.5 text-black shadow-xs">
+      <div className="absolute bottom-3 left-3 flex w-6 flex-col items-center gap-0.5 rounded-full bg-white py-1.5 text-black shadow-xs">
         <ZoomGlyph d={ZOOM_ICON_PATH.plus} className="ho-art-zoom-plus size-3 rounded-full" />
         <div className="relative flex h-11 w-2 items-center justify-center">
           <svg viewBox="0 0 7 44" className="absolute h-11 w-[7px]">
@@ -327,32 +336,36 @@ export function PriceCalcArt() {
   const pct = sale?.pct ?? 0
 
   return (
-    <div className={`${ART} flex flex-col items-center justify-center gap-3`} aria-hidden="true">
+    // Centred in the frame itself (ArtFrame, relative), larger than the
+    // 240px column would allow.
+    <div className="h-[150px]" aria-hidden="true">
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
       {/* The quantity field: minus, the number, plus. */}
-      <div className="flex h-8 w-[140px] items-stretch border border-neutral-200 bg-white text-black shadow-xs">
-        <span className="flex w-9 items-center justify-center border-r border-neutral-200">
-          <ZoomGlyph d={ZOOM_ICON_PATH.minus} className="size-3" />
+      <div className="flex h-12 w-[210px] items-stretch border border-neutral-200 bg-white text-black shadow-xs">
+        <span className="flex w-12 items-center justify-center border-r border-neutral-200">
+          <ZoomGlyph d={ZOOM_ICON_PATH.minus} className="size-4" />
         </span>
-        <span
-          key={quantity}
-          className="ho-art-tick flex flex-1 items-center justify-center text-[12px] font-bold tabular-nums"
-        >
-          {quantity}
+        {/* Centred by its box; the tick is on an inner span — .ho-art-tick sets
+            inline-block (unlayered), which would undo the box's flex. */}
+        <span className="flex flex-1 items-center justify-center text-[18px] font-bold tabular-nums">
+          <span key={quantity} className="ho-art-tick">
+            {quantity}
+          </span>
         </span>
-        <span className="flex w-9 items-center justify-center border-l border-neutral-200">
-          <ZoomGlyph d={ZOOM_ICON_PATH.plus} className="size-3" />
+        <span className="flex w-12 items-center justify-center border-l border-neutral-200">
+          <ZoomGlyph d={ZOOM_ICON_PATH.plus} className="size-4" />
         </span>
       </div>
       {/* The tile's price row and caption, as product-tile.tsx draws them —
           or their skeleton while the price updates. */}
-      <div className="h-9 w-[140px] text-[11px] leading-tight text-black">
+      <div className="h-14 w-[210px] text-[16px] leading-tight text-black">
         {!tile ? null : loading ? (
           <>
-            <div className="flex h-4 items-center">
-              <div className="h-2.5 w-16 animate-pulse rounded bg-neutral-200" />
+            <div className="flex h-6 items-center">
+              <div className="h-3.5 w-24 animate-pulse rounded bg-neutral-200" />
             </div>
-            <div className="flex h-3.5 items-center">
-              <div className="h-2 w-28 animate-pulse rounded bg-neutral-200" />
+            <div className="flex h-5 items-center">
+              <div className="h-3 w-40 animate-pulse rounded bg-neutral-200" />
             </div>
           </>
         ) : (
@@ -363,13 +376,14 @@ export function PriceCalcArt() {
                 {pct ? eur(discountedPrice(tile.priceValue, pct)) : tile.price}
               </span>
               {pct > 0 && (
-                <span className="ml-1.5 font-medium text-neutral-700 line-through">{tile.price}</span>
+                <span className="ml-2 font-medium text-neutral-700 line-through">{tile.price}</span>
               )}
             </p>
-            {sale && <p className="m-0 text-[8px] text-neutral-600">{sale.caption}</p>}
+            {sale && <p className="m-0 mt-0.5 text-[12px] text-neutral-600">{sale.caption}</p>}
           </>
         )}
       </div>
+    </div>
     </div>
   )
 }
@@ -403,7 +417,12 @@ export function EmbroideryArt() {
       <BigTee src={front}>
       {/* The hoop frame on the chest, the design pinned to its top-left corner. */}
       <div className="absolute top-[24%] left-[39%] size-[22%]">
-        <span className="hoop-guide-stripes absolute inset-0 border border-[#16A34A] opacity-60" />
+        {/* The hoop guide shows the size that fits only while the design is
+            past it — gone once it fits, as in the designer. */}
+        <span
+          className="hoop-guide-stripes absolute inset-0 border border-[#16A34A] transition-opacity duration-500"
+          style={{ opacity: fits ? 0 : 0.6 }}
+        />
         <div
           className="absolute inset-0 origin-top-left transition-[scale] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
           style={{ scale: fits ? 1 : EMBROIDERY_LARGE_SCALE }}
@@ -418,15 +437,13 @@ export function EmbroideryArt() {
             className="absolute inset-0 transition-[box-shadow] duration-300"
             style={{ boxShadow: `0 0 0 1px ${tone}` }}
           />
-          {/* The selection's corner handles, in the frame's tone — undoing the
-              design's scale, so they keep their size as it grows. */}
-          {(["-top-1 -left-1", "-top-1 -right-1", "-bottom-1 -left-1", "-bottom-1 -right-1"] as const).map(pos => (
-            <span
-              key={pos}
-              className={`absolute ${pos} size-2 rounded-full border-[1.5px] bg-white transition-[border-color,scale] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]`}
-              style={{ borderColor: tone, scale: fits ? 1 : 1 / EMBROIDERY_LARGE_SCALE }}
-            />
-          ))}
+          {/* The corner handle being dragged — the only one a resize keeps, as
+              in the designer — in the frame's tone, undoing the design's
+              scale so it keeps its size as the design grows. */}
+          <span
+            className="absolute -right-1 -bottom-1 size-2 rounded-full border-[1.5px] bg-white transition-[border-color,scale] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            style={{ borderColor: tone, scale: fits ? 1 : 1 / EMBROIDERY_LARGE_SCALE }}
+          />
         </div>
       </div>
       </BigTee>

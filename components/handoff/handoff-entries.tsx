@@ -234,7 +234,7 @@ export function ArtFrame({ entry, className = "" }: { entry: Entry; className?: 
     <div
       // Clips a picture that runs into its bottom padding (the embroidery
       // shirt, cut off by the frame's own edge).
-      className={`overflow-hidden rounded-[14px] ${className}`}
+      className={`relative overflow-hidden rounded-[14px] ${className}`}
       style={
         ART_GROUND !== "wash"
           ? { background: ART_GROUNDS[ART_GROUND] }
