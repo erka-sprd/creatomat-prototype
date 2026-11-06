@@ -10,7 +10,7 @@
 import { EmbroideryMaxSizeBadge, SizeBadgePill } from "@/components/embroidery-label"
 import { useCanvasProduct } from "@/components/handoff/embroidery-canvas"
 import { EmbroideryArt } from "@/components/handoff/handoff-card-art"
-import { AiScene, CheckScene, FitScene, IssueScene, TextScene } from "@/components/handoff/embroidery-scripts"
+import { AiScene, CheckScene, FitScene, TextScene } from "@/components/handoff/embroidery-scripts"
 import {
   BuildPage,
   EndLinks,
@@ -140,14 +140,6 @@ function Beats({ product }: { product: ReturnType<typeof useCanvasProduct> }): B
       reply: "Six codes. The size ones get resized; the other three share one “too complex” dialog.",
       render: () => <ServiceMap />,
       brings: "Seeing both sides showed where the warnings needed polish — on real responses, not guesses.",
-    },
-    {
-      id: "rules",
-      heading: "Each warning says exactly what's wrong",
-      prompt: "Thin lines: name it, and offer a way out.",
-      reply: "“Design has too thin lines” — with See solutions, right there.",
-      render: () => <IssueScene product={product} showSteps={false} />,
-      brings: "No “can't be built” surprises later.",
     },
     {
       id: "fit",
