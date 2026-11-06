@@ -19,6 +19,7 @@ import {
   HOOP_GUIDE_BLUR_TRANSITION,
   HOOP_GUIDE_CONTENT_BLUR_PX,
   HOOP_RESIZE_FIT_TOLERANCE,
+  LIGHT_PRODUCT_IMAGE_SHADOW,
   MAX_ZOOM,
   SELECTION_FRAME_TRANSITION,
   SELECTION_TONE,
@@ -60,7 +61,7 @@ import { simplifyImage, thickenLines } from "@/lib/simplify-image"
 const PRODUCT_PX = 720
 /** Where the print area's centre sits, px from the stage's top. */
 const FOCUS_Y = 200
-const STAGE_HEIGHT_PX = 480
+const STAGE_HEIGHT_PX = 420
 const HANDLE_POS: Record<Corner, string> = {
   nw: "-top-[7.5px] -left-[7.5px]",
   ne: "-top-[7.5px] -right-[7.5px]",
@@ -484,7 +485,7 @@ function StepList({ steps, active }: { steps: Step[]; active: number }) {
           // The lit step: the lightest purple, black text, and a dashed
           // outline two steps darker marching round it (.ho-march) — an SVG,
           // so the dashes follow the rounded corners and take no room.
-          className={`relative grid grid-cols-[22px_minmax(0,1fr)_minmax(0,1.25fr)] items-start gap-3 rounded-[10px] px-3 py-2 text-[13.5px] leading-snug transition-[color,background-color,filter,opacity] duration-300 ${
+          className={`relative grid grid-cols-[22px_minmax(0,1fr)_auto_minmax(0,1.25fr)] items-start gap-3 rounded-[10px] px-3 py-2 text-[13.5px] leading-snug transition-[color,background-color,filter,opacity] duration-300 ${
             i === active ? "bg-purple-50 text-black" : "text-[var(--ho-muted)] opacity-70 blur-[1px]"
           }`}
         >
@@ -511,18 +512,9 @@ function StepList({ steps, active }: { steps: Step[]; active: number }) {
           >
             {i + 1}
           </span>
-          <span>
-            <b className="mr-1 font-[family-name:var(--ho-mono)] text-[11px] font-normal tracking-[0.08em] uppercase">
-              If
-            </b>
-            {s.when}
-          </span>
-          <span>
-            <b className="mr-1 font-[family-name:var(--ho-mono)] text-[11px] font-normal tracking-[0.08em] uppercase">
-              Then
-            </b>
-            {s.then}
-          </span>
+          <span className="first-letter:uppercase">{s.when}</span>
+          <span aria-hidden="true" className="px-4">→</span>
+          <span className="first-letter:uppercase">{s.then}</span>
         </li>
       ))}
     </ol>
@@ -733,7 +725,7 @@ export function Scene({
                     src={product.image}
                     alt=""
                     className="object-contain"
-                    style={{ width: size, height: size }}
+                    style={{ width: size, height: size, filter: product.light ? LIGHT_PRODUCT_IMAGE_SHADOW : undefined }}
                   />
                 ),
               },

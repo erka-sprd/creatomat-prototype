@@ -460,7 +460,7 @@ export default function Embroidery() {
         n={12}
         kicker="Design issues"
         title="Thin lines or too complex — named, and nothing to resize"
-        line="Found by the check; the design keeps its look, its handles step back"
+        line="Shown on the customer's own upload: the check flags it, it keeps its look, its handles step back"
       >
         <IssueScene product={product} />
       </Rule>
@@ -470,7 +470,7 @@ export default function Embroidery() {
         n={13}
         kicker="Fix / Simplify with AI"
         title="Fix with AI — runs at once, reviewed on the canvas"
-        line="Thin lines are thickened, a too complex design simplified; nothing is kept until accepted"
+        line="The AI reworks the customer's own file — no new design. Kept only once accepted"
       >
         <AiScene product={product} />
       </Rule>

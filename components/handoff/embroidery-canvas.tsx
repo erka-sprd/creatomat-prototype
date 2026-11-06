@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { getPrintAreaOverlay, getProductType } from "product-catalog-client"
-import { HOOP_ARROW_MIN_RATIO_GAP } from "@/components/designer"
+import { HOOP_ARROW_MIN_RATIO_GAP, isLightProductColor } from "@/components/designer"
 import { CursorHand } from "@/components/handoff/rail-replica"
 import KitSwitch from "@/components/kit-switch"
 import { loadCatalog } from "@/lib/catalog"
@@ -29,6 +29,8 @@ export type CanvasProduct = {
   area: { left: number; top: number; width: number; height: number }
   /** The hoop frame's share of the print area's width and height. */
   hoop: number
+  /** White / near-white: its image gets the designer's light-product shadow. */
+  light: boolean
 }
 
 /** The designer's default product, its front print area and its hoop frame; null until loaded. */
@@ -47,7 +49,8 @@ export function useCanvasProduct(id = TSHIRT_ID): CanvasProduct | null {
         const image = appearance?.views.find(v => v.id === view.id)?.image
         const area = getPrintAreaOverlay(p, view.id)
         const hoop = embroideryHoopFrameFraction(p.name)
-        if (live && image && area && hoop !== null) setProduct({ image, area, hoop })
+        const light = isLightProductColor(appearance?.color)
+        if (live && image && area && hoop !== null) setProduct({ image, area, hoop, light })
       })
       // A document should degrade, not break: the demos just stay empty.
       .catch(() => {})
