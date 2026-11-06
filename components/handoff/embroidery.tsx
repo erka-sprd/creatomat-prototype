@@ -238,18 +238,8 @@ export default function Embroidery() {
         <Brief>
           <BriefCard tone="problem" label="Problem">
             <ul>
-              <li>
-                Users learn a design can&rsquo;t be embroidered too late — at add to basket, after
-                they have finished designing.
-              </li>
-              <li>
-                The warnings say something is wrong, not what: not how large the design may be, nor
-                which part of it can&rsquo;t be stitched.
-              </li>
-              <li>
-                There is little they can do about it. A warning with no way forward leaves them at a
-                dead end, and many leave the designer there.
-              </li>
+              <li>Users find out too late that a design can&rsquo;t be embroidered — at add to basket.</li>
+              <li>The warnings don&rsquo;t help users fix the issue. They get stuck at a dead end.</li>
             </ul>
           </BriefCard>
           <BriefCard tone="hypothesis" label="Hypothesis">
@@ -268,11 +258,6 @@ export default function Embroidery() {
             Will follow.
           </BriefCard>
         </Brief>
-        <Note>
-          Every section below is one rule: its steps as &ldquo;If → Then&rdquo;, played on the
-          canvas with the step on screen lit. Desktop, single designs and texts alike unless it says
-          several. On mobile the dock is the bottom row: the messages swap with it the same way.
-        </Note>
       </Section>
 
       <Rule

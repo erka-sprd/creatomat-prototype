@@ -21,6 +21,8 @@ import {
   Scene,
   all,
   design,
+  PRODUCT_PX,
+  TYPED_TEXT_H,
   useTypedText,
   type SceneDesign,
   type SceneState,
@@ -153,20 +155,32 @@ const TEXT_COLOR = "#C084FC"
 /** One letter per beat while typing. */
 const TYPE_MS = 220
 
-// One design per typing frame (useTypedText), all in the same spot: each beat
-// shows the next and hides the last. The last frame is the text without its
-// caret, deselected and checked.
-const textDesign = (src: string, i: number): SceneDesign => ({
-  id: `t${i}`,
-  src,
-  cx: 0.5,
-  cy: 0.36,
-  size: 0.9,
-  gone: true,
-  cut: true,
-  selected: i < TEXT_WORD.length + 1,
-})
-const textTimeline = (frames: string[]) => {
+// One design per typing frame (useTypedText): each beat shows the next and
+// hides the last. The last frame is the text without its caret, deselected
+// and checked. Frames differ in width, so each gets its own size and centre:
+// the letters keep one scale and the box's left edge holds, growing rightward.
+const TEXT_SIZE = 0.9
+const TEXT_CENTRE = { cx: 0.5, cy: 0.36 }
+const textDesigns = (frames: { src: string; w: number }[], product: CanvasProduct): SceneDesign[] => {
+  const areaW = (PRODUCT_PX * product.area.width) / 100
+  const areaH = (PRODUCT_PX * product.area.height) / 100
+  // designGeo's fit width for an image `w` wide (TYPED_TEXT_H tall).
+  const fitW = (w: number) => Math.min(product.hoop * areaW, (product.hoop * areaH * w) / TYPED_TEXT_H)
+  const full = frames[frames.length - 1].w
+  const scale = (fitW(full) * TEXT_SIZE) / full // px on screen per image px
+  const left = TEXT_CENTRE.cx * areaW - (full * scale) / 2
+  return frames.map(({ src, w }, i) => ({
+    id: `t${i}`,
+    src,
+    cx: (left + (w * scale) / 2) / areaW,
+    cy: TEXT_CENTRE.cy,
+    size: (w * scale) / fitW(w),
+    gone: true,
+    cut: true,
+    selected: i < frames.length - 1,
+  }))
+}
+const textTimeline = (frames: unknown[]) => {
   const last = frames.length - 1
   const typing: [number, Update][] = frames
     .slice(1, last)
@@ -190,8 +204,11 @@ const textTimeline = (frames: string[]) => {
 export function TextScene({ product, showSteps }: SceneProps) {
   const frames = useTypedText(TEXT_WORD, TEXT_COLOR)
   const script = useMemo(() => frames && textTimeline(frames), [frames])
-  const initial = useMemo(() => ({ designs: frames?.map(textDesign) ?? [] }), [frames])
-  if (!frames || !script) return null
+  const initial = useMemo(
+    () => ({ designs: frames && product ? textDesigns(frames, product) : [] }),
+    [frames, product]
+  )
+  if (!frames || !script || !product) return null
   return (
     <Scene product={product} steps={TEXT_STEPS} initial={initial} showSteps={showSteps} {...script} />
   )
