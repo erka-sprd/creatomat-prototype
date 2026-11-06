@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * /ux-new-way-of-work-7 — embroidery, built together: the simplest rules of
+ * /ux-new-way-of-work — embroidery, built together: the simplest rules of
  * the handoff, each as a short prompt, the scene that shows it (the handoff's
  * own scenes, without their step lists) and, on the last ↓, what that step
  * brings the company. The heading says the point; the prompt just asks.

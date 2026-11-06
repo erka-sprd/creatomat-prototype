@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * The visuals of /ux-new-way-of-work-7 that aren't handoff scenes: the
+ * The visuals of /ux-new-way-of-work that aren't handoff scenes: the
  * volume-discount track, the QA list crossed out, the variants switch and
  * the one-design-system diagram. Real pieces wherever possible (the rail's
  * discount track, the kit's button); the QA list and the two-libraries
