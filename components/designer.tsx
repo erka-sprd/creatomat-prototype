@@ -2970,11 +2970,11 @@ export default function Designer({
   // At rest, a lone object measured too large (e.g. just switched to
   // embroidery) shows the guide too, before any resize; a resize's own guide
   // takes over from it.
-  // Never for a design with a design issue (thin lines, too complex): its
-  // size isn't judged, so there's no size to guide it to.
+  // Not while a design issue's warning is up (thin lines, too complex): the
+  // size was judged first and passed, and the design can't be resized then.
   const activeHoopGuide = () => resizeHoopGuide ?? restHoopGuide
   const hoopGuideShown = (id: string) => {
-    if (hasThinLineDesign) return false
+    if (thinLineWarning) return false
     const guide = activeHoopGuide()
     return guide?.id === id && guide.ratio < 1 - HOOP_RESIZE_FIT_TOLERANCE
   }
@@ -3867,13 +3867,13 @@ export default function Designer({
   const hasThinLineDesign = designIssue !== null
 
   // The design is wider or taller than the product's hoop frame.
-  const embroideryTooLarge = embroideryScale < 1 && !hasThinLineDesign
+  const embroideryTooLarge = embroideryScale < 1
 
   // While resizing with the hoop guide up, whether the object fits the hoop
   // frame right now (the guide is at least the object's size). Live, unlike
   // embroideryTooLarge, which is measured on deselect. null when no guide.
   // After release it keeps the final verdict until the design is measured again.
-  const resizeFitsHoop = hasThinLineDesign
+  const resizeFitsHoop = thinLineWarning
     ? null
     : resizeHoopGuide !== null
       ? resizeHoopGuide.ratio >= 1 - HOOP_RESIZE_FIT_TOLERANCE
@@ -4380,7 +4380,7 @@ export default function Designer({
   // The live group verdict — only once the size is in question: the design was
   // too large when last measured, or the group is too large now. null otherwise,
   // leaving the measured verdict (embroideryTooLarge) in charge.
-  const liveGroupTooLarge = hasThinLineDesign
+  const liveGroupTooLarge = thinLineWarning
     ? null
     : liveGroupBox
     ? embroideryHoopFitScale(
@@ -4410,7 +4410,7 @@ export default function Designer({
   // "Creating preview" while the stitched render is made, and in the spot itself
   // once the preview is up. During a guided resize it follows the object live,
   // and with several objects the group (groupTooLarge).
-  const embroiderySizeStatus: EmbroiderySizeStatus | null = hasThinLineDesign
+  const embroiderySizeStatus: EmbroiderySizeStatus | null = thinLineWarning
     ? null
     : resizeFitsHoop !== null
       ? resizeFitsHoop
