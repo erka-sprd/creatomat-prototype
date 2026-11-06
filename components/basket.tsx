@@ -6,6 +6,7 @@ import QuantityStepper from "@/components/quantity-stepper"
 import { discountedPrice, volumeDiscountPercentage } from "@/lib/volume-discount"
 import { FREE_SHIPPING_THRESHOLD } from "@/lib/shipping"
 import { CurvedText } from "@/components/ui/text-path/CurvedText"
+import { EmbroideryIcon } from "@/components/embroidery-label"
 import { curvedLayout } from "@/lib/text-path"
 
 export type BasketDesignText = {
@@ -58,6 +59,8 @@ export type BasketItem = {
   qty: number
   price: number // unit price
   design?: BasketDesign
+  /** How the design is applied; "embroidery" gets a badge on its row. Standard print when unset. */
+  printTechnique?: "standard" | "embroidery"
 }
 
 type BasketProps = {
@@ -81,13 +84,14 @@ type BasketGroup = {
   items: BasketItem[]
 }
 
-/** Same product, same colour, same design, same price = same row. */
+/** Same product, same colour, same design, same technique, same price = same row. */
 const groupKey = (item: BasketItem) =>
   [
     item.productName,
     item.appearanceName,
     item.image,
     item.price,
+    item.printTechnique ?? "standard",
     item.design ? JSON.stringify(item.design) : "no-design",
   ].join("|")
 
@@ -368,6 +372,15 @@ function BasketItemRow({
         </div>
         <div className="text-sm text-black mt-1">{item.productName}</div>
         <div className="text-sm text-neutral-500 capitalize">{item.appearanceName}</div>
+        {/* The component kit's white product-card badge (rounded-sm, px-2 py-1,
+            text-xs md:text-sm, bg-white text-black), given a neutral-100 border
+            so it reads as a badge on the basket's white ground. */}
+        {item.printTechnique === "embroidery" && (
+          <span className="mt-2 inline-flex items-center gap-1 rounded-sm border border-neutral-100 bg-white px-2 py-1 text-xs text-black md:text-sm">
+            <EmbroideryIcon />
+            Embroidery
+          </span>
+        )}
 
         {group.items.map(sizeItem => (
           <SizeQuantityRow

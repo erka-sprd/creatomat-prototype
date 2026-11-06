@@ -5547,6 +5547,10 @@ export default function Designer({
           qty,
           price: unitPrice,
           design: designSnapshot,
+          // The technique the product was actually configured with — a product
+          // that can't be embroidered is standard print whatever the switcher
+          // remembers, and the DTF variant only borrows the embroidery flow.
+          printTechnique: dtf ? "standard" : effectivePrintTechnique,
         }))
       setBasketItems(prev => mergeIntoBasket(prev, newItems))
       setSizeQuantities({})
