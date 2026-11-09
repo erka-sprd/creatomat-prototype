@@ -199,6 +199,32 @@ export function StartOver({ onClick }: { onClick: () => void }) {
 }
 
 /**
+ * Under a scene: `leading` on the left (the Desktop / Mobile switch, where a
+ * rule has both), Auto play and Start over on the right — or, alone, centred.
+ */
+export function SceneControls({
+  leading,
+  autoPlay,
+  onAutoPlay,
+  onStartOver,
+}: {
+  leading?: React.ReactNode
+  autoPlay: boolean
+  onAutoPlay: (on: boolean) => void
+  onStartOver: () => void
+}) {
+  return (
+    <div className={`flex items-stretch gap-2 ${leading ? "justify-between" : "justify-center"}`}>
+      {leading}
+      <div className="flex items-stretch gap-2">
+        <AutoPlay on={autoPlay} onChange={onAutoPlay} />
+        <StartOver onClick={onStartOver} />
+      </div>
+    </div>
+  )
+}
+
+/**
  * Runs `beats` on a loop while `on`; each beat's `at` is ms from the top.
  * A new `restart` value starts it over from the top.
  */

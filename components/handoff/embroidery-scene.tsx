@@ -43,8 +43,7 @@ import {
 import { EmbroideryPreview } from "@/components/embroidery-preview"
 import { EmbroiderySolutions } from "@/components/embroidery-solutions"
 import {
-  AutoPlay,
-  StartOver,
+  SceneControls,
   CORNERS,
   DemoCursor,
   HoopGuide,
@@ -53,7 +52,9 @@ import {
   type CanvasProduct,
   type Corner,
 } from "@/components/handoff/embroidery-canvas"
+import { MobileChrome } from "@/components/handoff/mobile-chrome"
 import { StepList } from "@/components/handoff/step-list"
+import SiteHeader from "@/components/site-header"
 import { useTweenedSizes } from "@/components/handoff/tweened-sizes"
 import { KitButton } from "@/components/kit-button"
 import { MergedBottomRow } from "@/components/merged-bottom-row"
@@ -65,6 +66,33 @@ export const PRODUCT_PX = 720
 /** Where the print area's centre sits, px from the stage's top. */
 const FOCUS_Y = 200
 export const STAGE_HEIGHT_PX = 420
+// The phone screen of a scene's mobile version: the site's promo bar and
+// header on top (SiteHeader, 32 + 56px), the canvas below. As the mobile
+// designer lays it out, the shirt sits between the canvas's insets (60px for
+// its action header, 150px for the dots and dock), as wide as fits.
+const MOBILE_SCREEN_H = 667
+const MOBILE_HEADER_H = 88
+const MOBILE_STAGE_H = MOBILE_SCREEN_H - MOBILE_HEADER_H
+const MOBILE_PRODUCT_TOP = 60
+const MOBILE_PRODUCT_INSETS = 210
+
+/** How a scene is shown: on a phone, and with whose controls. */
+export type SceneDevice = {
+  /** Its mobile version: a phone screen with the mobile dock and drawer. */
+  mobile?: boolean
+  /** Left of Auto play / Start over — the Desktop / Mobile switch. */
+  controlsLeading?: React.ReactNode
+  /** Auto play and Start over, driven from outside (the mobile frame's page). */
+  autoPlay?: boolean
+  restartSignal?: number
+  hideControls?: boolean
+}
+
+/**
+ * A click on the empty canvas, to let a design go. Scripts aim here; on a
+ * phone the scene taps the dock's Done pill instead.
+ */
+export const OUTSIDE = { x: 0.14, y: 0.3 }
 const HANDLE_POS: Record<Corner, string> = {
   nw: "-top-[7.5px] -left-[7.5px]",
   ne: "-top-[7.5px] -right-[7.5px]",
@@ -204,38 +232,6 @@ export const all =
   (s: SceneState): SceneState =>
     updates.reduce<SceneState>((acc, u) => (typeof u === "function" ? u(acc) : { ...acc, ...u }), s)
 
-/**
- * A text being typed, as images — placed, sized and stitched like a graphic:
- * one per letter typed (with the caret), then the whole text without it.
- * Each only as wide as what's typed so far, on one height, so its box grows
- * with the text as a text box does (the scene keeps the letters' scale).
- */
-export const TYPED_TEXT_H = 200
-export function useTypedText(text: string, color: string) {
-  const [frames, setFrames] = useState<{ src: string; w: number }[] | null>(null)
-  useEffect(() => {
-    const ctx = document.createElement("canvas").getContext("2d")
-    if (!ctx) return
-    const font = "800 160px system-ui, sans-serif"
-    const draw = (typed: string, caret: boolean) => {
-      ctx.font = font
-      const w = Math.ceil(ctx.measureText(typed).width) + (caret ? 34 : 16)
-      const canvas = ctx.canvas
-      canvas.width = w
-      canvas.height = TYPED_TEXT_H
-      ctx.font = font
-      ctx.fillStyle = color
-      ctx.textBaseline = "middle"
-      ctx.fillText(typed, 8, 104)
-      if (caret) ctx.fillRect(14 + ctx.measureText(typed).width, 30, 8, 148)
-      return { src: canvas.toDataURL("image/png"), w }
-    }
-    const typing = Array.from({ length: text.length + 1 }, (_, n) => draw(text.slice(0, n), true))
-    setFrames([...typing, draw(text, false)])
-  }, [text, color])
-  return frames
-}
-
 /** The AI's result for `src` (Fix with AI thickens, Simplify simplifies), once made. */
 function useAiResults(designs: SceneDesign[]) {
   const [results, setResults] = useState<Record<string, string>>({})
@@ -276,7 +272,13 @@ export function useStageWidth(ref: React.RefObject<HTMLDivElement | null>) {
 }
 
 /** The print area on the stage, px. */
-export function areaGeo(product: CanvasProduct, stageW: number) {
+export function areaGeo(
+  product: CanvasProduct,
+  stageW: number,
+  layout: { productPx: number; focusY: number } = { productPx: PRODUCT_PX, focusY: FOCUS_Y }
+) {
+  const PRODUCT_PX = layout.productPx
+  const FOCUS_Y = layout.focusY
   const { area } = product
   // Centred across like the designer's canvas (the print area needn't sit
   // mid-shirt); placed down so the print area sits at FOCUS_Y.
@@ -285,6 +287,7 @@ export function areaGeo(product: CanvasProduct, stageW: number) {
   return {
     productLeft,
     productTop,
+    productPx: PRODUCT_PX,
     left: productLeft + (PRODUCT_PX * area.left) / 100,
     top: productTop + (PRODUCT_PX * area.top) / 100,
     width: (PRODUCT_PX * area.width) / 100,
@@ -486,6 +489,7 @@ export function Scene({
   beats,
   cycleMs,
   showSteps = true,
+  device = {},
 }: {
   product: CanvasProduct | null
   steps: Step[]
@@ -494,12 +498,18 @@ export function Scene({
   cycleMs: number
   /** Off where the canvas alone is the point (the way-of-work page). */
   showSteps?: boolean
+  device?: SceneDevice
 }) {
+  const { mobile = false } = device
   const start = useMemo(() => ({ ...BASE_STATE, ...initial }), [initial])
   const [state, setState] = useState<SceneState>(start)
   const [instant, setInstant] = useState(true)
-  const [autoPlay, setAutoPlay] = useState(true)
-  const [restart, setRestart] = useState(0)
+  const [ownAutoPlay, setAutoPlay] = useState(true)
+  const [ownRestart, setRestart] = useState(0)
+  // Driven from outside when given (the mobile frame, from its page's bar).
+  const autoPlay = device.autoPlay ?? ownAutoPlay
+  const restart = ownRestart + (device.restartSignal ?? 0)
+  const stageH = mobile ? MOBILE_STAGE_H : STAGE_HEIGHT_PX
   const boxRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const inView = useInView(boxRef)
@@ -530,7 +540,19 @@ export function Scene({
     restart
   )
 
-  const area = product && stageW ? areaGeo(product, stageW) : null
+  // A phone fits the shirt to its width, just under the header (as the mobile
+  // designer does); desktop keeps it large, the print area at FOCUS_Y.
+  const layout =
+    mobile && product
+      ? (() => {
+          const productPx = Math.min(stageW, stageH - MOBILE_PRODUCT_INSETS)
+          return {
+            productPx,
+            focusY: MOBILE_PRODUCT_TOP + (productPx * (product.area.top + product.area.height / 2)) / 100,
+          }
+        })()
+      : undefined
+  const area = product && stageW ? areaGeo(product, stageW, layout) : null
   const geoOf = (d: SceneDesign) =>
     product && area && aspects[d.src] ? designGeo(d, aspects[d.src], product, area) : null
 
@@ -541,16 +563,20 @@ export function Scene({
   const aimKey = JSON.stringify(aim)
   useLayoutEffect(() => {
     const stage = stageRef.current
-    if (!stage || !aim || ("design" in aim) || ("x" in aim)) return
+    const tapDone = mobile && aim === OUTSIDE
+    if (!stage || !aim || ("design" in aim) || ("x" in aim && !tapDone)) return
     const s = stage.getBoundingClientRect()
-    const target =
-      "label" in aim
+    const target = tapDone
+      ? [...stage.querySelectorAll<HTMLElement>("button")].find(b => b.textContent?.trim() === "Done")
+      : "label" in aim
         ? stage.querySelector<HTMLElement>(`[aria-label="${aim.label}"]`)
         : "demo" in aim
           ? stage.querySelector<HTMLElement>(`[data-demo="${aim.demo}"]`)
-          : [...stage.querySelectorAll<HTMLElement>("button")].find(
-              b => b.textContent?.trim() === aim.button
-            )
+          : "button" in aim
+            ? [...stage.querySelectorAll<HTMLElement>("button")].find(
+                b => b.textContent?.trim() === aim.button
+              )
+            : null
     if (!target) return
     const r = target.getBoundingClientRect()
     setMeasured({ x: r.left - s.left + r.width / 2, y: r.top - s.top + r.height / 2 })
@@ -558,7 +584,9 @@ export function Scene({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aimKey])
   let cursorAt: { x: number; y: number } | null = null
-  if (aim && "x" in aim) cursorAt = { x: aim.x * stageW, y: aim.y * STAGE_HEIGHT_PX }
+  // A phone lets go by its Done pill (measured), not a tap beside the design.
+  if (mobile && aim === OUTSIDE) cursorAt = measured
+  else if (aim && "x" in aim) cursorAt = { x: aim.x * stageW, y: aim.y * stageH }
   else if (aim && "design" in aim && area) {
     const d = designs.find(x => x.id === aim.design)
     const g = d && geoOf(d)
@@ -588,17 +616,31 @@ export function Scene({
   return (
     <div ref={boxRef} className="flex flex-col gap-3">
       {showSteps && <StepList steps={steps} active={state.step} />}
+      <div className={mobile ? "mx-auto rounded-[44px] bg-neutral-900 p-2.5 shadow-xl" : "contents"}>
+      <div
+        className={
+          mobile ? "w-[375px] overflow-hidden rounded-[34px] bg-white [&_*]:pointer-events-none" : "contents"
+        }
+      >
+      {mobile && <SiteHeader />}
       <div
         ref={stageRef}
-        className="relative w-full min-w-[560px] overflow-hidden rounded-[12px] bg-[#F4F4F4] [&_*]:pointer-events-none"
-        style={{ height: STAGE_HEIGHT_PX }}
+        className={`relative overflow-hidden [&_*]:pointer-events-none ${
+          mobile
+            ? // The canvas, under the header. The transform makes it the
+              // containing block of the dock's position: fixed, as on a phone;
+              // the container lets the tip size itself by its width (cqw).
+              "w-full bg-[var(--sprd-neutral-200)] [container-type:inline-size] [transform:translateZ(0)]"
+            : "w-full min-w-[560px] rounded-[12px] bg-[#F4F4F4]"
+        }`}
+        style={{ height: stageH }}
       >
         {product && area && (
           <div
             className="absolute inset-0"
             style={{
               transform: `scale(${state.zoom})`,
-              transformOrigin: `${stageW / 2}px ${FOCUS_Y}px`,
+              transformOrigin: `${stageW / 2}px ${layout ? area.top + area.height / 2 : FOCUS_Y}px`,
               transition: instant ? "none" : "transform 500ms cubic-bezier(0.4,0,0.2,1)",
             }}
           >
@@ -612,8 +654,8 @@ export function Scene({
               style={{
                 left: area.productLeft,
                 top: area.productTop,
-                width: PRODUCT_PX,
-                height: PRODUCT_PX,
+                width: area.productPx,
+                height: area.productPx,
               }}
             />
             <div
@@ -650,7 +692,7 @@ export function Scene({
             </div>
           </div>
         )}
-        {product && (
+        {product && !mobile && (
           <MergedBottomRow
             zoom={state.zoom}
             maxZoom={MAX_ZOOM}
@@ -693,7 +735,16 @@ export function Scene({
         <EmbroideryPreviewDock loading={state.loader} durationMs={EMBROIDERY_MIN_LOADER_MS} />
         <EmbroiderySimplifyDock issue={state.ai} />
         <EmbroideryZoomTipDock text={state.zoomTip ? ZOOM_HINT_TEXT : null} onZoomIn={() => {}} />
-        {state.solutions && (
+        {mobile && (
+          <MobileChrome
+            state={state}
+            issueSrc={issueDesign?.src ?? null}
+            printSavingLabel={PRINT_SAVING_LABEL}
+            tap={cursorAt}
+            moveMs={instant || aimResizing ? 0 : state.cursorMs}
+          />
+        )}
+        {state.solutions && !mobile && (
           // ThinLineHelpPopover's panel, docked over the warning — a plain
           // panel here, so the drawn cursor sits above it.
           // At the bottom, the same 16px from the sides and the bottom; as tall
@@ -717,24 +768,30 @@ export function Scene({
             className="canvas-alert-border pointer-events-none absolute inset-0 rounded-[inherit]"
           />
         )}
-        <DemoCursor
-          x={cursorAt?.x ?? stageW / 2}
-          y={cursorAt?.y ?? STAGE_HEIGHT_PX}
-          shown={!!cursorAt}
-          pressed={state.pressed}
-          // On a corner being resized it rides the live size, frame by frame.
-          moveMs={instant || aimResizing ? 0 : state.cursorMs}
-        />
+        {!mobile && (
+          <DemoCursor
+            x={cursorAt?.x ?? stageW / 2}
+            y={cursorAt?.y ?? stageH}
+            shown={!!cursorAt}
+            pressed={state.pressed}
+            // On a corner being resized it rides the live size, frame by frame.
+            moveMs={instant || aimResizing ? 0 : state.cursorMs}
+          />
+        )}
       </div>
-      <div className="flex items-stretch justify-center gap-2">
-        <AutoPlay on={autoPlay} onChange={setAutoPlay} />
-        <StartOver
-          onClick={() => {
+      </div>
+      </div>
+      {!device.hideControls && (
+        <SceneControls
+          leading={device.controlsLeading}
+          autoPlay={autoPlay}
+          onAutoPlay={setAutoPlay}
+          onStartOver={() => {
             setAutoPlay(true)
             setRestart(n => n + 1)
           }}
         />
-      </div>
+      )}
     </div>
   )
 }

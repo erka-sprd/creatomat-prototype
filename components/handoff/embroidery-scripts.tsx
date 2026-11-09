@@ -18,16 +18,17 @@ import {
 } from "@/components/designer"
 import type { CanvasProduct } from "@/components/handoff/embroidery-canvas"
 import {
+  OUTSIDE,
   Scene,
   all,
   design,
   PRODUCT_PX,
-  TYPED_TEXT_H,
-  useTypedText,
   type SceneDesign,
+  type SceneDevice,
   type SceneState,
   type Step,
 } from "@/components/handoff/embroidery-scene"
+import { TYPED_TEXT_H, useTypedText } from "@/components/handoff/typed-text"
 
 const MUSHROOM = "/img/graphics/graphics5.png"
 const ROSE = "/img/graphics/graphics11.png"
@@ -39,7 +40,6 @@ const END_HOLD_MS = 2600
 const PRESS_MS = 150
 const POINT_MS = 700
 /** Somewhere on the empty canvas, to click away from a design. */
-const OUTSIDE = { x: 0.14, y: 0.3 }
 
 type Update = Partial<SceneState> | ((s: SceneState) => SceneState)
 
@@ -86,7 +86,9 @@ const TOO_LARGE: Partial<SceneState> = { issue: "too-large", fit: true, row: fal
 // corner handle is held, as in any resize.
 const selectedTooLarge: Partial<SceneDesign> = { selected: true, tone: "orange" }
 
-type SceneProps = { product: CanvasProduct | null; showSteps?: boolean }
+// `device`: the scene's mobile version, or its controls driven from outside
+// (the handoff's Desktop / Mobile switch, the mobile frame's page).
+type SceneProps = { product: CanvasProduct | null; showSteps?: boolean; device?: SceneDevice }
 
 /* ---------------------------------------------------------- §1 the check */
 
@@ -133,9 +135,9 @@ const ZOOM_TIP = timeline(
   ...click({ button: "Zoom in" }, { step: 1, zoomTip: false, zoom: ZOOM_STOPS[1], row: true, cursor: null }, 2200)
 )
 
-export function ZoomTipScene({ product, showSteps }: SceneProps) {
+export function ZoomTipScene({ product, showSteps, device }: SceneProps) {
   return (
-    <Scene product={product} steps={ZOOM_TIP_STEPS} initial={ZOOM_TIP_START} showSteps={showSteps} {...ZOOM_TIP} />
+    <Scene product={product} steps={ZOOM_TIP_STEPS} initial={ZOOM_TIP_START} showSteps={showSteps} device={device} {...ZOOM_TIP} />
   )
 }
 
@@ -201,16 +203,42 @@ const textTimeline = (frames: unknown[]) => {
   )
 }
 
-export function TextScene({ product, showSteps }: SceneProps) {
+// On a phone a new text is selected but not typed into: it lands whole, and
+// is let go by Done.
+const TEXT_STEPS_MOBILE: Step[] = [
+  { when: "a text is added", then: "selected, no typing, not checked yet" },
+  ...TEXT_STEPS.slice(1),
+]
+const textTimelineMobile = (frames: unknown[]) => {
+  const last = frames.length - 1
+  return timeline(
+    [800, all({ step: 0 }, design(`t${last}`, { gone: false, selected: true }))],
+    ...click(OUTSIDE, all({ step: 1, row: false, loader: true }, design(`t${last}`, { selected: false })), 1800),
+    [EMBROIDERY_MIN_LOADER_MS, all({ step: 2, loader: false, row: true, cursor: null }, design(`t${last}`, { stitched: true }))]
+  )
+}
+
+export function TextScene({ product, showSteps, device }: SceneProps) {
   const frames = useTypedText(TEXT_WORD, TEXT_COLOR)
-  const script = useMemo(() => frames && textTimeline(frames), [frames])
+  const mobile = !!device?.mobile
+  const script = useMemo(
+    () => frames && (mobile ? textTimelineMobile(frames) : textTimeline(frames)),
+    [frames, mobile]
+  )
   const initial = useMemo(
     () => ({ designs: frames && product ? textDesigns(frames, product) : [] }),
     [frames, product]
   )
   if (!frames || !script || !product) return null
   return (
-    <Scene product={product} steps={TEXT_STEPS} initial={initial} showSteps={showSteps} {...script} />
+    <Scene
+      product={product}
+      steps={mobile ? TEXT_STEPS_MOBILE : TEXT_STEPS}
+      initial={initial}
+      showSteps={showSteps}
+      device={device}
+      {...script}
+    />
   )
 }
 
@@ -295,8 +323,8 @@ const RESIZE = timeline(
   [EMBROIDERY_MIN_LOADER_MS, all({ loader: false, row: true, cursor: null }, design("a", { stitched: true }))]
 )
 
-export function ResizeScene({ product }: SceneProps) {
-  return <Scene product={product} steps={RESIZE_STEPS} initial={RESIZE_START} {...RESIZE} />
+export function ResizeScene({ product, device }: SceneProps) {
+  return <Scene product={product} steps={RESIZE_STEPS} initial={RESIZE_START} device={device} {...RESIZE} />
 }
 
 /* ------------------------------------------------------- §7 fit (single) */
@@ -331,8 +359,8 @@ const FIT = timeline(
   [EMBROIDERY_MIN_LOADER_MS, all({ loader: false, row: true, cursor: null }, design("a", { stitched: true }))]
 )
 
-export function FitScene({ product, showSteps }: SceneProps) {
-  return <Scene product={product} steps={FIT_STEPS} initial={FIT_START} showSteps={showSteps} {...FIT} />
+export function FitScene({ product, showSteps, device }: SceneProps) {
+  return <Scene product={product} steps={FIT_STEPS} initial={FIT_START} showSteps={showSteps} device={device} {...FIT} />
 }
 
 /* ------------------------------------------------------ §9 combinations */
@@ -376,8 +404,8 @@ const GROUP = timeline(
   ]
 )
 
-export function GroupScene({ product }: SceneProps) {
-  return <Scene product={product} steps={GROUP_STEPS} initial={GROUP_START} {...GROUP} />
+export function GroupScene({ product, device }: SceneProps) {
+  return <Scene product={product} steps={GROUP_STEPS} initial={GROUP_START} device={device} {...GROUP} />
 }
 
 /* --------------------------------------------------- §10 fit (combination) */
@@ -455,8 +483,8 @@ const ISSUE = timeline(
   [1300, release]
 )
 
-export function IssueScene({ product, showSteps }: SceneProps) {
-  return <Scene product={product} steps={ISSUE_STEPS} initial={ISSUE_START} showSteps={showSteps} {...ISSUE} />
+export function IssueScene({ product, showSteps, device }: SceneProps) {
+  return <Scene product={product} steps={ISSUE_STEPS} initial={ISSUE_START} showSteps={showSteps} device={device} {...ISSUE} />
 }
 
 /* --------------------------------------------- §12 solutions + AI fix */
@@ -508,8 +536,8 @@ const AI = timeline(
   [EMBROIDERY_MIN_LOADER_MS, all({ loader: false, row: true }, design("a", { stitched: true }))]
 )
 
-export function AiScene({ product, showSteps }: SceneProps) {
-  return <Scene product={product} steps={AI_STEPS} initial={AI_START} showSteps={showSteps} {...AI} />
+export function AiScene({ product, showSteps, device }: SceneProps) {
+  return <Scene product={product} steps={AI_STEPS} initial={AI_START} showSteps={showSteps} device={device} {...AI} />
 }
 
 /* ------------------------------------------ §13 removed while the AI runs */
@@ -563,8 +591,8 @@ const PRINT = timeline(
   [RECOVERED_GOOD_SIZE_MS, { step: 1, green: null, row: true }]
 )
 
-export function PrintScene({ product }: SceneProps) {
-  return <Scene product={product} steps={PRINT_STEPS} initial={PRINT_START} {...PRINT} />
+export function PrintScene({ product, device }: SceneProps) {
+  return <Scene product={product} steps={PRINT_STEPS} initial={PRINT_START} device={device} {...PRINT} />
 }
 
 /* -------------------------------------------------- §15 add to basket */
@@ -602,3 +630,16 @@ const BASKET = timeline(
 export function BasketScene({ product }: SceneProps) {
   return <Scene product={product} steps={BASKET_STEPS} initial={BASKET_START} {...BASKET} />
 }
+
+/** The scenes with a mobile version, by the key the mobile frame page is opened with. */
+export const MOBILE_SCENES = {
+  "zoom-tip": ZoomTipScene,
+  text: TextScene,
+  resize: ResizeScene,
+  fit: FitScene,
+  group: GroupScene,
+  issue: IssueScene,
+  ai: AiScene,
+  print: PrintScene,
+} as const
+export type MobileSceneKey = keyof typeof MOBILE_SCENES

@@ -507,7 +507,9 @@ const DOCK_SPOT = {
   raised: { bottom: "bottom-9", away: "translate-y-[calc(100%+4.25rem)]" },
 }
 const dockClass = (entered: boolean, spot: keyof typeof DOCK_SPOT = "row") =>
-  `absolute ${DOCK_SPOT[spot].bottom} left-1/2 z-[5] max-w-[calc(100%-48px)] -translate-x-1/2 transition-transform duration-300 ease-out motion-reduce:transition-none ` +
+  // w-max: as wide as its content up to the cap — centred by left-1/2, it
+  // would otherwise be held to half the canvas and wrap early.
+  `absolute ${DOCK_SPOT[spot].bottom} left-1/2 z-[5] w-max max-w-[calc(100%-48px)] -translate-x-1/2 transition-transform duration-300 ease-out motion-reduce:transition-none ` +
   (entered ? "translate-y-0" : `pointer-events-none ${DOCK_SPOT[spot].away}`)
 const dockDelay = (entered: boolean) => (entered ? `${SWAP_DELAY_MS}ms` : "0ms")
 
@@ -628,8 +630,9 @@ function ZoomTipCard({
   return (
     <div
       role="status"
-      // On a phone its sentence wraps, at the screen's width less the dock's gutters.
-      className={`flex flex-col items-start gap-4 rounded-2xl border bg-white p-4 max-dlg:w-[calc(100vw-48px)] ${SIZE_BADGE.good.frame}`}
+      // On a phone its sentence wraps, at the screen's width less the dock's gutters
+      // (cqw: the screen in a handoff's phone frame; the viewport elsewhere).
+      className={`flex flex-col items-start gap-4 rounded-2xl border bg-white p-4 max-dlg:w-[calc(100cqw-48px)] ${SIZE_BADGE.good.frame}`}
     >
       <div className="flex items-center gap-1.5 max-dlg:items-start">
         <span
@@ -805,14 +808,20 @@ export function SizeBadgePill({
         visibility(!hidden)
       }
     >
-      <div className="flex items-center gap-1.5">
+      {/* Docked, on a phone a long message wraps within the dock's width
+          (the combination's doesn't fit on one line), the icon by its first. */}
+      <div className={`flex items-center gap-1.5 ${docked ? "max-dlg:items-start" : ""}`}>
         <span
           aria-hidden="true"
           className={`flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] leading-none font-bold text-white ${badge.dot}`}
         >
           {badge.icon}
         </span>
-        <span className="text-sm leading-none font-semibold whitespace-nowrap">
+        <span
+          className={`text-sm leading-none font-semibold whitespace-nowrap ${
+            docked ? "max-dlg:leading-tight max-dlg:whitespace-normal" : ""
+          }`}
+        >
           {label ?? badge.label}
         </span>
       </div>

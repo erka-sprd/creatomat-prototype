@@ -21,6 +21,7 @@ import {
   type EmbroiderySizeStatus,
 } from "@/components/embroidery-label"
 import { useCanvasProduct } from "@/components/handoff/embroidery-canvas"
+import { DeviceDemo } from "@/components/handoff/device-demo"
 import { HoopSizeStill } from "@/components/handoff/hoop-size-still"
 import { ShineStill } from "@/components/handoff/shine-still"
 import {
@@ -294,7 +295,9 @@ export default function Embroidery() {
           </>
         }
       >
-        <ZoomTipScene product={product} />
+        <DeviceDemo scene="zoom-tip">
+          {device => <ZoomTipScene product={product} device={device} />}
+        </DeviceDemo>
       </Rule>
 
       <Rule
@@ -314,7 +317,9 @@ export default function Embroidery() {
         title="A text is checked only once it's let go"
         line="Typing comes first — the check waits for the deselect"
       >
-        <TextScene product={product} />
+        <DeviceDemo scene="text">
+          {device => <TextScene product={product} device={device} />}
+        </DeviceDemo>
       </Rule>
 
       <Section id="s5">
@@ -346,7 +351,9 @@ export default function Embroidery() {
         title="Resize back to the hoop size — it snaps and turns green"
         line="The guide shows the size that fits; the messages swap live while the handle is held"
       >
-        <ResizeScene product={product} />
+        <DeviceDemo scene="resize">
+          {device => <ResizeScene product={product} device={device} />}
+        </DeviceDemo>
       </Rule>
 
       <Rule
@@ -356,7 +363,9 @@ export default function Embroidery() {
         title="Fit to best size — one click to the hoop size"
         line="The secondary button under “Design too large”, always there with it"
       >
-        <FitScene product={product} />
+        <DeviceDemo scene="fit">
+          {device => <FitScene product={product} device={device} />}
+        </DeviceDemo>
       </Rule>
 
       <Rule
@@ -366,7 +375,9 @@ export default function Embroidery() {
         title="Several designs are measured as one"
         line="The hoop frame holds the whole group; the verdict is live while one is moved"
       >
-        <GroupScene product={product} />
+        <DeviceDemo scene="group">
+          {device => <GroupScene product={product} device={device} />}
+        </DeviceDemo>
       </Rule>
 
       <Rule
@@ -386,7 +397,9 @@ export default function Embroidery() {
         title="Thin lines or too complex — named, and nothing to resize"
         line="Shown on the customer's own upload: the check flags it, it keeps its look, its handles step back"
       >
-        <IssueScene product={product} />
+        <DeviceDemo scene="issue">
+          {device => <IssueScene product={product} device={device} />}
+        </DeviceDemo>
       </Rule>
 
       <Rule
@@ -396,7 +409,9 @@ export default function Embroidery() {
         title="Fix with AI — runs at once, reviewed on the canvas"
         line="The AI reworks the customer's own file — no new design. Kept only once accepted"
       >
-        <AiScene product={product} />
+        <DeviceDemo scene="ai">
+          {device => <AiScene product={product} device={device} />}
+        </DeviceDemo>
       </Rule>
 
       <Rule
@@ -416,7 +431,9 @@ export default function Embroidery() {
         title="Switch to print — said once, then back to normal"
         line="A green message alone, then the row already on standard print"
       >
-        <PrintScene product={product} />
+        <DeviceDemo scene="print">
+          {device => <PrintScene product={product} device={device} />}
+        </DeviceDemo>
       </Rule>
 
       <Rule
