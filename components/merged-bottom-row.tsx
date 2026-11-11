@@ -54,6 +54,9 @@ const VIEW_TILE_IDLE =
 const VIEW_TILE_HOVERED = "border border-[var(--sprd-neutral-200)] bg-[var(--sprd-neutral-50)]"
 // Between tiles.
 const TILE_GAP_PX = 2
+// Between the strip's top and the active view's label pill above it —
+// negative, so the pill overlaps the strip's edge.
+const ACTIVE_LABEL_GAP_PX = -6
 // The strip's widest: five and a half tiles, the gaps between them, and the
 // padding.
 const STRIP_MAX_PX =
@@ -169,7 +172,11 @@ export function MergedBottomRow({
       aria-hidden={hidden}
       className={
         "max-dlg:hidden pointer-events-none absolute inset-x-6 bottom-6 z-[5] grid items-end gap-3 transition-transform duration-300 ease-out motion-reduce:transition-none " +
-        (hidden ? "translate-y-[calc(100%+2rem)] [&_*]:pointer-events-none!" : "translate-y-0")
+        // Out of view means below the canvas edge for the whole row — the
+        // active view's label pill stands above the strip (outside the row's
+        // own height), so the slide clears its height and gap on top of the
+        // row's bottom offset.
+        (hidden ? "translate-y-[calc(100%+4rem)] [&_*]:pointer-events-none!" : "translate-y-0")
       }
       style={{
         gridTemplateColumns: `1fr fit-content(${STRIP_MAX_PX}px) 1fr`,
@@ -334,8 +341,24 @@ export function ViewStrip({
   if (hovered && (hovered.id !== shown?.id || hovered.x !== shown?.x)) setShown(hovered)
   const shownView = views.find(v => v.id === shown?.id)
   const previewPx = TILE_THUMB_PX * PREVIEW_SCALE
+  const activeView = views.find(v => v.id === activeViewId)
   return (
     <div ref={wrapperRef} className="relative">
+      {/* The active view's name, in a small white pill centred ACTIVE_LABEL_GAP_PX
+          above the strip — the resting-state label the tiles themselves don't
+          carry. It gives way while a hover close-up is up, which opens in the
+          same spot. */}
+      {activeView && (
+        <div
+          aria-hidden="true"
+          className={`pointer-events-none absolute bottom-full left-1/2 z-10 -translate-x-1/2 rounded-full bg-white px-2.5 py-1 text-xs font-semibold tracking-[0.1em] whitespace-nowrap text-black uppercase transition-opacity duration-150 ease-out ${
+            hovered ? "opacity-0" : "opacity-100"
+          }`}
+          style={{ marginBottom: ACTIVE_LABEL_GAP_PX }}
+        >
+          {activeView.name}
+        </div>
+      )}
       <div
         aria-hidden="true"
         className={`pointer-events-none absolute bottom-full z-[100] mb-2 -translate-x-1/2 origin-bottom transition-[opacity,scale] duration-150 ease-out ${
