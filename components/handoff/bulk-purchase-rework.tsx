@@ -39,7 +39,7 @@ import {
   usePolo,
 } from "@/components/handoff/rail-replica"
 
-const PROTOTYPE = "https://creatomat-prototype.vercel.app/add-to-basket-new-1"
+const PROTOTYPE = "https://creatomat-prototype.vercel.app/"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
 
 /** The quantities §6 shows the hint at — every state it has. */

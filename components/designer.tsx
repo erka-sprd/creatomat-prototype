@@ -54,7 +54,6 @@ import {
 } from "@/lib/size-guide"
 import {
   applyDropdownPick,
-  getVolumeDiscountText,
   onlyDigits,
   shouldTriggerRemoveOnBlur,
 } from "@/lib/quantity-utils"
@@ -97,7 +96,6 @@ import {
 } from "@/components/ui/hover-card"
 import QuantityStepper from "@/components/quantity-stepper"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { IconsScroller } from "@/components/ui/icons-scroller"
 import { EditorBar } from "@/components/ui/editor-bar"
 import { GraphicEditorBar } from "@/components/ui/editor-bar/GraphicEditorBar"
 import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
@@ -517,15 +515,12 @@ function clampEmbroideryBbox(b: DesignBbox, hoopFrame: number | null): DesignBbo
 
 export default function Designer({
   csMode = false,
-  basketHypotheses = false,
   dtf = false,
   startOnEmbroidery = false,
   embroideryResizeGuide = false,
   mergedDesigner = true,
 }: {
   csMode?: boolean
-  /** /add-to-basket-new-1: desktop size-dropdown hypotheses (H1–H4). */
-  basketHypotheses?: boolean
   /**
    * ?dtf=true: the DTF version. Runs the embroidery preview flow — flatten,
    * "Creating preview", reveal — but renders the design as a patch
@@ -1058,15 +1053,13 @@ export default function Designer({
   const [mobileMoreMenuOpen, setMobileMoreMenuOpen] = useState(false)
   const [mobileSizeSheetOpen, setMobileSizeSheetOpen] = useState(false)
   const [sizePopoverOpen, setSizePopoverOpen] = useState(false)
-  // basketHypotheses: the icon-only add-to-basket button opened the size
-  // popover, so it keeps its "Add to basket" label until that closes — hover
+  // The icon-only add-to-basket button opened the size popover, so it keeps its "Add to basket" label until that closes — hover
   // or not.
   const [ctaHoldsLabel, setCtaHoldsLabel] = useState(false)
   useEffect(() => {
     if (!sizePopoverOpen) setCtaHoldsLabel(false)
   }, [sizePopoverOpen])
-  // basketHypotheses (desktop, /add-to-basket-new-1) — H1 companion
-  // size-guide panel, H4 inline price breakdown, H3 tier-table dialog.
+  // Desktop add-to-basket flow — H1 companion size-guide panel, H4 inline price breakdown, H3 tier-table dialog.
   const [sizeGuideOpen, setSizeGuideOpen] = useState(false)
   const [priceBreakdownOpen, setPriceBreakdownOpen] = useState(false)
   // Breakdown opened from the chevron beside the rail's price figure. Separate
@@ -1092,7 +1085,7 @@ export default function Designer({
   // With the size sheet open, push the design away the same way the view
   // dropdown does — but leave the right column sharp, since the sheet, its
   // companion panels and the price rail all live there and stay in use.
-  const dimForSizeSheet = basketHypotheses && sizePopoverOpen
+  const dimForSizeSheet = sizePopoverOpen
   const sizePopoverScrollRef = useRef<HTMLDivElement | null>(null)
   // Whether the size list is scrolled to its end (or is too short to scroll) —
   // exactly when the CSS bottom shadow is hidden, so the sticky footer shows its
@@ -1140,22 +1133,6 @@ export default function Designer({
   const [basketOpen, setBasketOpen] = useState(false)
   const [addingToBasket, setAddingToBasket] = useState(false)
   const ADD_TO_BASKET_DELAY = 2000
-  const LOADING_TEXTS = [
-    "Getting things ready…",
-    "Checking details…",
-    "Just a moment…",
-    "Wrapping it up…",
-    "Getting closer…",
-  ]
-  const [loadingTextIdx, setLoadingTextIdx] = useState(0)
-  useEffect(() => {
-    if (!addingToBasket) return
-    setLoadingTextIdx(0)
-    const interval = setInterval(() => {
-      setLoadingTextIdx(i => (i + 1) % LOADING_TEXTS.length)
-    }, 900)
-    return () => clearInterval(interval)
-  }, [addingToBasket])
   const [flashSize, setFlashSize] = useState(false)
 
   // Staged intro reveal: skeleton (0.5s) → left/right fade in (0.3s), middle
@@ -5218,61 +5195,9 @@ export default function Designer({
     return `${volumeDiscountMaxPercentage(productId)}% reduction applied`
   })()
 
-  const selectedSizes = sizes
-    .map(size => ({ size, qty: sizeQuantities[size] ?? 0 }))
-    .filter(s => s.qty > 0)
-
-  // Track pills (selected + recently-removed) so exits can animate. A pill
-  // marked `exiting` stays in the DOM for the exit animation, then is removed.
-  type RenderPill = { size: string; qty: number; exiting: boolean }
-  const [renderPills, setRenderPills] = useState<RenderPill[]>([])
-  useEffect(() => {
-    const selectedMap = new Map(selectedSizes.map(s => [s.size, s.qty]))
-    setRenderPills(prev => {
-      const next: RenderPill[] = prev.map(p => {
-        const qty = selectedMap.get(p.size)
-        if (qty !== undefined && qty > 0) return { ...p, qty, exiting: false }
-        return p.exiting ? p : { ...p, exiting: true }
-      })
-      const existingSet = new Set(prev.map(p => p.size))
-      selectedSizes.forEach(s => {
-        if (!existingSet.has(s.size))
-          next.push({ size: s.size, qty: s.qty, exiting: false })
-      })
-      next.sort((a, b) => sizes.indexOf(a.size) - sizes.indexOf(b.size))
-      return next
-    })
-  }, [sizeQuantities, sizes])
-  useEffect(() => {
-    if (!renderPills.some(p => p.exiting)) return
-    const timer = setTimeout(() => {
-      setRenderPills(prev => prev.filter(p => !p.exiting))
-    }, 320)
-    return () => clearTimeout(timer)
-  }, [renderPills])
-  const sizeButtonLabel =
-    // On the hypotheses page the trigger never changes: the selection is
-    // reported by the CTA's count instead, so the label stays put.
-    basketHypotheses ? (
-      <span className="min-w-0 truncate">Select size &amp; quantity</span>
-    ) : selectedSizes.length === 0 ? (
-      <span>Choose size</span>
-    ) : (
-      <span
-        className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap"
-        style={{
-          maskImage:
-            "linear-gradient(to right, #000 0, #000 calc(100% - 16px), transparent 100%)",
-          WebkitMaskImage:
-            "linear-gradient(to right, #000 0, #000 calc(100% - 16px), transparent 100%)",
-        }}
-      >
-        <span className="flex-shrink-0">Sizes:</span>
-        {renderPills.map(({ size, qty, exiting }) => (
-          <SizePill key={size} size={size} qty={qty} exiting={exiting} />
-        ))}
-      </span>
-    )
+  // The trigger never changes: the selection is reported by the CTA's count
+  // instead, so the label stays put.
+  const sizeButtonLabel = <span className="min-w-0 truncate">Select size &amp; quantity</span>
 
   // Volume discount as a fraction, from the real scale of the selected product
   // (lib/volume-discount.ts — the scales differ per product type).
@@ -5337,7 +5262,7 @@ export default function Designer({
   const formattedOriginalPrice = originalPrice.toFixed(2).replace(".", ",")
   const formattedDiscountedPrice = discountedPrice.toFixed(2).replace(".", ",")
 
-  // basketHypotheses (H2/H4): per-item price shown in the rail + breakdown.
+  // Per-item price shown in the rail + breakdown.
   const hypoDiscountedUnit = unitPrice * (1 - discountPercent)
   // H3 — the dropdown's tier line names how far the next threshold is, from the
   // same scale that prices the order, so the promise always matches the figure.
@@ -5536,10 +5461,10 @@ export default function Designer({
     }
     if (embroideryCheckFirst()) return
     if (totalSelected === 0) {
-      // basketHypotheses: with the dropdown closed, the CTA's most helpful
-      // response is to open it — the user's next step, not a reprimand. The
-      // red flash is kept for when the sizes are already in front of them.
-      if (basketHypotheses && !sizePopoverOpen) {
+      // With the dropdown closed, the CTA's most helpful response is to open
+      // it — the user's next step, not a reprimand. The red flash is kept for
+      // when the sizes are already in front of them.
+      if (!sizePopoverOpen) {
         setSizePopoverOpen(true)
         setCtaHoldsLabel(true)
         return
@@ -8691,14 +8616,9 @@ export default function Designer({
               <button
                 type="button"
                 onClick={() => setDetailsOpen(true)}
-                className={
-                  basketHypotheses
-                    ? "inline-flex cursor-pointer items-center gap-2 text-[14px] text-black outline-none"
-                    : "text-[14px] text-black underline cursor-pointer"
-                }
+                className="inline-flex cursor-pointer items-center gap-2 text-[14px] text-black outline-none"
               >
-                {basketHypotheses ? (
-                  <>
+                <>
                     {/* Supplied Ruler glyph, on currentColor — the same one the
                         size sheet's guide toggle uses. */}
                     <svg
@@ -8716,10 +8636,7 @@ export default function Designer({
                       />
                     </svg>
                     <span className="underline underline-offset-4">See product details</span>
-                  </>
-                ) : (
-                  "See product details"
-                )}
+                </>
               </button>
 
               <div id="select-color" className="mb-2">
@@ -8733,17 +8650,15 @@ export default function Designer({
                   </span>
                   {/* H1 — availability belongs with the colour that determines
                       it: the sizes sold out in THIS colour, right after the
-                      colour name behind a middot. On `/` this line lives down
-                      by the Size guide link instead (see #bottom-part).
+                      colour name behind a middot.
                       Always rendered, hidden when the colour is fully stocked:
                       the 16px middot sets this line's height, so removing the
                       node outright would shift the swatches below as the
-                      shopper moves between colours. */}
-                  {basketHypotheses && (
-                    /* group/oos is the whole remaining row: one hover target
-                       covering every size label. It is NOT the element that
-                       clips — an overflow-hidden ancestor would swallow the
-                       tooltip — so the truncation sits on the inner span. */
+                      shopper moves between colours.
+                      group/oos is the whole remaining row: one hover target
+                      covering every size label. It is NOT the element that
+                      clips — an overflow-hidden ancestor would swallow the
+                      tooltip — so the truncation sits on the inner span. */}
                     <span
                       // No flex-1: the group is only as wide as its content, so
                       // the hover area does not stretch across the empty rest
@@ -8808,7 +8723,6 @@ export default function Designer({
                         )}
                       </span>
                     </span>
-                  )}
                 </div>
             </div>
 
@@ -9024,55 +8938,9 @@ export default function Designer({
             <div id="bottom-part" className="flex-shrink-0 mt-auto">
               
 
-              {/* basketHypotheses reorders this rail: price → discount banner →
-                  selector + cart. The pre-selection discount line, the
-                  out-of-stock summary and the Size guide link all move (the
-                  guide now lives in the dropdown header, beside the sizes). */}
-              <div
-                className={`flex mb-[12px] flex-row items-end justify-between gap-x-2 ml-0 ${
-                  basketHypotheses ? "hidden" : ""
-                }`}
-              >
-  {totalSelected > 0 ? (
-    <span className="min-w-0 text-[14px] font-medium font-sans tracking-[0] text-[#DC2626]">
-      {getVolumeDiscountText(totalSelected)}
-    </span>
-  ) : (
-    (outOfStockMap[appearances[activeColorIndex]?.id] ?? []).length > 0 ? (
-      <span className="min-w-0 text-[14px] font-medium font-sans tracking-[0] text-[var(--sprd-neutral-700)]">
-        {(outOfStockMap[appearances[activeColorIndex]?.id] ?? []).join(", ")} out of stock
-      </span>
-    ) : basketHypotheses ? (
-      /* H3 — the discount exists before any size is chosen, so say so here
-         instead of only after selection. One line, one link. */
-      <button
-        type="button"
-        onClick={() => setTiersDialogOpen(true)}
-        className="min-w-0 cursor-pointer text-left text-[14px] font-medium font-sans tracking-[0] text-[#DC2626] underline"
-      >
-        Save up to 50% on 5+ items
-      </button>
-    ) : <span />
-  )}
-
-  <button
-    type="button"
-    {...(basketHypotheses ? { "data-keeps-sizes-open": "true" } : {})}
-    className="shrink-0 whitespace-nowrap text-[14px] font-sans underline text-black hover:cursor-pointer font-normal"
-    onClick={(e) => {
-      e.preventDefault()
-      if (basketHypotheses) {
-        // H1 — the guide opens beside the sizes, not instead of them.
-        setSizePopoverOpen(true)
-        setPriceBreakdownOpen(false)
-        setSizeGuideOpen(true)
-      }
-    }}
-  >
-    Size guide
-  </button>
-</div>
-
+              {/* The rail runs price → discount banner → selector + cart. The
+                  out-of-stock summary sits by the colour name and the Size
+                  guide lives in the dropdown header, beside the sizes. */}
 
               {/* Size buttons commented out — replaced by "Choose size" placeholder.
               <div id="size-buttons-row" className="flex flex-wrap gap-[8px] overflow-x-hidden mb-0">
@@ -9087,8 +8955,7 @@ export default function Designer({
                 ))}
               </div>
               */}
-              {basketHypotheses && (
-                <>
+              <>
                   {/* Price first — a bulk buyer's opening question is "what does
                       one cost?", so the rail answers exactly that: the per-item
                       price, nothing else. The order total lives in the sheet's
@@ -9236,15 +9103,12 @@ export default function Designer({
                       so the same content opens as a modal instead (rendered near
                       the other dialogs, below). */}
                 </>
-              )}
 
-              <div className={basketHypotheses ? "relative flex items-stretch gap-2" : ""}>
+              <div className="relative flex items-stretch gap-2">
               {!hasMounted ? (
                 <button
                   type="button"
-                  className={`inline-flex w-full h-12 items-center justify-between gap-3 cursor-pointer font-sans text-sm font-semibold px-3 border-2 border-[var(--sprd-neutral-700)] bg-transparent text-black outline-none transition-colors hover:border-black focus:border-black focus-visible:border-black active:border-black ${
-                    basketHypotheses ? "min-w-0 flex-1" : ""
-                  }`}
+                  className="inline-flex w-full min-w-0 flex-1 h-12 items-center justify-between gap-3 cursor-pointer font-sans text-sm font-semibold px-3 border-2 border-[var(--sprd-neutral-700)] bg-transparent text-black outline-none transition-colors hover:border-black focus:border-black focus-visible:border-black active:border-black"
                 >
                   {sizeButtonLabel}
                   <svg
@@ -9277,25 +9141,16 @@ export default function Designer({
                   }
                 }}
               >
-                {basketHypotheses && (
-                  /* Position against the whole selector row, not the trigger:
-                     the trigger narrows as the CTA grows, and the sheet's width
-                     is taken from its positioning anchor. An absolute anchor
-                     spanning the row keeps that width constant. */
-                  <Popover.Anchor
-                    aria-hidden
-                    className="pointer-events-none absolute inset-0"
-                  />
-                )}
+                {/* Position against the whole selector row, not the trigger:
+                    the trigger narrows as the CTA grows, and the sheet's width
+                    is taken from its positioning anchor. An absolute anchor
+                    spanning the row keeps that width constant. */}
+                <Popover.Anchor aria-hidden className="pointer-events-none absolute inset-0" />
                 <Popover.Trigger asChild>
                   <button
                     type="button"
-                    className={`inline-flex w-full h-12 items-center justify-between gap-3 cursor-pointer font-sans text-sm font-semibold px-3 border-2 ${
-                      !basketHypotheses && selectedSizes.length > 0
-                        ? "border-black font-bold bg-white"
-                        : "border-[var(--sprd-neutral-700)] bg-transparent hover:border-black focus:border-black focus-visible:border-black active:border-black data-[state=open]:border-black data-[state=open]:bg-white"
-                    } ${flashSize ? "flash-red-border" : ""} ${
-                      basketHypotheses ? "min-w-0 flex-1" : ""
+                    className={`inline-flex w-full min-w-0 flex-1 h-12 items-center justify-between gap-3 cursor-pointer font-sans text-sm font-semibold px-3 border-2 border-[var(--sprd-neutral-700)] bg-transparent hover:border-black focus:border-black focus-visible:border-black active:border-black data-[state=open]:border-black data-[state=open]:bg-white ${
+                      flashSize ? "flash-red-border" : ""
                     } text-black outline-none focus:outline-none focus-visible:outline-none focus-within:outline-none`}
                   >
                     {sizeButtonLabel}
@@ -9329,7 +9184,7 @@ export default function Designer({
                     // room on short screens — but those two stay in use while it
                     // is open, so it may never cover them. The sheet simply gets
                     // shorter instead: its height is Radix's available height.
-                    sideOffset={basketHypotheses ? 4 : isDockCompact ? -48 : 0}
+                    sideOffset={4}
                     align="start"
                     collisionPadding={12}
                     collisionBoundary={
@@ -9337,46 +9192,36 @@ export default function Designer({
                     }
                     onOpenAutoFocus={e => {
                       // Keep focus on the trigger so the rail stays operable.
-                      if (basketHypotheses) e.preventDefault()
+                      e.preventDefault()
                     }}
                     onInteractOutside={e => {
                       // H1/H4 — the purchase rail (price, Price details, Size
                       // guide) sits below the popover and is never covered; the
                       // only reason it was unusable is that Radix treated a
                       // click there as "outside" and closed the sheet. Allow it.
-                      if (
-                        basketHypotheses &&
-                        (e.target as HTMLElement | null)?.closest?.("[data-keeps-sizes-open]")
-                      )
+                      if ((e.target as HTMLElement | null)?.closest?.("[data-keeps-sizes-open]"))
                         e.preventDefault()
                     }}
-                    className={`relative z-50 flex flex-col bg-white shadow-lg outline-none rounded-t-[12px] ${
-                      basketHypotheses ? "overflow-visible" : "overflow-hidden"
-                    }`}
+                    className="relative z-50 flex flex-col overflow-visible rounded-t-[12px] bg-white shadow-lg outline-none"
                     style={{
                       // With the row as the anchor (see Popover.Anchor above),
                       // this is the full rail width and stays put while the CTA
                       // grows.
                       width: "var(--radix-popover-trigger-width)",
-                      maxHeight: "var(--radix-popover-content-available-height)",
                       // Always open at the tallest it can be — capped at 620px —
                       // so the list's height doesn't jump between products with
                       // 1 and 9 sizes and the scroll affordance is meaningful
                       // from the start. min() keeps Radix's available height as
                       // the ceiling on short viewports.
-                      ...(basketHypotheses
-                        ? {
-                            height: "min(620px, var(--radix-popover-content-available-height))",
-                            maxHeight: "min(620px, var(--radix-popover-content-available-height))",
-                          }
-                        : {}),
+                      height: "min(620px, var(--radix-popover-content-available-height))",
+                      maxHeight: "min(620px, var(--radix-popover-content-available-height))",
                     }}
                   >
                     {/* H4 — the price breakdown opens as a companion panel too,
                         in the same slot as the size guide (they are mutually
                         exclusive), so the numbers sit beside the quantities that
                         produce them instead of pushing the footer taller. */}
-                    {basketHypotheses && priceBreakdownOpen && (
+                    {priceBreakdownOpen && (
                       /* Sections, copy and typography replicated from
                          create-omat's price details (src/components/ui/
                          price-details/*): Your Product with its thumbnail →
@@ -9405,7 +9250,7 @@ export default function Designer({
                         Rendered inside Popover.Content, so interacting with it
                         never counts as an outside click (the dropdown stays
                         open) while quantities remain visible next to it. */}
-                    {basketHypotheses && sizeGuideOpen && (
+                    {sizeGuideOpen && (
                       <div className="absolute top-0 right-full mr-2 flex max-h-full w-[460px] flex-col overflow-hidden rounded-[12px] bg-white shadow-lg animate-in fade-in-0 zoom-in-95 duration-150">
                         <div className="flex flex-shrink-0 items-start justify-between gap-4 px-6 pt-5 pb-2">
                           <span className="font-display text-[18px] leading-tight font-[800] text-black">
@@ -9503,9 +9348,8 @@ export default function Designer({
                       </div>
                     )}
                     <div className="relative z-10 flex items-center justify-between rounded-t-[12px] px-6 pt-5 pb-4 flex-shrink-0 bg-white">
-                      {basketHypotheses ? (
-                        /* H1 — the guide is the header's only job here; the
-                           discount moved to the footer, next to the price. */
+                      {/* H1 — the guide is the header's only job here; the
+                          discount moved to the footer, next to the price. */}
                         <button
                           type="button"
                           onClick={toggleSizeGuide}
@@ -9531,13 +9375,6 @@ export default function Designer({
                             {sizeGuideOpen ? "Hide size guide" : "View size guide"}
                           </span>
                         </button>
-                      ) : (
-                        <div className="flex min-w-0 items-center gap-3">
-                          <span className="text-[14px] font-medium text-[var(--sprd-red-600)]">
-                            {discountTierHint}
-                          </span>
-                        </div>
-                      )}
                       <Popover.Close
                         aria-label="Close"
                         className="cursor-pointer outline-none focus:outline-none focus-visible:outline-none"
@@ -9551,9 +9388,7 @@ export default function Designer({
                         fall out of sync with the popover's layout timing. */}
                     <div
                       ref={setSizeListRoot}
-                      className={`min-h-0 flex-1 overflow-y-auto ${
-                        basketHypotheses ? "sizes-scroll" : ""
-                      }`}
+                      className="sizes-scroll min-h-0 flex-1 overflow-y-auto"
                     >
                       {sizes.map(label => {
                         const isOOS = outOfStockMap[
@@ -9567,32 +9402,18 @@ export default function Designer({
                             // first), not the bottom of each: the list ends with
                             // the end-of-list sentinel, so a :last-child rule
                             // would leave a stray line under the final size.
-                            className={`flex items-center justify-between gap-2 px-6 ${
-                              basketHypotheses
-                                ? "border-t border-neutral-200 py-2.5 first:border-t-0"
-                                : "border-b border-neutral-200 py-3"
-                            }`}
+                            className="flex items-center justify-between gap-2 border-t border-neutral-200 px-6 py-2.5 first:border-t-0"
                           >
                             <span
-                              className={
-                                basketHypotheses
-                                  ? `text-base font-bold ${
-                                      isOOS ? "text-neutral-400" : "text-black"
-                                    }`
-                                  : `text-md font-bold text-black ${isOOS ? "opacity-30" : ""}`
-                              }
+                              className={`text-base font-bold ${
+                                isOOS ? "text-neutral-400" : "text-black"
+                              }`}
                             >
                               {label}
                             </span>
                             <div className="flex items-center gap-4">
                               {isOOS && (
-                                <span
-                                  className={`text-sm ${
-                                    basketHypotheses
-                                      ? "font-medium text-neutral-400"
-                                      : "text-[var(--sprd-neutral-700)]"
-                                  }`}
-                                >
+                                <span className="text-sm font-medium text-neutral-400">
                                   Out of stock
                                 </span>
                               )}
@@ -9600,7 +9421,7 @@ export default function Designer({
                                 quantity={qty}
                                 onChange={value => setSizeQuantity(label, value)}
                                 min={0}
-                                size={basketHypotheses ? "lg" : "sm"}
+                                size="lg"
                                 disabled={isOOS}
                                 inputAriaLabel={`${label} quantity`}
                               />
@@ -9610,20 +9431,17 @@ export default function Designer({
                       })}
                       {/* End-of-list sentinel — see the IntersectionObserver
                           above. Inside the scroll container, after the rows. */}
-                      {basketHypotheses && (
-                        <div ref={setSizeListEnd} aria-hidden className="h-px w-full" />
-                      )}
+                      <div ref={setSizeListEnd} aria-hidden className="h-px w-full" />
                     </div>
                     {/* H2/H3/H4 — the open sheet covers the rail, so it carries
                         the same three facts in the same screen position: the
                         next discount tier, the per-item price and the total. */}
-                    {basketHypotheses && (
-                      /* Sticky area: 24px on all four sides, matching the rows'
-                         horizontal gutter. The top border stands in for the
-                         scroll shadow when there is nothing left to scroll to —
-                         the boundary still needs a line, just not two. Kept
-                         present-but-transparent so toggling it never shifts
-                         layout by a pixel. */
+                    {/* Sticky area: 24px on all four sides, matching the rows'
+                        horizontal gutter. The top border stands in for the
+                        scroll shadow when there is nothing left to scroll to —
+                        the boundary still needs a line, just not two. Kept
+                        present-but-transparent so toggling it never shifts
+                        layout by a pixel. */}
                       <div
                         // Bottom padding as the sides' (p-6): the total row is
                         // the last line now, so it sits as far from the bottom
@@ -9753,19 +9571,17 @@ export default function Designer({
                               guide. */}
                         </div>
                       </div>
-                    )}
                   </Popover.Content>
                 </Popover.Portal>
               </Popover.Root>
               )}
-              {basketHypotheses && (
-                /* Icon-only until something is chosen; then it grows to reveal
-                   the label and the count. Pure CSS via the 0fr→1fr grid-track
-                   trick: the label sits in a grid column animated between 0fr
-                   and 1fr, so the button always sizes to its actual content —
-                   no fixed width to overshoot into a right-edge gap or squash
-                   the icon — while the bouncy curve briefly overshoots the
-                   track past content width and settles. */
+              {/* Icon-only until something is chosen; then it grows to reveal
+                  the label and the count. Pure CSS via the 0fr→1fr grid-track
+                  trick: the label sits in a grid column animated between 0fr
+                  and 1fr, so the button always sizes to its actual content —
+                  no fixed width to overshoot into a right-edge gap or squash
+                  the icon — while the bouncy curve briefly overshoots the
+                  track past content width and settles. */}
                 <button
                   type="button"
                   aria-label="Add to basket"
@@ -9845,83 +9661,8 @@ export default function Designer({
                     </span>
                   )}
                 </button>
-              )}
               </div>
 
-              {/* Price and CTA section — replaced above on the hypotheses page,
-                  where price leads the rail and the CTA is the icon button. */}
-              <div
-                className={`flex items-center justify-between gap-[16px] mt-5 mb-3 ${
-                  basketHypotheses ? "hidden" : ""
-                }`}
-              >
-                <div className="flex flex-col relative">
-                  {/* `discountPercent > 0` is the whole test: the first tier
-                      starts at 5 on most scales but at 3 on posters, so a
-                      hardcoded quantity gate would hide the saving there. */}
-                  {discountPercent > 0 ? (
-                    <span className="text-[12px] text-[#6A6A6A] line-through mb-1 absolute mt-[-16px] font-medium">
-                      {formattedOriginalPrice} €
-                    </span>
-                  ) : null}
-                  <span
-                    className={`text-[24px] font-medium leading-7 ${
-                      discountPercent > 0 ? "text-[#DC2626]" : "text-black"
-                    }`}
-                  >
-                    {formattedDiscountedPrice} €
-                  </span>
-                  {basketHypotheses ? (
-                    <>
-                      {/* H2 — the one line bulk buyers need: per-item price. */}
-                      {totalSelected > 0 && (
-                        <span className="text-[14px] leading-5 text-[var(--sprd-neutral-700)] font-normal">
-                          {formatEUR(hypoDiscountedUnit)} € per item
-                        </span>
-                      )}
-                      {/* H4 — same link, now it works while sizes are open. */}
-                      <button
-                        type="button"
-                        onClick={() => setPriceBreakdownOpen(o => !o)}
-                        className="w-fit cursor-pointer text-left text-[14px] leading-5 font-normal text-black underline outline-none"
-                      >
-                        Price details
-                      </button>
-                    </>
-                  ) : (
-                    <span className="text-[14px] text-black underline cursor-pointer font-normal leading-5">Price details</span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  disabled={addingToBasket || flashSize}
-                  onClick={handleAddToBasket}
-                  className={`flex-1 text-white font-sans text-[14px] font-semibold px-[24px] flex items-center justify-center transition-colors h-12 overflow-hidden ${
-                    flashSize
-                      ? "bg-[#999] cursor-not-allowed"
-                      : addingToBasket
-                        ? "bg-black cursor-not-allowed"
-                        : "bg-black cursor-pointer hover:bg-[#333]"
-                  }`}
-                >
-                  {addingToBasket ? (
-                    <span className="flex w-full items-center justify-between gap-2">
-                      <span className="flex-1" />
-                      <span
-                        key={loadingTextIdx}
-                        className="inline-block text-sm animate-in fade-in duration-200"
-                      >
-                        {LOADING_TEXTS[loadingTextIdx]}
-                      </span>
-                      <span className="flex flex-1 justify-end">
-                        <IconsScroller />
-                      </span>
-                    </span>
-                  ) : (
-                    "Add to basket"
-                  )}
-                </button>
-              </div>
 
 {/* Divider */}
               
@@ -10199,8 +9940,7 @@ export default function Designer({
           the panel is tall enough that the rail cannot hold it. Scoped to the
           designer frame like the other dialogs, and tagged as the scroll
           container for the sticky total's shadow. */}
-      {basketHypotheses && (
-        <ScopedDialog
+      <ScopedDialog
           open={tiersDialogOpen}
           onOpenChange={setTiersDialogOpen}
           container={creatomatContainer}
@@ -10227,11 +9967,9 @@ export default function Designer({
             onClose={() => setTiersDialogOpen(false)}
           />
         </ScopedDialog>
-      )}
       {/* H4 — the same price-details content as the companion panel, shown as a
           modal when the size sheet is closed (nothing to sit beside then). */}
-      {basketHypotheses && (
-        <ScopedDialog
+      <ScopedDialog
           open={priceBreakdownOpen && !sizePopoverOpen}
           onOpenChange={open => setPriceBreakdownOpen(open)}
           container={creatomatContainer}
@@ -10251,7 +9989,6 @@ export default function Designer({
           </div>
           {priceDetailsContent}
         </ScopedDialog>
-      )}
       <Basket
         open={basketOpen}
         onClose={() => setBasketOpen(false)}
@@ -10573,60 +10310,6 @@ function ViewDesignThumb({
         ))}
       </div>
     </div>
-  )
-}
-
-// Pill shown inside the "Choose size" trigger button. Latches the displayed
-// quantity for the duration of the collapse transition so the layout has
-// something to clip while the wrapper's max-width animates down to 0.
-function SizePill({
-  size,
-  qty,
-  exiting,
-}: {
-  size: string
-  qty: number
-  exiting: boolean
-}) {
-  const [displayQty, setDisplayQty] = useState(qty)
-  useEffect(() => {
-    if (qty > 1) {
-      setDisplayQty(qty)
-      return
-    }
-    // qty just dropped to <= 1: keep displaying the previous value so the
-    // max-width transition has content to clip, then update after 300ms.
-    const timer = setTimeout(() => setDisplayQty(qty), 300)
-    return () => clearTimeout(timer)
-  }, [qty])
-  return (
-    <span
-      className={`${
-        exiting ? "size-pill-pop-out" : "size-pill-pop"
-      } flex flex-shrink-0 items-center bg-black text-white rounded-none px-2 py-1`}
-    >
-      <span>{size}</span>
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          overflow: "hidden",
-          maxWidth: qty > 1 ? 80 : 0,
-          transition: "max-width 300ms cubic-bezier(0.4, 0, 0.2, 1)",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {displayQty > 1 && (
-          <>
-            <span
-              aria-hidden="true"
-              className="mx-[6px] h-3 w-px bg-[var(--sprd-neutral-800)]"
-            />
-            <span className="font-normal opacity-70">{displayQty}x</span>
-          </>
-        )}
-      </span>
-    </span>
   )
 }
 

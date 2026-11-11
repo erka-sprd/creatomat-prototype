@@ -1318,7 +1318,7 @@ export const RAIL_WIDTH_PX = 470
 export const RAIL_HEIGHT_PX = 600
 
 /**
- * The whole rail, as it stands on /add-to-basket-new-1 with latte selected —
+ * The whole rail, as it stands in the designer with latte selected —
  * at the column's real 470px width, so the swatch grid resolves to exactly the
  * cell size it has in the product. Height is pinned rather than stretched to a
  * viewport: the column is `h-full` in the designer, and the two halves are held
