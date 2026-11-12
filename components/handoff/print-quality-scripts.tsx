@@ -19,6 +19,7 @@ import {
 import {
   PANEL_SLIDE_MS,
   PRINT_MAX_SIZE_ACTION,
+  PRINT_MAX_SIZE_KEEP,
   PRINT_MAX_SIZE_LABEL,
   PRINT_MAX_SIZE_LINGER_MS,
 } from "@/lib/designer-constants"
@@ -74,7 +75,7 @@ const RESIZE_STEPS: Step[] = [
   { when: "it's enlarged", then: "it grows freely up to that size" },
   {
     when: "the resize pushes past that size",
-    then: `it stops with a small bounce — “${PRINT_MAX_SIZE_LABEL}”, the image's pixels, “${PRINT_MAX_SIZE_ACTION}”`,
+    then: `it stops with a small bounce — “${PRINT_MAX_SIZE_LABEL}”, the image's pixels, “${PRINT_MAX_SIZE_KEEP}” and “${PRINT_MAX_SIZE_ACTION}”`,
   },
 ]
 // Placed below its stop, so the enlarging has room to show.
@@ -256,7 +257,10 @@ export function ClickOutsideScene({ product, device }: SceneProps) {
 /* -------------------------------------------------------- §6 upload larger */
 
 const larger = (mobile: boolean): Step[] => [
-  { when: `“${PRINT_MAX_SIZE_LABEL}” shows`, then: `it offers “${PRINT_MAX_SIZE_ACTION}”` },
+  {
+    when: `“${PRINT_MAX_SIZE_LABEL}” shows`,
+    then: `it offers “${PRINT_MAX_SIZE_KEEP}” and “${PRINT_MAX_SIZE_ACTION}”`,
+  },
   {
     when: `“${PRINT_MAX_SIZE_ACTION}” is ${mobile ? "tapped" : "clicked"}`,
     then: `the Uploads ${mobile ? "drawer" : "panel"} opens`,

@@ -126,6 +126,8 @@ export const PRINT_MAX_SIZE_LINGER_MS = 4000
 // What that notice says: its title, and its button under the image's pixels.
 export const PRINT_MAX_SIZE_LABEL = "Maximum size"
 export const PRINT_MAX_SIZE_ACTION = "Upload larger"
+// Its secondary button, beside it: the size is fine as it is — just close.
+export const PRINT_MAX_SIZE_KEEP = "Keep this size"
 /** The notice's line under its title: the image's own pixels. */
 export function printMaxSizeDetail(size: { w: number; h: number }) {
   return `Your image is ${pixelSizeLabel(size)}`

@@ -24,6 +24,7 @@ import {
   EMBROIDERY_MIN_BOUNCE_MS,
   PRINT_MAX_BOUNCE_SCALE,
   PRINT_MAX_SIZE_ACTION,
+  PRINT_MAX_SIZE_KEEP,
   PRINT_MAX_SIZE_LABEL,
   SELECTION_TONE,
   printMaxSizeDetail,
@@ -509,6 +510,8 @@ export function QualityScene({
                   detail={pixels ? printMaxSizeDetail(pixels) : undefined}
                   learnMoreLabel={PRINT_MAX_SIZE_ACTION}
                   onLearnMore={() => {}}
+                  dismissLabel={PRINT_MAX_SIZE_KEEP}
+                  onDismiss={() => {}}
                   onHoverChange={() => {}}
                 />
               </div>

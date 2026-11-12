@@ -51,6 +51,7 @@ import {
   MAX_ZOOM,
   PRINT_MAX_BOUNCE_SCALE,
   PRINT_MAX_SIZE_ACTION,
+  PRINT_MAX_SIZE_KEEP,
   PRINT_MAX_SIZE_LABEL,
   PRINT_MAX_SIZE_LINGER_MS,
   printMaxSizeDetail,
@@ -3042,6 +3043,9 @@ export default function Designer({
                 }
               : undefined
           }
+          // "Keep this size": the size is fine as it is — the message just goes.
+          dismissLabel={PRINT_MAX_SIZE_KEEP}
+          onDismiss={embroidery ? undefined : () => setEmbroideryMaxSizeId(null)}
         />
       </div>
     )
@@ -3151,11 +3155,16 @@ export default function Designer({
     })()
     // Print flow: an upload's maximum, where its pixels drop below
     // MIN_PRINT_DPI. One already past it can't grow any further, but may shrink.
+    // None at all when the upload still prints sharp at the size that fills
+    // the print area (its corners on the print area's edges): then the print
+    // area is the limit, and there's nothing to stop or say.
     const hardMaxScale = (() => {
       const pixelWidth = modelGraphic?.pixelWidth
       const boundary = productData?.printAreas.find(pa => pa.id === currentPrintAreaId)?.boundary
       if (!pixelWidth || !boundary || effectivePrintTechnique === "embroidery") return null
-      return printQualityMaxScale((initialWidthPct / 100) * boundary.width, pixelWidth)
+      const qualityMax = printQualityMaxScale((initialWidthPct / 100) * boundary.width, pixelWidth)
+      const fillsPrintArea = Math.min(100 / initialWidthPct, 100 / initialHeightPct)
+      return qualityMax !== null && qualityMax < fillsPrintArea ? qualityMax : null
     })()
     setResizeCorner(corner)
     resizeStateRef.current = {

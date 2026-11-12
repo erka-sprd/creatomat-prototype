@@ -727,6 +727,8 @@ export function EmbroideryMaxSizeBadge({
   detail,
   learnMoreLabel = "See details",
   onLearnMore,
+  dismissLabel,
+  onDismiss,
   onHoverChange,
   tone = "selection",
 }: {
@@ -743,6 +745,9 @@ export function EmbroideryMaxSizeBadge({
   learnMoreLabel?: string
   /** Adds a button under the label — what to do about the print-quality maximum. */
   onLearnMore?: () => void
+  /** With onLearnMore: a second, secondary button that just closes it ("Keep this size"). */
+  dismissLabel?: string
+  onDismiss?: () => void
   /** Pointer over the badge or off it — the parent holds it on screen meanwhile. */
   onHoverChange?: (hovered: boolean) => void
 }) {
@@ -793,23 +798,55 @@ export function EmbroideryMaxSizeBadge({
         // Under the label, centred like it.
         <span className="text-sm leading-none whitespace-nowrap">{detail}</span>
       )}
-      {onLearnMore && (
-        // Under it all, centred: the kit's secondary button (ghost, black),
-        // as the warning pills' "See solutions" — 16px under the message.
-        // The object beneath would take the click as a deselect — it
-        // doesn't get it.
-        <KitButton
-          variant="ghost"
-          tabIndex={show ? 0 : -1}
-          onClick={e => {
-            e.stopPropagation()
-            onLearnMore()
-          }}
-          className="mt-3 self-center whitespace-nowrap"
-        >
-          {learnMoreLabel}
-        </KitButton>
-      )}
+      {onLearnMore &&
+        (onDismiss && dismissLabel ? (
+          // Two buttons, 16px under the message: the kit's secondary (ghost)
+          // to just close it, its primary for what to do. Side by side from
+          // dlg, the secondary left; on a phone stacked, the primary on top.
+          // The object beneath would take a click as a deselect — it
+          // doesn't get it.
+          <div className="mt-3 flex flex-col-reverse gap-2 self-stretch dlg:flex-row dlg:justify-center">
+            <KitButton
+              variant="ghost"
+              tabIndex={show ? 0 : -1}
+              onClick={e => {
+                e.stopPropagation()
+                onDismiss()
+              }}
+              // Stacked on a phone, both span the message's width.
+              className="w-full whitespace-nowrap dlg:w-fit"
+            >
+              {dismissLabel}
+            </KitButton>
+            <KitButton
+              variant="primary"
+              tabIndex={show ? 0 : -1}
+              onClick={e => {
+                e.stopPropagation()
+                onLearnMore()
+              }}
+              className="w-full whitespace-nowrap dlg:w-fit"
+            >
+              {learnMoreLabel}
+            </KitButton>
+          </div>
+        ) : (
+          // Under it all, centred: the kit's secondary button (ghost, black),
+          // as the warning pills' "See solutions" — 16px under the message.
+          // The object beneath would take the click as a deselect — it
+          // doesn't get it.
+          <KitButton
+            variant="ghost"
+            tabIndex={show ? 0 : -1}
+            onClick={e => {
+              e.stopPropagation()
+              onLearnMore()
+            }}
+            className="mt-3 self-center whitespace-nowrap"
+          >
+            {learnMoreLabel}
+          </KitButton>
+        ))}
     </div>
   )
 }
