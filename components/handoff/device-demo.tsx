@@ -86,7 +86,7 @@ function MobileFrame({ src, switcher }: { src: string; switcher: ReactNode }) {
 /** Desktop / Mobile, as pill tabs in the controls' grey. */
 function DeviceSwitch({ value, onChange }: { value: Device; onChange: (d: Device) => void }) {
   return (
-    <div role="tablist" className="flex rounded-full bg-[var(--ho-ground)] p-1">
+    <div role="tablist" className="flex rounded-full bg-[var(--ho-tint)] p-1">
       {(["desktop", "mobile"] as const).map(d => (
         <button
           key={d}

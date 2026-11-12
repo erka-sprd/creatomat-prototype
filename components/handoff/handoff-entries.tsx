@@ -195,7 +195,7 @@ export const ENTRIES: Entry[] = [
     problem:
       "“Why can't I add this to my basket?” — embroidery problems surface only at checkout, say little about what's wrong, and offer no way to fix them.",
     created: "2026-10-29",
-    updated: { date: "November 9, 2026", time: "9:58 AM" },
+    updated: { date: "November 12, 2026", time: "1:17 PM" },
     status: "live",
     tint: TINTS.green,
   },
@@ -206,7 +206,7 @@ export const ENTRIES: Entry[] = [
     problem:
       "“Why is my logo blurry on the shirt?” — a small upload can be enlarged far past what its pixels print sharp, and nothing in the designer says so.",
     created: "2026-11-11",
-    updated: { date: "November 12, 2026", time: "1:10 PM" },
+    updated: { date: "November 12, 2026", time: "1:17 PM" },
     status: "live",
     tint: TINTS.blue,
   },

@@ -31,6 +31,7 @@ import {
 import {
   ClickOutsideScene,
   HoverScene,
+  KeepSizeScene,
   LingerScene,
   MadeSmallerScene,
   QUALITY_PRODUCT_COLOR,
@@ -55,8 +56,9 @@ const NAV: NavItem[] = [
   { id: "s3", mark: "3", label: "How long it stays" },
   { id: "s4", mark: "4", label: "Pointer on it" },
   { id: "s5", mark: "5", label: "Click outside" },
-  { id: "s6", mark: "6", label: "Upload larger" },
-  { id: "s7", mark: "7", label: "Dimensions on the tiles" },
+  { id: "s6", mark: "6", label: "Keep this size" },
+  { id: "s7", mark: "7", label: "Upload larger" },
+  { id: "s8", mark: "8", label: "Dimensions on the tiles" },
 ]
 
 /* ------------------------------------------------------------------ demos */
@@ -237,6 +239,18 @@ export default function PrintQuality() {
       <Rule
         id="s6"
         n={6}
+        kicker="Keep this size"
+        title="Keep this size closes the message"
+        line="The size is fine as it is — nothing else changes"
+      >
+        <DeviceDemo frame="print-quality" scene="keep">
+          {device => <KeepSizeScene product={product} device={device} />}
+        </DeviceDemo>
+      </Rule>
+
+      <Rule
+        id="s7"
+        n={7}
         kicker="Upload larger"
         title="Upload larger opens the Uploads panel"
         line="As it was left — nothing scrolled to or marked. On a phone, the uploads drawer"
@@ -247,8 +261,8 @@ export default function PrintQuality() {
       </Rule>
 
       <Rule
-        id="s7"
-        n={7}
+        id="s8"
+        n={8}
         kicker="Dimensions"
         title="Dimensions on the tiles"
         line="On the tile's colour, once loaded"

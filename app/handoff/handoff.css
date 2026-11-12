@@ -16,6 +16,8 @@
    none of these. */
 :root {
     --ho-ground: #ededea;
+    /* One step brighter than the ground: the demos' controls, the win table. */
+    --ho-tint: #f6f6f4;
     --ho-paper: #ffffff;
     --ho-ink: #000000;
     --ho-muted: #4d4d4d;

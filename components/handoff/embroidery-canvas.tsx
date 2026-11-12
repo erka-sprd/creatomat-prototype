@@ -200,7 +200,7 @@ export function DemoCursor({
 /** The kit switch that pauses a walkthrough where it stands. */
 export function AutoPlay({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
   return (
-    <div className="rounded-full bg-[var(--ho-ground)] py-2 pr-2 pl-4">
+    <div className="rounded-full bg-[var(--ho-tint)] py-2 pr-2 pl-4">
       <KitSwitch checked={on} onChange={onChange} label="Auto play" size="m" className="gap-4" />
     </div>
   )
@@ -212,7 +212,7 @@ export function StartOver({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="cursor-pointer rounded-full bg-[var(--ho-ground)] px-4 text-base font-semibold text-black transition-colors hover:bg-[var(--ho-line)]"
+      className="cursor-pointer rounded-full bg-[var(--ho-tint)] px-4 text-base font-semibold text-black transition-colors hover:bg-[var(--ho-ground)]"
     >
       Start over
     </button>

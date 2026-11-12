@@ -254,7 +254,45 @@ export function ClickOutsideScene({ product, device }: SceneProps) {
   )
 }
 
-/* -------------------------------------------------------- §6 upload larger */
+/* -------------------------------------------------------- §6 keep this size */
+
+const keep = (mobile: boolean): Step[] => [
+  {
+    when: `“${PRINT_MAX_SIZE_LABEL}” shows`,
+    then: `it offers “${PRINT_MAX_SIZE_KEEP}” and “${PRINT_MAX_SIZE_ACTION}”`,
+  },
+  {
+    when: `“${PRINT_MAX_SIZE_KEEP}” is ${mobile ? "tapped" : "clicked"}`,
+    then: "the message goes — the image stays at its maximum, still selected",
+  },
+]
+const KEEP_STEPS = { desktop: keep(false), mobile: keep(true) }
+// Already at its stop, the message up.
+const KEEP_INITIAL: Partial<QualityState> = { notice: true }
+const keepTimeline = (mobile: boolean) =>
+  timeline(
+    [1600, { cursor: { button: PRINT_MAX_SIZE_KEEP }, cursorMs: TRAVEL_MS }],
+    [POINT_MS, { pressed: true }],
+    [PRESS_MS, { pressed: false, notice: false, step: 1 }],
+    [900, rest(mobile)],
+    [1800, {}]
+  )
+const KEEP = { desktop: keepTimeline(false), mobile: keepTimeline(true) }
+
+export function KeepSizeScene({ product, device }: SceneProps) {
+  const key = device?.mobile ? "mobile" : "desktop"
+  return (
+    <QualityScene
+      product={product}
+      steps={KEEP_STEPS[key]}
+      initial={KEEP_INITIAL}
+      device={device}
+      {...KEEP[key]}
+    />
+  )
+}
+
+/* -------------------------------------------------------- §7 upload larger */
 
 const larger = (mobile: boolean): Step[] => [
   {
@@ -304,6 +342,7 @@ export const QUALITY_MOBILE_SCENES = {
   smaller: MadeSmallerScene,
   linger: LingerScene,
   outside: ClickOutsideScene,
+  keep: KeepSizeScene,
   larger: UploadLargerScene,
 } as const
 export type QualityMobileSceneKey = keyof typeof QUALITY_MOBILE_SCENES
