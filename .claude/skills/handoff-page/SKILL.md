@@ -140,7 +140,7 @@ lay out as on a phone.
   (`components/handoff/phone-frame.tsx`), its size in `lib/handoff-phone.ts`.
   Never draw a phone of another size, and never type the size in a scene;
   derive the canvas height from `PHONE_VIEWPORT_H`, the page's height.
-- The frame draws the status bar around the notch on top and Safari's compact
+- The frame draws the status bar around the Dynamic Island on top and Safari's compact
   tab bar (iOS 26: back, address pill, more) over the home indicator at the
   bottom; scenes never draw them.
 - Inside it: the site header, then the designer's real mobile header, view

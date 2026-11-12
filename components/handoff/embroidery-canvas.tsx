@@ -212,7 +212,7 @@ export function StartOver({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="cursor-pointer rounded-full bg-[var(--ho-tint)] px-4 text-base font-semibold text-black transition-colors hover:bg-[var(--ho-ground)]"
+      className="cursor-pointer rounded-full border border-[var(--ho-line)] bg-white px-4 text-base font-semibold text-black transition-colors hover:bg-[var(--ho-tint)]"
     >
       Start over
     </button>
