@@ -205,6 +205,8 @@ export function WinTable({ rows }: { rows: { win: ReactNode; signals: ReactNode 
   const head = "pb-2 text-left font-[family-name:var(--ho-mono)] text-[12px] font-normal tracking-[0.06em] text-[var(--ho-muted)] uppercase"
   const cell = "border-t border-[var(--ho-line)] py-2.5 align-top text-[15px] leading-snug"
   return (
+    // On a light grey a step brighter than the page's, inset from the white card.
+    <div className="rounded-xl bg-[#f6f6f4] px-4 pt-3 pb-1">
     <table className="w-full border-collapse">
       <thead>
         <tr>
@@ -221,6 +223,7 @@ export function WinTable({ rows }: { rows: { win: ReactNode; signals: ReactNode 
         ))}
       </tbody>
     </table>
+    </div>
   )
 }
 
