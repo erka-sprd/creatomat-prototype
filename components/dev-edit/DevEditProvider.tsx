@@ -16,6 +16,8 @@ import {
   sprdColorClass,
 } from "@/lib/dev-edit/color-tokens"
 import { freezeHover } from "@/lib/dev-edit/freeze-hover"
+import { freezeTimers } from "@/lib/dev-edit/freeze-timers"
+import { type StyleRow, styleSummary } from "@/lib/dev-edit/style-summary"
 import {
   type LayoutGroupId,
   type LayoutOption,
@@ -55,6 +57,20 @@ const futuristic = Chakra_Petch({ subsets: ["latin"], weight: ["400", "500", "60
 // What the browser sends the app's hovered element when the shield takes the
 // pointer — held back in edit mode.
 const HOVER_OUT_EVENTS = ["pointerout", "pointerleave", "mouseout", "mouseleave"] as const
+// Presses on the shield. They'd bubble on to the app's document-level
+// listeners, which read them as a press outside whatever is open, and close
+// it: the print-size notice, popovers, menus. Held back at the window.
+const PRESS_EVENTS = [
+  "pointerdown",
+  "pointerup",
+  "mousedown",
+  "mouseup",
+  "click",
+  "dblclick",
+  "contextmenu",
+  "touchstart",
+  "touchend",
+] as const
 
 const isEditable =(target: EventTarget | null) => {
   const el = target as HTMLElement | null
@@ -81,6 +97,41 @@ function readTarget(el: HTMLElement): Target {
 const MARCH_DASH = 6
 const MARCH_GAP = 4
 const MARCH_MS = 700
+
+const holdInPanel = (e: React.SyntheticEvent) => e.nativeEvent.stopImmediatePropagation()
+
+// The hover card: the hovered element's main styles as Tailwind classes. A
+// class the element carries itself is bright; one read from the computed
+// style (inherited, or set another way) is dimmed.
+function StyleCard({ rows, above }: { rows: StyleRow[]; above: boolean }) {
+  if (rows.length === 0) return null
+  return (
+    <div
+      className={`absolute left-0 grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 rounded-[3px] border border-[#00FF9C]/60 bg-[#050807]/95 px-2 py-1.5 whitespace-nowrap ${
+        above ? "bottom-full mb-1" : "top-full mt-1"
+      }`}
+    >
+      {rows.map(row => (
+        <div key={row.label} className="contents">
+          <span className="text-[#C8FFE6]/50">{row.label}</span>
+          <span
+            className={`flex items-center gap-1.5 font-medium ${
+              row.own ? "text-[#00FF9C]" : "text-[#C8FFE6]/70"
+            }`}
+          >
+            {row.swatch && (
+              <span
+                className="size-2.5 shrink-0 rounded-[2px] border border-white/30"
+                style={{ background: row.swatch }}
+              />
+            )}
+            {row.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function SelectionOutline({ rect, active }: { rect: DOMRect; active: boolean }) {
   return (
@@ -141,6 +192,9 @@ export default function DevEditProvider() {
   const [copied, setCopied] = useState(false)
   const [, bump] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
+  const shieldRef = useRef<HTMLDivElement>(null)
+  // The latest select, for the window-level press handler.
+  const selectRef = useRef<(x: number, y: number) => void>(() => {})
   // Undoes the frozen hover look — run when edit mode turns off.
   const unfreezeHoverRef = useRef<(() => void) | null>(null)
   // Inline styles the editor set, by element, with what they replaced — so
@@ -155,7 +209,14 @@ export default function DevEditProvider() {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "e") {
         if (isEditable(e.target)) return
         e.preventDefault()
-        if (!enabled) unfreezeHoverRef.current = freezeHover()
+        if (!enabled) {
+          const thawHover = freezeHover()
+          const thawTimers = freezeTimers()
+          unfreezeHoverRef.current = () => {
+            thawHover()
+            thawTimers()
+          }
+        }
         setEnabled(!enabled)
         setHovered(null)
       } else if (e.key === "Escape" && enabled) {
@@ -238,6 +299,28 @@ export default function DevEditProvider() {
     setLayoutPicks({})
     setCopied(false)
   }
+  selectRef.current = select
+
+  // Presses on the shield never reach the app (PRESS_EVENTS): stopped at the
+  // window, in capture, ahead of every document listener. That also skips
+  // React's own handlers, so the click selects from here. No focus moves
+  // either, so nothing closes on blur.
+  useLayoutEffect(() => {
+    if (!enabled) return
+    const holdPress = (e: Event) => {
+      if (e.target !== shieldRef.current) return
+      e.stopImmediatePropagation()
+      if (e.cancelable && e.type !== "click") e.preventDefault()
+      if (e.type === "click") {
+        const { clientX, clientY } = e as MouseEvent
+        selectRef.current(clientX, clientY)
+      }
+    }
+    for (const type of PRESS_EVENTS) window.addEventListener(type, holdPress, true)
+    return () => {
+      for (const type of PRESS_EVENTS) window.removeEventListener(type, holdPress, true)
+    }
+  }, [enabled])
 
   // Preview a value inline, remembering what was there first.
   const setInline = (cssProp: string, value: string) => {
@@ -316,12 +399,11 @@ export default function DevEditProvider() {
       {/* The shield: takes every pointer event over the page, so the app
           beneath stays frozen, and picks by what's under it. */}
       <div
+        ref={shieldRef}
         className="pointer-events-auto absolute inset-0 cursor-crosshair"
         onMouseMove={e => setHovered(stampedAt(e.clientX, e.clientY))}
         onMouseLeave={() => setHovered(null)}
-        onClick={e => select(e.clientX, e.clientY)}
         onWheel={scrollUnder}
-        onContextMenu={e => e.preventDefault()}
       />
       {hoverRect && (
         <div
@@ -334,9 +416,13 @@ export default function DevEditProvider() {
             outline: `1px dashed ${NEON}`,
           }}
         >
-          <span className="absolute top-full left-0 mt-0.5 rounded-[3px] border border-[#00FF9C]/60 bg-[#050807]/95 px-1 py-px font-medium whitespace-nowrap text-[#00FF9C]">
-            {hovered?.dataset.src}
-          </span>
+          {hovered && (
+            <StyleCard
+              rows={styleSummary(hovered, tokens)}
+              // Below the element, or above it when it sits low on screen.
+              above={hoverRect.bottom + 180 > window.innerHeight}
+            />
+          )}
         </div>
       )}
       {targetRect && <SelectionOutline rect={targetRect} active={hovered === target?.el} />}
@@ -345,6 +431,22 @@ export default function DevEditProvider() {
         // Sections 20px apart; within a section things sit closer (the tabs'
         // own gaps), so proximity says what belongs together.
         className="pointer-events-auto absolute top-4 right-4 flex w-[320px] flex-col gap-5 rounded-xl border border-[#00FF9C]/40 bg-[#050807]/95 p-4 shadow-[0_0_24px_rgba(0,255,156,0.18)] backdrop-blur"
+        // Presses on the panel stay in the panel: the app's document-level
+        // listeners would read them as a press outside whatever is open and
+        // close it. React listens on the document ahead of them, so stopping
+        // the native event here keeps it from them. Presses are stopped in
+        // capture (the panel only uses clicks); clicks after the panel's own
+        // handlers ran. Holding mousedown also keeps focus where it was.
+        onPointerDownCapture={holdInPanel}
+        onPointerUpCapture={holdInPanel}
+        onMouseDownCapture={e => {
+          e.preventDefault()
+          holdInPanel(e)
+        }}
+        onMouseUpCapture={holdInPanel}
+        onTouchStartCapture={holdInPanel}
+        onTouchEndCapture={holdInPanel}
+        onClick={holdInPanel}
       >
         <div className="flex items-baseline justify-between">
           <span className="flex items-center gap-1.5 font-semibold tracking-[0.08em] text-[#00FF9C] uppercase">
