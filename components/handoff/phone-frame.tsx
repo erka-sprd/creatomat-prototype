@@ -24,12 +24,12 @@ export function PhoneFrame({ on, children }: { on: boolean; children: ReactNode 
   return (
     // The metal rim: brushed titanium, lit from the top left.
     <div
-      className="relative mx-auto shadow-xl"
+      className="relative mx-auto"
       style={{
         padding: RIM_PX,
         borderRadius: PHONE_SCREEN_RADIUS + BEZEL_PX,
         background: RIM_METAL,
-        boxShadow: `${RIM_EDGES}, 0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)`,
+        boxShadow: RIM_EDGES,
       }}
     >
       {SIDE_BUTTONS.map(b => (
@@ -102,9 +102,9 @@ const GLASS_BORDER = "linear-gradient(160deg, #2a2a2c 0%, #0b0b0c 35%, #050505 7
 
 // The iPhone's own type, not the site's.
 const SYSTEM_FONT = '-apple-system, "SF Pro Text", system-ui, sans-serif'
-// Safari tints the status bar to the colour at the page's top: the site's
-// promo bar (components/promo-banner.tsx).
-const PAGE_TOP_TINT = "#FF6038"
+// Behind the status bar, as on the site on a real iPhone: plain white, not
+// the promo bar's orange.
+const PAGE_TOP_TINT = "#FFFFFF"
 
 // The status bar of an iPhone with the Dynamic Island: the time centred left
 // of the island, signal, Wi-Fi and battery right of it, all level with it.
@@ -142,45 +142,62 @@ function StatusBar() {
   )
 }
 
-// Liquid Glass, as Safari draws its floating controls: translucent white,
-// a bright rim and a soft drop shadow.
+// Liquid Glass in dark mode over a light page, as on a real iPhone: the
+// controls are a mid grey the page shows through, lit along the top, with
+// white glyphs. The page's own colour stays behind them.
 const GLASS =
-  "border border-white/70 bg-white/75 shadow-[0_2px_12px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-xl"
+  "border border-white/30 bg-[#8e8e93]/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_4px_14px_rgba(0,0,0,0.08)] backdrop-blur-xl"
+// SF Symbols' regular weight at the bar's size.
+const GLYPH_STROKE = 2
 
-// Safari's compact tab bar (iOS 26): back, the address pill, more — floating
-// glass controls, with the home indicator below them.
+// Safari's compact tab bar (iOS 27): back, the address pill (page menu,
+// address, reload), Tabs — floating glass controls on the page's white, with
+// the home indicator below them. iOS 27 put Tabs where iOS 26's ••• menu was.
 function SafariBar() {
   return (
     <div
       aria-hidden
-      className="relative flex items-start gap-2 bg-neutral-50 px-3 pt-2 text-black"
+      className="relative flex items-start gap-2 bg-white px-4 pt-3 text-white"
       style={{ height: PHONE_SAFARI_BAR_H, fontFamily: SYSTEM_FONT }}
     >
-      <span className={`flex size-11 shrink-0 items-center justify-center rounded-full ${GLASS}`}>
-        <svg width="11" height="18" viewBox="0 0 11 18" fill="none">
-          <path d="M9 1.5 1.5 9 9 16.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Back: chevron.backward. */}
+      <span className={`flex size-12 shrink-0 items-center justify-center rounded-full ${GLASS}`}>
+        <svg width="12" height="20" viewBox="0 0 12 20" fill="none">
+          <path d="M10 2 2 10l8 8" stroke="currentColor" strokeWidth={GLYPH_STROKE} strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </span>
-      <span className={`flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full px-3.5 ${GLASS}`}>
-        {/* The page menu. */}
-        <svg width="18" height="14" viewBox="0 0 18 14" fill="none" className="shrink-0">
-          <rect x="1" y="1" width="16" height="12" rx="2.5" stroke="currentColor" strokeWidth="1.6" />
-          <path d="M4.5 5h9M4.5 9h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <span className={`flex h-12 min-w-0 flex-1 items-center gap-2 rounded-full px-4 ${GLASS}`}>
+        {/* The page menu: three lines, the last one shorter. */}
+        <svg width="20" height="16" viewBox="0 0 20 16" fill="none" className="shrink-0">
+          <path d="M2 3h16M2 8h16M2 13h11" stroke="currentColor" strokeWidth={GLYPH_STROKE} strokeLinecap="round" />
         </svg>
-        <span className="min-w-0 flex-1 truncate text-center text-[15px] leading-none">
+        <span className="min-w-0 flex-1 truncate text-center text-[16px] leading-none">
           spreadshirt.com
         </span>
-        {/* Reload. */}
-        <svg width="15" height="16" viewBox="0 0 15 16" fill="none" className="shrink-0">
-          <path d="M13 9a5.5 5.5 0 1 1-1.6-3.9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          <path d="M12 1.5v4h-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Reload: arrow.clockwise. */}
+        <svg width="18" height="19" viewBox="0 0 18 19" fill="none" className="shrink-0">
+          <path d="M15.5 10.5a6.5 6.5 0 1 1-2-4.7" stroke="currentColor" strokeWidth={GLYPH_STROKE} strokeLinecap="round" />
+          {/* The arrow's tip, turned to follow the arc's end. */}
+          <path
+            d="M14.5 1.5v5h-5"
+            transform="rotate(-20 14.5 6.5)"
+            stroke="currentColor"
+            strokeWidth={GLYPH_STROKE}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </svg>
       </span>
-      <span className={`flex size-11 shrink-0 items-center justify-center rounded-full ${GLASS}`}>
-        <svg width="18" height="4" viewBox="0 0 18 4" fill="currentColor">
-          <circle cx="2" cy="2" r="2" />
-          <circle cx="9" cy="2" r="2" />
-          <circle cx="16" cy="2" r="2" />
+      {/* Tabs: square.on.square — the front square low left, the back one
+          peeking out top right. */}
+      <span className={`flex size-12 shrink-0 items-center justify-center rounded-full ${GLASS}`}>
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+          <path
+            d="M7 5.5V5a3 3 0 0 1 3-3h7a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-.5"
+            stroke="currentColor"
+            strokeWidth={GLYPH_STROKE}
+          />
+          <rect x="2" y="7" width="13" height="13" rx="3" stroke="currentColor" strokeWidth={GLYPH_STROKE} />
         </svg>
       </span>
       {/* The home indicator. */}

@@ -15,7 +15,7 @@ export const PHONE_FRAME_H = PHONE_SCREEN_H + 2 * PHONE_BEZEL_PX
 // the Dynamic Island on top (its safe area), and at the bottom Safari's
 // compact tab bar (back, address, more) over the home indicator.
 export const PHONE_STATUS_BAR_H = 54
-export const PHONE_SAFARI_BAR_H = 86
+export const PHONE_SAFARI_BAR_H = 96
 
 /** The web page's own height on that screen — what a scene lays out in. */
 export const PHONE_VIEWPORT_H = PHONE_SCREEN_H - PHONE_STATUS_BAR_H - PHONE_SAFARI_BAR_H
