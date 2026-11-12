@@ -19,6 +19,7 @@ import { PRINT_MAX_SIZE_LABEL } from "@/lib/designer-constants"
 import { CONTACT_OPTIONS } from "@/components/help-menu"
 import { ZOOM_ICON_PATH } from "@/lib/designer-constants"
 import { loadCatalog } from "@/lib/catalog"
+import { ACTIVE_LABEL_GAP_PX, LABEL_SLIDE_MS, labelNotchMask } from "@/lib/view-strip-notch"
 import {
   discountedPrice,
   majorVolumeDiscountTiersForProduct,
@@ -146,6 +147,76 @@ export function CanvasRowArt() {
       <div className={`${PILL} ho-art-technique left-[158px] w-[76px] justify-center gap-1.5 px-2.5`}>
         <img src="/icons/icon-droplet.svg" alt="" draggable={false} className="size-3.5 shrink-0" />
         <span className="text-[12px] leading-none font-semibold text-black">Print</span>
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------ view-switcher */
+
+// The big tee in a dark colour, so the label's cut shows the shirt through it.
+const VIEW_LABEL_COLOR = "navy"
+// A small views strip: four 22px tiles 2px apart, 3px in from the pill's ends.
+const VIEW_LABEL_TILES = 4
+const VIEW_LABEL_TILE_PX = 22
+const VIEW_LABEL_GAP_PX = 2
+const VIEW_LABEL_PAD_PX = 3
+const VIEW_LABEL_SIZE = { w: 40, h: 15 }
+const VIEW_LABEL_NAMES = ["Front", "Back", "Right", "Left"]
+const VIEW_LABEL_STEP_MS = 1600
+
+/** The view's name, cut into the strip, gliding from one view to the next. */
+export function ViewLabelArt() {
+  const views = useProductViews(BIG_TEE_ID, VIEW_LABEL_COLOR)
+  const reduced = useReducedMotion()
+  const [active, setActive] = useState(0)
+  useEffect(() => {
+    if (reduced) return
+    const timer = setInterval(() => setActive(i => (i + 1) % VIEW_LABEL_TILES), VIEW_LABEL_STEP_MS)
+    return () => clearInterval(timer)
+  }, [reduced])
+  // The active tile's centre, from the strip's left edge.
+  const x =
+    VIEW_LABEL_PAD_PX +
+    active * (VIEW_LABEL_TILE_PX + VIEW_LABEL_GAP_PX) +
+    VIEW_LABEL_TILE_PX / 2
+  return (
+    <div className={ART_BLEED} aria-hidden="true">
+      <BigTee src={views[0]} />
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
+        <span
+          className="absolute bottom-full left-0 flex items-center justify-center rounded-full bg-white text-[8px] leading-none font-semibold tracking-[0.1em] text-black uppercase"
+          style={{
+            width: VIEW_LABEL_SIZE.w,
+            height: VIEW_LABEL_SIZE.h,
+            marginBottom: ACTIVE_LABEL_GAP_PX,
+            translate: `calc(${x}px - 50%) 0`,
+            transition: `translate ${LABEL_SLIDE_MS}ms ease-out`,
+          }}
+        >
+          {VIEW_LABEL_NAMES[active]}
+        </span>
+        {/* The strip, cut by the designer's own mask. */}
+        <div
+          className="flex h-7 items-center rounded-full bg-white"
+          style={{
+            padding: VIEW_LABEL_PAD_PX,
+            gap: VIEW_LABEL_GAP_PX,
+            ...labelNotchMask(VIEW_LABEL_SIZE, x, false),
+          }}
+        >
+          {views.slice(0, VIEW_LABEL_TILES).map((src, i) => (
+            <span
+              key={src}
+              className={`flex items-center justify-center rounded-full ${
+                i === active ? "bg-[var(--sprd-neutral-100)]" : ""
+              }`}
+              style={{ width: VIEW_LABEL_TILE_PX, height: VIEW_LABEL_TILE_PX }}
+            >
+              <img src={src} alt="" draggable={false} className="size-[16px] object-contain" />
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   )

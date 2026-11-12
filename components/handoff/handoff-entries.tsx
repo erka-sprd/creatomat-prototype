@@ -13,6 +13,7 @@ import {
   EmbroideryArt,
   PriceCalcArt,
   PrintQualityArt,
+  ViewLabelArt,
   ZoomArt,
 } from "@/components/handoff/handoff-card-art"
 
@@ -119,6 +120,13 @@ const TINTS = {
     ink: "#3F57D6",
     glow: ["51, 85, 255", "56, 189, 248", "167, 139, 250", "45, 212, 191"],
   },
+  // The catalogue's navy shirt, #2B3A67, with slate, sky and violet.
+  navy: {
+    tray: "#EEF0F6",
+    line: "#DADFEB",
+    ink: "#3F4D7A",
+    glow: ["43, 58, 103", "100, 116, 139", "56, 189, 248", "167, 139, 250"],
+  },
 } satisfies Record<string, Tint>
 
 export const ENTRIES: Entry[] = [
@@ -209,6 +217,17 @@ export const ENTRIES: Entry[] = [
     updated: { date: "November 12, 2026", time: "3:28 PM" },
     status: "live",
     tint: TINTS.blue,
+  },
+  {
+    Art: ViewLabelArt,
+    slug: "view-switcher",
+    title: "Product views, easier to explore",
+    problem:
+      "“Which side am I on — and what else can I design?” — since the new bottom row, fewer users on desktop switch views: the small circles carry no names.",
+    created: "2026-11-12",
+    updated: { date: "November 12, 2026", time: "6:05 PM" },
+    status: "live",
+    tint: TINTS.navy,
   },
 ]
 

@@ -347,6 +347,8 @@ export function ViewStrip({
     const t = tile.getBoundingClientRect()
     const w = wrapper.getBoundingClientRect()
     setHovered({ id: pinnedHoverId, x: t.left - w.left + t.width / 2 })
+    // Let go of, the pin ends the hover — a handoff scene scripting one.
+    return () => setHovered(null)
   }, [pinnedHoverId, views.length])
   // The view the close-up last showed — kept while it fades out, so it doesn't
   // empty mid-animation.
