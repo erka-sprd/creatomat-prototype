@@ -196,6 +196,34 @@ export function BriefCard({
   )
 }
 
+/**
+ * "What win looks like", as every handoff writes it: a table, each win (the
+ * outcome we want to be true) beside the signals that would show it. Plain
+ * language on both sides — no event names, no numbers.
+ */
+export function WinTable({ rows }: { rows: { win: ReactNode; signals: ReactNode }[] }) {
+  const head = "pb-2 text-left font-[family-name:var(--ho-mono)] text-[12px] font-normal tracking-[0.06em] text-[var(--ho-muted)] uppercase"
+  const cell = "border-t border-[var(--ho-line)] py-2.5 align-top text-[15px] leading-snug"
+  return (
+    <table className="w-full border-collapse">
+      <thead>
+        <tr>
+          <th className={`${head} w-1/2 pr-5`}>Win</th>
+          <th className={head}>Signals</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, i) => (
+          <tr key={i}>
+            <td className={`${cell} pr-5 font-semibold`}>{row.win}</td>
+            <td className={`${cell} text-[var(--ho-muted)]`}>{row.signals}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 export function Brief({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-col divide-y divide-dashed divide-[var(--ho-line)] rounded-2xl bg-[var(--ho-paper)] text-[var(--ho-ink)]">

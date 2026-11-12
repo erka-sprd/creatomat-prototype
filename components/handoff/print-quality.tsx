@@ -25,6 +25,7 @@ import {
   HandoffHeader,
   HandoffShell,
   Section,
+  WinTable,
   type NavItem,
 } from "@/components/handoff/handoff-ui"
 import {
@@ -38,7 +39,11 @@ import {
 } from "@/components/handoff/print-quality-scripts"
 import { SECOND_UPLOAD_SRC, UPLOAD_SRC } from "@/components/handoff/print-quality-scene"
 import { UploadCard, type UploadEntry } from "@/components/ui/upload-panel/UploadPanel"
-import { PRINT_MAX_SIZE_ACTION, PRINT_MAX_SIZE_LINGER_MS } from "@/lib/designer-constants"
+import {
+  PRINT_MAX_SIZE_ACTION,
+  PRINT_MAX_SIZE_KEEP,
+  PRINT_MAX_SIZE_LINGER_MS,
+} from "@/lib/designer-constants"
 
 const PROTOTYPE = "https://creatomat-prototype.vercel.app/"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
@@ -128,11 +133,12 @@ export default function PrintQuality() {
           <BriefCard tone="problem" label="Problem">
             <ul>
               <li>
-                A small uploaded image can be enlarged as far as the print area goes — far past
-                what its pixels can print sharp.
+                Users enlarge their upload as big as the print area allows, without knowing it
+                will print blurry at that size.
               </li>
               <li>
-                Nothing in the designer says so. Users find out when the blurry print arrives.
+                They get no warning in the designer — the first sign is the blurry print on their
+                product.
               </li>
             </ul>
           </BriefCard>
@@ -143,14 +149,26 @@ export default function PrintQuality() {
             ordered.
           </BriefCard>
           <BriefCard tone="win" label="What win looks like">
-            <ul>
-              <li>
-                People who reach the maximum size click &ldquo;{PRINT_MAX_SIZE_ACTION}&rdquo;.
-              </li>
-              <li>We know how often the maximum size comes up, and how often it comes back.</li>
-              <li>People who reach the maximum size still go on to order.</li>
-              <li>Fewer complaints and reprints about blurry or pixelated uploads.</li>
-            </ul>
+            <WinTable
+              rows={[
+                {
+                  win: "Fewer blurry prints reach our customers.",
+                  signals: "Fewer complaints and reprints about blurry uploads",
+                },
+                {
+                  win: "People at the maximum size make a clear choice.",
+                  signals: `“${PRINT_MAX_SIZE_ACTION}” and “${PRINT_MAX_SIZE_KEEP}” clicks per message shown`,
+                },
+                {
+                  win: "One message is enough — it rarely comes back.",
+                  signals: "How often the message comes back for the same upload",
+                },
+                {
+                  win: "The limit doesn't hurt conversion.",
+                  signals: "Conversion rate of those who saw the message vs. those who didn't",
+                },
+              ]}
+            />
           </BriefCard>
           <BriefCard tone="result" label="Result">
             Will follow.

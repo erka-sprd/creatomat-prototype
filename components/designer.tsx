@@ -3023,7 +3023,10 @@ export default function Designer({
         ? { w: element.pixelWidth, h: element.pixelHeight }
         : null
     return (
-      <div className="pointer-events-none absolute top-full left-1/2 z-40 mt-5 -translate-x-1/2">
+      // pt-5 rather than mt-5, and scaled from the top, as the rotate/move
+      // handles: a phone's pinch zoom is undone (--inv-zoom) for the gap and
+      // the message alike, so both keep their size on screen.
+      <div className="pointer-events-none absolute top-full left-1/2 z-40 origin-top -translate-x-1/2 scale-[var(--inv-zoom,1)] pt-5">
         <EmbroideryMaxSizeBadge
           show={embroideryMaxSizeId === id}
           label={embroidery ? "Min. size for embroidery" : PRINT_MAX_SIZE_LABEL}

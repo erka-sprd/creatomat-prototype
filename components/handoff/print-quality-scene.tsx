@@ -79,6 +79,8 @@ const STAGE_HEIGHT_PX = 420
 // The designer's desktop add panel: its width and its inset from the canvas.
 const PANEL_WIDTH_PX = 375
 const PANEL_INSET_PX = 4
+// The least gap between the size message and the stage's right edge.
+const MESSAGE_EDGE_GAP_PX = 16
 const DEFAULT_MOTION_MS = 500
 const EASE = "cubic-bezier(0.4,0,0.2,1)"
 
@@ -306,14 +308,27 @@ export function QualityScene({
     restart
   )
 
+  // The size message's width, measured once it's on the stage (mounted even
+  // while hidden, so it's there from the first frame on).
+  const [messageW, setMessageW] = useState(0)
+  useLayoutEffect(() => {
+    const message = stageRef.current?.querySelector<HTMLElement>(SIZE_MESSAGE)
+    if (message && message.offsetWidth !== messageW) setMessageW(message.offsetWidth)
+  })
+
   // The upload at its stop, px: as wide as its pixels print sharp, on a canvas
   // zoomed in until that is STOP_WIDTH_PX. Resized, its top-left corner stays.
   const geo = useMemo(() => {
     if (!product || !pixels || !stageW) return null
     const stopShare = printMaxWidthMm(pixels.w) / product.widthMm
     const productPx = STOP_WIDTH_PX / ((product.area.width / 100) * stopShare)
+    // Beside the panel: in the middle of what's left of the canvas — but no
+    // further right than lets the message under it fit, whole, on the stage.
     const centreX = besidePanel
-      ? PANEL_INSET_PX + PANEL_WIDTH_PX + (stageW - PANEL_INSET_PX - PANEL_WIDTH_PX) / 2
+      ? Math.min(
+          PANEL_INSET_PX + PANEL_WIDTH_PX + (stageW - PANEL_INSET_PX - PANEL_WIDTH_PX) / 2,
+          stageW - messageW / 2 - MESSAGE_EDGE_GAP_PX
+        )
       : stageW / 2
     const stopH = (STOP_WIDTH_PX * pixels.h) / pixels.w
     return {
@@ -325,7 +340,7 @@ export function QualityScene({
       top: designY - stopH / 2,
       stopH,
     }
-  }, [product, pixels, stageW, besidePanel, designY])
+  }, [product, pixels, stageW, besidePanel, designY, messageW])
   const width = STOP_WIDTH_PX * state.size
   const height = (geo?.stopH ?? 0) * state.size
 

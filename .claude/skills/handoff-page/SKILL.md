@@ -27,6 +27,21 @@ tokens plus `green-400` / `green-700` / `green-100` classes)
 and the product replicas inside it, which keep the app's own classes. Never
 style a replica with document tokens, and never let document CSS reach into one.
 
+## The brief
+
+Problem, Hypothesis, What win looks like, Result — `Brief` and `BriefCard`.
+
+- **Problem** from the user's point of view: what they do and what happens to
+  them ("Users enlarge… without knowing…"), not what the product allows.
+- **What win looks like is always a table** — `WinTable`, two columns, **Win**
+  and **Signals**. A win is an outcome we want to be true ("Fewer blurry
+  prints reach our customers"), not a count ("we know how often…"); its
+  signals are what would show it. Plain language on both sides: no event
+  names, no formulas, no numbers. Say "conversion rate" for orders. Each
+  statement about 10 words (5–15) — e.g. "How often the message comes back
+  for the same upload".
+- Only signals that can actually be measured.
+
 ## A section
 
 Sections are terse by default. Unless asked for more, a section is exactly:
