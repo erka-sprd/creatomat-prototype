@@ -1,7 +1,6 @@
 "use client"
 
 import * as Popover from "@radix-ui/react-popover"
-import { useSearchParams } from "next/navigation"
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
 
 // import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
@@ -583,26 +582,6 @@ export function ViewStrip({
 }
 
 const TECHNIQUE_LABEL = { standard: "Standard print", embroidery: "Embroidery" } as const
-const NOT_AVAILABLE = "Not available for this product"
-
-// TEMPORARY — ?longCopy=fr|nl puts create-omat's longest translations of the
-// technique copy (fr-FR, nl-NL print-technique.*) in the row, to check the
-// pills hold them. Remove once checked.
-const LONG_COPY = {
-  fr: {
-    label: { standard: "Impression standard", embroidery: "Broderie" },
-    notAvailable: "Non disponible pour ce produit",
-  },
-  nl: {
-    label: { standard: "Standaard Afdrukken", embroidery: "Borduurwerk" },
-    notAvailable: "Niet beschikbaar voor dit product",
-  },
-} as const
-function useTechniqueCopy() {
-  const lang = useSearchParams()?.get("longCopy")
-  if (lang === "fr" || lang === "nl") return LONG_COPY[lang]
-  return { label: TECHNIQUE_LABEL, notAvailable: NOT_AVAILABLE }
-}
 // The technique icons from mobile-dock-change's print technique switcher: a
 // drop of ink for standard print, needle and thread for embroidery.
 const TECHNIQUE_ICON = {
@@ -636,12 +615,11 @@ function TechniqueIcon({ tech }: { tech: "standard" | "embroidery" }) {
 // dropdown's button, minus the chevron, the hover, the menu and the shadow,
 // on a see-through white, its text greyed.
 export function TechniqueLabel({ value }: { value: "standard" | "embroidery" }) {
-  const copy = useTechniqueCopy()
   return (
     <div className="h-14 rounded-full bg-white/50" style={{ padding: STRIP_PADDING_PX }}>
       <div className="flex h-full items-center gap-2 px-4 text-sm font-semibold text-[var(--sprd-neutral-600)]">
         <TechniqueIcon tech={value} />
-        <span className="whitespace-nowrap">{copy.label[value]}</span>
+        <span className="whitespace-nowrap">{TECHNIQUE_LABEL[value]}</span>
       </div>
     </div>
   )
@@ -660,7 +638,6 @@ function TechniqueFace({
   tech: "standard" | "embroidery"
   confirmed?: boolean
 }) {
-  const copy = useTechniqueCopy()
   const innerRef = useRef<HTMLSpanElement>(null)
   // Pinned to the face's measured width, so the next change has a width to
   // ease from (auto would jump).
@@ -703,7 +680,7 @@ function TechniqueFace({
             <TechniqueIcon tech={tech} />
           </span>
         </span>
-        <span className="whitespace-nowrap">{copy.label[tech]}</span>
+        <span className="whitespace-nowrap">{TECHNIQUE_LABEL[tech]}</span>
       </span>
     </span>
   )
@@ -728,7 +705,6 @@ export function TechniqueSwitcher({
   /** A green tick in the technique icon's place — confirming a switch just made. */
   confirmed?: boolean
 }) {
-  const copy = useTechniqueCopy()
   const [openState, setOpenState] = useState(false)
   const open = pinnedOpen || openState
   const setOpen = (next: boolean) => {
@@ -739,7 +715,7 @@ export function TechniqueSwitcher({
   const button = (
     <button
       type="button"
-      aria-label={`Print technique: ${copy.label[current]}`}
+      aria-label={`Print technique: ${TECHNIQUE_LABEL[current]}`}
       className={`flex h-full cursor-pointer items-center gap-2 rounded-full px-4 text-sm font-semibold text-black transition-colors ${TILE_HOVER} ${
         open ? TILE_ACTIVE : ""
       }`}
@@ -824,9 +800,9 @@ export function TechniqueSwitcher({
           <span className="flex items-start gap-2">
             <TechniqueIcon tech={tech} />
             <span>
-              {copy.label[tech]}
+              {TECHNIQUE_LABEL[tech]}
               {unavailable && (
-                <span className="block text-xs font-normal">{copy.notAvailable}</span>
+                <span className="block text-xs font-normal">Not available for this product</span>
               )}
             </span>
           </span>
