@@ -1,6 +1,7 @@
 "use client"
 
 import * as Popover from "@radix-ui/react-popover"
+import { useSearchParams } from "next/navigation"
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
 
 // import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
@@ -10,6 +11,8 @@ import {
   ScrollBlur,
   useHorizontalOverflow,
 } from "@/components/ui/horizontal-scroll"
+import { ZOOM_ICON_PATH } from "@/lib/designer-constants"
+import { ACTIVE_LABEL_GAP_PX, LABEL_SLIDE_MS, labelNotchMask } from "@/lib/view-strip-notch"
 
 // The designer's bottom row (desktop): three controls under the canvas in
 // one style — the zoom, the product views and the print technique switcher.
@@ -36,27 +39,45 @@ const ZOOM_EPSILON = 0.001
 // 56px less that on each side; each tile holds its thumbnail TILE_PADDING_PX in.
 const STRIP_PADDING_PX = 6
 const TILE_PADDING_PX = 6
-export const TILE_PX = 56 - 2 * STRIP_PADDING_PX
-export const TILE_THUMB_PX = TILE_PX - 2 * TILE_PADDING_PX
+const TILE_PX = 56 - 2 * STRIP_PADDING_PX
+const TILE_THUMB_PX = TILE_PX - 2 * TILE_PADDING_PX
 const VISIBLE_TILES = 5.5
 // The hover close-up's preview, against the tile's.
 const PREVIEW_SCALE = 5
+// Between the label and the hover close-up above it.
+const PREVIEW_GAP_PX = 6
+// The label while its view is scrolled out of the strip (ViewStrip's
+// labelPinned): blurred over this share of its width on the side its view went, by
+// this much (ScrollBlur, fading in from that end).
+const PINNED_LABEL_BLUR_SHARE = 0.6
+const PINNED_LABEL_BLUR_PX = 5
+// …and its white fading in from that side: from this much white at the end
+// to full white this share of the way in.
+const PINNED_LABEL_FADE_FROM = 0.2
+const PINNED_LABEL_FADE_SHARE = 0.35
+// The hover close-up card's padding all round. At the sides each preview in
+// its sliding row carries it, so a slide runs to the card's edges, the two
+// pictures twice this apart.
+const PREVIEW_PADDING_PX = 12
 // The hovers in the row — zoom buttons, the technique button and its menu
 // rows: neutral-100. The view tiles have their own (VIEW_TILE_*).
 const TILE_HOVER = "hover:bg-neutral-100"
-// A view tile: on the kit's lightest neutral (neutral-50), outlined 1px —
-// black when selected, the kit's neutral-200 on hover. Unselected tiles keep
-// a clear border, so nothing shifts when one shows.
-const VIEW_TILE_ACTIVE = "border border-black bg-[var(--sprd-neutral-50)]"
+// A view tile: on the kit's lightest neutral (neutral-50) — outlined 1px in
+// the kit's neutral-100 on hover. Every tile keeps a clear border, so nothing
+// shifts when one shows.
+// Selected ("Pop", picked on /view-strip-variants), it sits on the next
+// neutral up (neutral-100), unoutlined, its thumbnail grown with a bounce
+// (.view-tile-pop, globals.css).
+const VIEW_TILE_ACTIVE = "border border-transparent bg-[var(--sprd-neutral-100)]"
 const VIEW_TILE_IDLE =
-  "border border-transparent bg-white hover:border-[var(--sprd-neutral-200)] hover:bg-[var(--sprd-neutral-50)]"
+  "border border-transparent bg-white hover:border-[var(--sprd-neutral-100)] hover:bg-[var(--sprd-neutral-50)]"
 // The hover state held (ViewStrip's pinnedHoverId).
-const VIEW_TILE_HOVERED = "border border-[var(--sprd-neutral-200)] bg-[var(--sprd-neutral-50)]"
+const VIEW_TILE_HOVERED = "border border-[var(--sprd-neutral-100)] bg-[var(--sprd-neutral-50)]"
 // Between tiles.
 const TILE_GAP_PX = 2
-// Between the strip's top and the active view's label pill above it —
-// negative, so the pill overlaps the strip's edge.
-const ACTIVE_LABEL_GAP_PX = -6
+// The strip's shadow (shadow-xs) as a drop-shadow on a wrapper: a box-shadow
+// would be cut off by the strip's own mask, a drop-shadow follows the notch.
+const STRIP_SHADOW = "drop-shadow(0 1px 2px rgb(0 0 0 / 0.05))"
 // The strip's widest: five and a half tiles, the gaps between them, and the
 // padding.
 const STRIP_MAX_PX =
@@ -220,13 +241,6 @@ export function MergedBottomRow({
   )
 }
 
-// The zoom buttons' − and +, on a 20×20 viewBox.
-export const ZOOM_ICON_PATH = {
-  plus: "M10.8277 4.06952C10.7796 3.65507 10.4273 3.33337 9.99998 3.33337C9.53974 3.33337 9.16665 3.70647 9.16665 4.16671V9.16671H4.16665L4.06946 9.17231C3.65501 9.22045 3.33331 9.57268 3.33331 10C3.33331 10.4603 3.70641 10.8334 4.16665 10.8334H9.16665V15.8334L9.17225 15.9306C9.22039 16.345 9.57262 16.6667 9.99998 16.6667C10.4602 16.6667 10.8333 16.2936 10.8333 15.8334V10.8334H15.8333L15.9305 10.8278C16.3449 10.7796 16.6666 10.4274 16.6666 10C16.6666 9.5398 16.2935 9.16671 15.8333 9.16671H10.8333V4.16671L10.8277 4.06952Z",
-  minus:
-    "M15.8333 9.16663C16.2935 9.16663 16.6666 9.53972 16.6666 9.99996C16.6666 10.4273 16.3449 10.7795 15.9305 10.8277L15.8333 10.8333H4.16665C3.70641 10.8333 3.33331 10.4602 3.33331 9.99996C3.33331 9.5726 3.65501 9.22037 4.06946 9.17223L4.16665 9.16663H15.8333Z",
-} as const
-
 // The zoom, laid flat: minus, slider, plus — as long as the upright one
 // (180px), its slider the same 88px.
 export function ZoomControl({
@@ -342,58 +356,171 @@ export function ViewStrip({
   const shownView = views.find(v => v.id === shown?.id)
   const previewPx = TILE_THUMB_PX * PREVIEW_SCALE
   const activeView = views.find(v => v.id === activeViewId)
+  // The label names the hovered view while there is one — gliding over to
+  // it — and the active one otherwise.
+  const labelView = views.find(v => v.id === hovered?.id) ?? activeView
+  // The label's size, for the notch cut around it — again whenever the name
+  // changes its width.
+  const labelRef = useRef<HTMLDivElement>(null)
+  const [labelSize, setLabelSize] = useState<{ w: number; h: number } | null>(null)
+  useLayoutEffect(() => {
+    const label = labelRef.current
+    if (!label) return
+    const measure = () => setLabelSize({ w: label.offsetWidth, h: label.offsetHeight })
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(label)
+    return () => observer.disconnect()
+  }, [labelView?.id])
+  // Where the label rests: over the active tile's centre (measured from the
+  // strip's left edge, so it follows the strip's scroll) — at the end tiles
+  // too, where a long name may overhang the strip's end. Once the strip is
+  // scrolled so the active tile has gone (its centre past the strip's end),
+  // the label stays pinned inside that end instead — it doesn't drift off
+  // over the zoom or the switcher — blurred and fading out on that side,
+  // like the strip's own cut-off end.
+  const [labelX, setLabelX] = useState<number | null>(null)
+  const [labelPinned, setLabelPinned] = useState<"left" | "right" | null>(null)
+  const measureLabelX = () => {
+    const wrapper = wrapperRef.current
+    const tile = wrapper?.querySelector<HTMLElement>(`[data-view-id="${activeViewId}"]`)
+    if (!wrapper || !tile) return
+    const t = tile.getBoundingClientRect()
+    const w = wrapper.getBoundingClientRect()
+    const centre = t.left - w.left + t.width / 2
+    const half = (labelRef.current?.offsetWidth ?? 0) / 2
+    const pinned =
+      centre < TILE_PX / 2 ? "left" : centre > w.width - TILE_PX / 2 ? "right" : null
+    setLabelPinned(pinned)
+    setLabelX(pinned ? Math.min(Math.max(centre, half), w.width - half) : centre)
+  }
+  useLayoutEffect(() => {
+    measureLabelX()
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+    const observer = new ResizeObserver(measureLabelX)
+    observer.observe(wrapper)
+    return () => observer.disconnect()
+  }, [activeViewId, views.length, labelSize?.w])
+  const shownLabelX = hovered?.x ?? labelX
+  const notchMask =
+    labelView && labelSize && shownLabelX !== null
+      ? labelNotchMask(labelSize, shownLabelX, false)
+      : undefined
+  // The close-up glides between tiles with the label while it's up, but
+  // appears in place — no slide in from wherever it was last.
+  const previewWasOpen = useRef(false)
+  useLayoutEffect(() => {
+    previewWasOpen.current = !!hovered
+  })
   return (
     <div ref={wrapperRef} className="relative">
-      {/* The active view's name, in a small white pill centred ACTIVE_LABEL_GAP_PX
-          above the strip — the resting-state label the tiles themselves don't
-          carry. It gives way while a hover close-up is up, which opens in the
-          same spot. */}
-      {activeView && (
+      {/* The label: a view's name in a small white pill ACTIVE_LABEL_GAP_PX
+          above the strip — the hovered view's while the pointer is on the
+          strip, the active one's otherwise. It glides from tile to tile, the
+          notch with it. */}
+      {labelView && (
         <div
+          ref={labelRef}
           aria-hidden="true"
-          className={`pointer-events-none absolute bottom-full left-1/2 z-10 -translate-x-1/2 rounded-full bg-white px-2.5 py-1 text-xs font-semibold tracking-[0.1em] whitespace-nowrap text-black uppercase transition-opacity duration-150 ease-out ${
-            hovered ? "opacity-0" : "opacity-100"
-          }`}
-          style={{ marginBottom: ACTIVE_LABEL_GAP_PX }}
+          className="pointer-events-none absolute bottom-full z-10 -translate-x-1/2 rounded-full bg-white px-2.5 py-1 text-xs font-semibold tracking-[0.1em] whitespace-nowrap text-black uppercase"
+          style={{
+            marginBottom: ACTIVE_LABEL_GAP_PX,
+            left: shownLabelX ?? "50%",
+            // Pinned, its white fades in from the blurred end — from
+            // PINNED_LABEL_FADE_FROM white to full over PINNED_LABEL_FADE_SHARE.
+            ...(labelPinned && !hovered
+              ? {
+                  background: `linear-gradient(to ${labelPinned === "left" ? "right" : "left"}, rgb(255 255 255 / ${PINNED_LABEL_FADE_FROM}), white ${PINNED_LABEL_FADE_SHARE * 100}%)`,
+                }
+              : {}),
+            transition: `left ${LABEL_SLIDE_MS}ms ease-out`,
+          }}
         >
-          {activeView.name}
+          {labelView.name}
+          {labelPinned && !hovered && labelSize && (
+            <ScrollBlur
+              dir={labelPinned}
+              widthPx={labelSize.w * PINNED_LABEL_BLUR_SHARE}
+              blurPx={PINNED_LABEL_BLUR_PX}
+            />
+          )}
         </div>
       )}
+      {/* The hover close-up, a card of its own PREVIEW_GAP_PX above the label
+          (which names the view). */}
       <div
         aria-hidden="true"
-        className={`pointer-events-none absolute bottom-full z-[100] mb-2 -translate-x-1/2 origin-bottom transition-[opacity,scale] duration-150 ease-out ${
+        className={`pointer-events-none absolute bottom-full z-[100] -translate-x-1/2 origin-bottom ease-out ${
           hovered ? "scale-100 opacity-100" : "scale-95 opacity-0"
         }`}
-        style={{ left: shown?.x ?? 0 }}
+        style={{
+          left: shown?.x ?? 0,
+          marginBottom: (labelSize?.h ?? 0) + ACTIVE_LABEL_GAP_PX + PREVIEW_GAP_PX,
+          transition: `opacity 150ms ease-out, scale 150ms ease-out${
+            previewWasOpen.current && hovered ? `, left ${LABEL_SLIDE_MS}ms ease-out` : ""
+          }`,
+        }}
       >
+        {/* Inside, every view's preview sits in a row, the card a window onto
+            one: moving to the next tile slides the row along under the window
+            (left or right) as the card glides — a carousel following the
+            pointer. Opening, it's already in place. Each preview carries the
+            card's side padding (PREVIEW_PADDING_PX) itself, so at rest it sits
+            padded, but sliding it runs out to the card's very edges. */}
         {shownView && (
-          <div className="flex flex-col items-center gap-2 rounded-[16px] bg-white p-3 shadow-xl">
+          <div
+            className="overflow-hidden rounded-[16px] bg-white shadow-xl"
+            style={{ paddingBlock: PREVIEW_PADDING_PX }}
+          >
             <div
-              className={`relative ${shownView.photo ? "overflow-hidden rounded-[12px]" : ""}`}
-              style={{ width: previewPx, height: previewPx }}
+              className="flex"
+              style={{
+                width: previewPx + 2 * PREVIEW_PADDING_PX,
+                translate: `${-views.indexOf(shownView) * (previewPx + 2 * PREVIEW_PADDING_PX)}px 0`,
+                transition:
+                  previewWasOpen.current && hovered ? `translate ${LABEL_SLIDE_MS}ms ease-out` : "none",
+              }}
             >
-              {shownView.thumb(previewPx)}
+              {views.map(view => (
+                <div key={view.id} className="shrink-0" style={{ paddingInline: PREVIEW_PADDING_PX }}>
+                  <div
+                    className={`relative ${view.photo ? "overflow-hidden rounded-[12px]" : ""}`}
+                    style={{ width: previewPx, height: previewPx }}
+                  >
+                    {view.thumb(previewPx)}
+                  </div>
+                </div>
+              ))}
             </div>
-            {/* The view's name under its preview. */}
-            <span className="text-[12px] font-semibold tracking-[0.1em] text-black uppercase">
-              {shownView.name}
-            </span>
           </div>
         )}
       </div>
       {/* The cap sits on the pill, not on the scroller inside it: a
           percentage cap there doesn't hold where the pill sizes to its
           content (outside the row's grid), and the pill ran on past it. */}
-      <div className={`${BOX} relative overflow-hidden`} style={{ maxWidth: STRIP_MAX_PX }}>
+      <div style={{ filter: STRIP_SHADOW }}>
+      <div
+        className="relative h-14 overflow-hidden rounded-full bg-white"
+        style={{ maxWidth: STRIP_MAX_PX, ...notchMask }}
+      >
         {canScrollLeft && <ScrollBlur dir="left" blurPx={EDGE_BLUR_PX} />}
         <div
           ref={ref}
           onScroll={() => {
             onScroll()
+            measureLabelX()
             if (!pinnedHoverId) setHovered(null)
           }}
+          // The hover ends on leaving the strip, not a tile: crossing the gap
+          // between two tiles keeps the close-up up (on the last tile), so the
+          // active view's label doesn't flash back in between them.
+          onMouseLeave={pinnedHoverId ? undefined : () => setHovered(null)}
           className="no-scrollbar flex h-full overflow-x-auto scroll-smooth"
-          style={{ padding: STRIP_PADDING_PX, gap: TILE_GAP_PX }}
+          style={{
+            padding: STRIP_PADDING_PX,
+            gap: TILE_GAP_PX,
+          }}
         >
           {views.map(view => {
             const selected = activeViewId === view.id
@@ -416,7 +543,6 @@ export function ViewStrip({
                         setHovered({ id: view.id, x: tile.left - strip.left + tile.width / 2 })
                       }
                 }
-                onMouseLeave={pinnedHoverId ? undefined : () => setHovered(null)}
                 // A circle, like the close-up — at the strip's ends it follows
                 // the pill's curve STRIP_PADDING_PX in. overflow-hidden keeps
                 // the thumbnail's square corners inside it.
@@ -430,7 +556,9 @@ export function ViewStrip({
                     views are not clipped, so a light product's shadow is not
                     cut off where the garment meets the box edge. */}
                 <div
-                  className={`relative ${view.photo ? "overflow-hidden rounded-full" : ""}`}
+                  className={`relative ${view.photo ? "overflow-hidden rounded-full" : ""} ${
+                    selected ? "view-tile-pop" : "view-tile-unpop"
+                  }`}
                   style={{ width: TILE_THUMB_PX, height: TILE_THUMB_PX }}
                 >
                   {view.thumb(TILE_THUMB_PX)}
@@ -440,6 +568,7 @@ export function ViewStrip({
           })}
         </div>
         {canScrollRight && <ScrollBlur dir="right" blurPx={EDGE_BLUR_PX} />}
+      </div>
       </div>
       {/* Inside the pill's ends rather than half outside as on the colour
           row: the zoom and the switcher are only 12px away. */}
@@ -454,6 +583,26 @@ export function ViewStrip({
 }
 
 const TECHNIQUE_LABEL = { standard: "Standard print", embroidery: "Embroidery" } as const
+const NOT_AVAILABLE = "Not available for this product"
+
+// TEMPORARY — ?longCopy=fr|nl puts create-omat's longest translations of the
+// technique copy (fr-FR, nl-NL print-technique.*) in the row, to check the
+// pills hold them. Remove once checked.
+const LONG_COPY = {
+  fr: {
+    label: { standard: "Impression standard", embroidery: "Broderie" },
+    notAvailable: "Non disponible pour ce produit",
+  },
+  nl: {
+    label: { standard: "Standaard Afdrukken", embroidery: "Borduurwerk" },
+    notAvailable: "Niet beschikbaar voor dit product",
+  },
+} as const
+function useTechniqueCopy() {
+  const lang = useSearchParams()?.get("longCopy")
+  if (lang === "fr" || lang === "nl") return LONG_COPY[lang]
+  return { label: TECHNIQUE_LABEL, notAvailable: NOT_AVAILABLE }
+}
 // The technique icons from mobile-dock-change's print technique switcher: a
 // drop of ink for standard print, needle and thread for embroidery.
 const TECHNIQUE_ICON = {
@@ -487,11 +636,12 @@ function TechniqueIcon({ tech }: { tech: "standard" | "embroidery" }) {
 // dropdown's button, minus the chevron, the hover, the menu and the shadow,
 // on a see-through white, its text greyed.
 export function TechniqueLabel({ value }: { value: "standard" | "embroidery" }) {
+  const copy = useTechniqueCopy()
   return (
     <div className="h-14 rounded-full bg-white/50" style={{ padding: STRIP_PADDING_PX }}>
       <div className="flex h-full items-center gap-2 px-4 text-sm font-semibold text-[var(--sprd-neutral-600)]">
         <TechniqueIcon tech={value} />
-        <span className="whitespace-nowrap">{TECHNIQUE_LABEL[value]}</span>
+        <span className="whitespace-nowrap">{copy.label[value]}</span>
       </div>
     </div>
   )
@@ -510,6 +660,7 @@ function TechniqueFace({
   tech: "standard" | "embroidery"
   confirmed?: boolean
 }) {
+  const copy = useTechniqueCopy()
   const innerRef = useRef<HTMLSpanElement>(null)
   // Pinned to the face's measured width, so the next change has a width to
   // ease from (auto would jump).
@@ -552,7 +703,7 @@ function TechniqueFace({
             <TechniqueIcon tech={tech} />
           </span>
         </span>
-        <span className="whitespace-nowrap">{TECHNIQUE_LABEL[tech]}</span>
+        <span className="whitespace-nowrap">{copy.label[tech]}</span>
       </span>
     </span>
   )
@@ -577,6 +728,7 @@ export function TechniqueSwitcher({
   /** A green tick in the technique icon's place — confirming a switch just made. */
   confirmed?: boolean
 }) {
+  const copy = useTechniqueCopy()
   const [openState, setOpenState] = useState(false)
   const open = pinnedOpen || openState
   const setOpen = (next: boolean) => {
@@ -587,7 +739,7 @@ export function TechniqueSwitcher({
   const button = (
     <button
       type="button"
-      aria-label={`Print technique: ${TECHNIQUE_LABEL[current]}`}
+      aria-label={`Print technique: ${copy.label[current]}`}
       className={`flex h-full cursor-pointer items-center gap-2 rounded-full px-4 text-sm font-semibold text-black transition-colors ${TILE_HOVER} ${
         open ? TILE_ACTIVE : ""
       }`}
@@ -672,9 +824,9 @@ export function TechniqueSwitcher({
           <span className="flex items-start gap-2">
             <TechniqueIcon tech={tech} />
             <span>
-              {TECHNIQUE_LABEL[tech]}
+              {copy.label[tech]}
               {unavailable && (
-                <span className="block text-xs font-normal">Not available for this product</span>
+                <span className="block text-xs font-normal">{copy.notAvailable}</span>
               )}
             </span>
           </span>

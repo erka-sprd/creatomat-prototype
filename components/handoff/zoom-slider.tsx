@@ -26,7 +26,7 @@ import {
 import { ZOOM_PRODUCT_COLOR, useProductViews } from "@/components/handoff/handoff-card-art"
 import { CursorHand } from "@/components/handoff/rail-replica"
 import KitSwitch from "@/components/kit-switch"
-import { ZOOM_ICON_PATH } from "@/components/merged-bottom-row"
+import { ZOOM_ICON_PATH } from "@/lib/designer-constants"
 import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
 
 const PROTOTYPE = "https://creatomat-prototype.vercel.app/"

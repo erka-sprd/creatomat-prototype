@@ -17,7 +17,7 @@ import { buildTiles } from "product-catalog-client"
 import { BULK_EMAIL, BULK_ORDER_STRINGS, BULK_PURPLE } from "@/components/bulk-order-note"
 import { PRINT_MAX_SIZE_LABEL } from "@/lib/designer-constants"
 import { CONTACT_OPTIONS } from "@/components/help-menu"
-import { ZOOM_ICON_PATH } from "@/components/merged-bottom-row"
+import { ZOOM_ICON_PATH } from "@/lib/designer-constants"
 import { loadCatalog } from "@/lib/catalog"
 import {
   discountedPrice,

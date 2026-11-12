@@ -664,6 +664,37 @@
   }
 }
 
+/* The desktop views strip's selected thumbnail (MergedBottomRow's ViewStrip):
+   grown to 1.1, getting there with a bounce — a squeeze, an overshoot, a
+   settle — each time a view is picked. The one left eases back to size. */
+.view-tile-pop {
+  scale: 1.1;
+  animation: view-tile-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.view-tile-unpop {
+  scale: 1;
+  transition: scale 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes view-tile-pop {
+  0% {
+    scale: 1;
+  }
+  35% {
+    scale: 0.86;
+  }
+  70% {
+    scale: 1.16;
+  }
+  100% {
+    scale: 1.1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .view-tile-pop {
+    animation: none;
+  }
+}
+
 /* Embroidery warning badges shake when add to basket is blocked by them: a
    small vertical jolt with a tilt rocking left and right, building up and
    settling back over 1.45s so it catches the eye. Animates `transform`, which
