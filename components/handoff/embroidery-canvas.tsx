@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { getPrintAreaOverlay, getProductType } from "product-catalog-client"
-import { HOOP_ARROW_MIN_RATIO_GAP, isLightProductColor } from "@/components/designer"
+import { HOOP_ARROW_MIN_RATIO_GAP, isLightProductColor } from "@/lib/designer-constants"
 import { CursorHand } from "@/components/handoff/rail-replica"
 import KitSwitch from "@/components/kit-switch"
 import { loadCatalog } from "@/lib/catalog"
@@ -27,14 +27,23 @@ export type CanvasProduct = {
   image: string
   /** The print area on the product shot, percent of it. */
   area: { left: number; top: number; width: number; height: number }
+  /** The print area's real width, mm. */
+  widthMm: number
   /** The hoop frame's share of the print area's width and height. */
   hoop: number
   /** White / near-white: its image gets the designer's light-product shadow. */
   light: boolean
+  /** Its colour, as the catalogue names it and paints its swatch. */
+  colorName: string
+  colorHex: string
 }
 
-/** The designer's default product, its front print area and its hoop frame; null until loaded. */
-export function useCanvasProduct(id = TSHIRT_ID): CanvasProduct | null {
+/**
+ * The designer's default product in `color` (a catalogue colour name; white
+ * unless a handoff asks otherwise), its front print area and its hoop frame;
+ * null until loaded.
+ */
+export function useCanvasProduct(id = TSHIRT_ID, color = PRODUCT_COLOR): CanvasProduct | null {
   const [product, setProduct] = useState<CanvasProduct | null>(null)
   useEffect(() => {
     let live = true
@@ -44,20 +53,32 @@ export function useCanvasProduct(id = TSHIRT_ID): CanvasProduct | null {
         const view = p?.views[0]
         if (!p || !view) return
         const appearance =
-          p.appearances.find(a => a.name.trim().toLowerCase() === PRODUCT_COLOR) ??
-          p.appearances[0]
+          p.appearances.find(a => a.name.trim().toLowerCase() === color) ?? p.appearances[0]
         const image = appearance?.views.find(v => v.id === view.id)?.image
         const area = getPrintAreaOverlay(p, view.id)
+        // The view's print area, found as getPrintAreaOverlay finds it.
+        const printAreaId = view.viewMaps[0]?.printAreaId
+        const widthMm = p.printAreas.find(pa => pa.id === printAreaId)?.boundary.width
         const hoop = embroideryHoopFrameFraction(p.name)
         const light = isLightProductColor(appearance?.color)
-        if (live && image && area && hoop !== null) setProduct({ image, area, hoop, light })
+        if (live && appearance && image && area && widthMm && hoop !== null) {
+          setProduct({
+            image,
+            area,
+            widthMm,
+            hoop,
+            light,
+            colorName: appearance.name.trim(),
+            colorHex: appearance.color,
+          })
+        }
       })
       // A document should degrade, not break: the demos just stay empty.
       .catch(() => {})
     return () => {
       live = false
     }
-  }, [id])
+  }, [id, color])
   return product
 }
 

@@ -45,4 +45,29 @@ function PopoverAnchor({
   return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />
 }
 
-export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor }
+// The triangle pointing from the content to its trigger — place inside
+// PopoverContent. White by default, to match a white card.
+function PopoverArrow({
+  className,
+  width = 14,
+  height = 7,
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Arrow>) {
+  return (
+    <PopoverPrimitive.Arrow
+      data-slot="popover-arrow"
+      width={width}
+      height={height}
+      className={cn('fill-white', className)}
+      {...props}
+    />
+  )
+}
+
+function PopoverClose({
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Close>) {
+  return <PopoverPrimitive.Close data-slot="popover-close" {...props} />
+}
+
+export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor, PopoverArrow, PopoverClose }

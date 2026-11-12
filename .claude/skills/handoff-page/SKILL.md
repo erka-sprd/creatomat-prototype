@@ -109,6 +109,27 @@ When a section shows a sequence rather than a state:
 - Give a long loop an **Auto play** switch (`KitSwitch`, under the demo).
   Switching it off stops the loop where it stands rather than resetting it — a
   reader who paused to study something should keep looking at it.
+- Light the "If → Then" steps strictly in order, 1 → 2 → 3, in one pass.
+  Never replay earlier steps within a loop; if a rule needs a second
+  run-through, give it its own section. One rule per section once a section
+  gets crowded.
+
+## Mobile versions
+
+Every scripted demo of something that also exists on a phone gets a Desktop /
+Mobile switch (`DeviceDemo`), its mobile version rendered in a narrow iframe
+(`app/handoff-frame/<slug>/[scene]`) so the designer's own mobile components
+lay out as on a phone.
+
+- **The phone is always an iPhone 8: 375 × 667** — `PhoneFrame`
+  (`components/handoff/phone-frame.tsx`), its size in `lib/handoff-phone.ts`.
+  Never draw a phone of another size, and never type the size in a scene;
+  derive the canvas height from `PHONE_SCREEN_H`.
+- Inside it: the site header, then the designer's real mobile header, view
+  dots and dock; panels open as the bottom drawer; a fingertip replaces the
+  cursor.
+- A phone has no hover: drop hover steps from the mobile version, and give a
+  hover-only rule no Mobile tab at all — say so in the section's line.
 
 ## Traps already hit
 

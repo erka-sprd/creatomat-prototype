@@ -15,6 +15,7 @@ import { useEffect, useState } from "react"
 import { ChevronDown, Phone } from "lucide-react"
 import { buildTiles } from "product-catalog-client"
 import { BULK_EMAIL, BULK_ORDER_STRINGS, BULK_PURPLE } from "@/components/bulk-order-note"
+import { PRINT_MAX_SIZE_LABEL } from "@/lib/designer-constants"
 import { CONTACT_OPTIONS } from "@/components/help-menu"
 import { ZOOM_ICON_PATH } from "@/components/merged-bottom-row"
 import { loadCatalog } from "@/lib/catalog"
@@ -522,6 +523,49 @@ export function BulkDiscountArt() {
         >
           {step.percentage ? `−${step.percentage}% off` : "full price"}
         </span>
+      </div>
+    </div>
+  )
+}
+
+/* ----------------------------------------------------------- print-quality */
+
+// The upload the handoff's scenes play with.
+const QUALITY_UPLOAD_SRC = "/img/handoff/low-res-upload.png"
+// The selection's blue (the canvas gizmo's), and the size message's
+// (create-omat's brand-blue-light).
+const QUALITY_BLUE = "#3355FF"
+const QUALITY_MESSAGE_BLUE = "var(--sprd-brand-blue-light)"
+// The message's title — short enough for a thumbnail as it is.
+const QUALITY_LABEL = PRINT_MAX_SIZE_LABEL
+
+/** A selected upload grows, runs into its stop with a small bounce, and the message pops in under it. */
+export function PrintQualityArt() {
+  return (
+    <div className={ART} aria-hidden="true">
+      <div
+        className="ho-art-quality-grow absolute top-[14px] left-1/2 -ml-[60px] h-[84px] w-[120px]"
+        style={{ boxShadow: `0 0 0 1px ${QUALITY_BLUE}` }}
+      >
+        <img
+          src={QUALITY_UPLOAD_SRC}
+          alt=""
+          draggable={false}
+          className="absolute inset-0 size-full object-contain"
+        />
+        {["-top-1 -left-1", "-top-1 -right-1", "-bottom-1 -left-1", "-right-1 -bottom-1"].map(pos => (
+          <span
+            key={pos}
+            className={`absolute ${pos} size-2 rounded-full border bg-white`}
+            style={{ borderColor: QUALITY_BLUE }}
+          />
+        ))}
+      </div>
+      <div
+        className="ho-art-quality-pill absolute bottom-3 left-1/2 flex h-7 -translate-x-1/2 items-center rounded-full border bg-white px-3"
+        style={{ borderColor: QUALITY_MESSAGE_BLUE, color: QUALITY_MESSAGE_BLUE }}
+      >
+        <span className="text-[12px] leading-none font-semibold whitespace-nowrap">{QUALITY_LABEL}</span>
       </div>
     </div>
   )

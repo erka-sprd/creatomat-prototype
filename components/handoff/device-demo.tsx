@@ -14,25 +14,30 @@ import { SceneControls } from "@/components/handoff/embroidery-canvas"
 import type { SceneDevice } from "@/components/handoff/embroidery-scene"
 import type { MobileSceneKey } from "@/components/handoff/embroidery-scripts"
 import { FRAME_CONTROL, FRAME_HEIGHT } from "@/components/handoff/mobile-scene-frame"
+import type { QualityMobileSceneKey } from "@/components/handoff/print-quality-scripts"
 
 type Device = "desktop" | "mobile"
 
+/** The mobile version's scene: which handoff's frame page, and its key there. */
+type FrameScene =
+  | { frame?: "embroidery"; scene: MobileSceneKey }
+  | { frame: "print-quality"; scene: QualityMobileSceneKey }
+
 export function DeviceDemo({
+  frame = "embroidery",
   scene,
   children,
-}: {
-  /** The mobile version's scene. */
-  scene: MobileSceneKey
+}: FrameScene & {
   /** The desktop scene, given the switch to show beside its controls. */
   children: (device: SceneDevice) => ReactNode
 }) {
   const [device, setDevice] = useState<Device>("desktop")
   const switcher = <DeviceSwitch value={device} onChange={setDevice} />
   if (device === "desktop") return <>{children({ controlsLeading: switcher })}</>
-  return <MobileFrame scene={scene} switcher={switcher} />
+  return <MobileFrame src={`/handoff-frame/${frame}/${scene}`} switcher={switcher} />
 }
 
-function MobileFrame({ scene, switcher }: { scene: MobileSceneKey; switcher: ReactNode }) {
+function MobileFrame({ src, switcher }: { src: string; switcher: ReactNode }) {
   const frameRef = useRef<HTMLIFrameElement>(null)
   const [height, setHeight] = useState(820)
   const [autoPlay, setAutoPlay] = useState(true)
@@ -59,7 +64,7 @@ function MobileFrame({ scene, switcher }: { scene: MobileSceneKey; switcher: Rea
     <div className="flex flex-col gap-3">
       <iframe
         ref={frameRef}
-        src={`/handoff-frame/embroidery/${scene}`}
+        src={src}
         title="Mobile version"
         onLoad={send}
         className="block w-full border-0"

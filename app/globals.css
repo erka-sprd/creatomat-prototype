@@ -79,8 +79,11 @@
   --sprd-orange-800: #9a3412;
   --sprd-orange-900: #7c2d12;
 
-  /* Brand */
+  /* Brand — the kit's brand blues, create-omat's UI blue (brand-blue-*). */
+  --sprd-brand-blue-contrast: #bfb9fd;
+  --sprd-brand-blue-light: #6a5cfc;
   --sprd-brand-blue-main: #1500fb;
+  --sprd-brand-blue-dark: #1100cd;
   /* The kit's default gradient (sprd-component-kit preset/globals.css) — the
      AI panel's prompt-box border. */
   --gradient-default: linear-gradient(

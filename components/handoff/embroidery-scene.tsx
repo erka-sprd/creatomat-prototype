@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { SelectionBottomHandles, TrashIcon } from "@/components/designer"
 import {
   EMBROIDERY_MIN_LOADER_MS,
   HOOP_GUIDE_BLUR_TRANSITION,
@@ -23,23 +24,21 @@ import {
   MAX_ZOOM,
   SELECTION_FRAME_TRANSITION,
   SELECTION_TONE,
-  SelectionBottomHandles,
   TRASH_BUTTON_CLASS,
   TRASH_BUTTON_SIZE,
   TRASH_OFFSET,
-  TrashIcon,
   ZOOM_HINT_TEXT,
-} from "@/components/designer"
+} from "@/lib/designer-constants"
 import {
   EmbroideryIssueDock,
   EmbroideryMaxSizeBadge,
   EmbroideryPreviewDock,
   EmbroiderySimplifyDock,
   EmbroideryZoomTipDock,
-  SWAP_DELAY_MS,
   type EmbroideryDesignIssue,
   type EmbroiderySizeStatus,
 } from "@/components/embroidery-label"
+import { SWAP_DELAY_MS } from "@/lib/embroidery-label"
 import { EmbroideryPreview } from "@/components/embroidery-preview"
 import { EmbroiderySolutions } from "@/components/embroidery-solutions"
 import {
@@ -53,6 +52,8 @@ import {
   type Corner,
 } from "@/components/handoff/embroidery-canvas"
 import { MobileChrome } from "@/components/handoff/mobile-chrome"
+import { PhoneFrame } from "@/components/handoff/phone-frame"
+import { PHONE_SCREEN_H } from "@/lib/handoff-phone"
 import { StepList } from "@/components/handoff/step-list"
 import SiteHeader from "@/components/site-header"
 import { useTweenedSizes } from "@/components/handoff/tweened-sizes"
@@ -66,13 +67,13 @@ export const PRODUCT_PX = 720
 /** Where the print area's centre sits, px from the stage's top. */
 const FOCUS_Y = 200
 export const STAGE_HEIGHT_PX = 420
-// The phone screen of a scene's mobile version: the site's promo bar and
-// header on top (SiteHeader, 32 + 56px), the canvas below. As the mobile
-// designer lays it out, the shirt sits between the canvas's insets (60px for
-// its action header, 150px for the dots and dock), as wide as fits.
-const MOBILE_SCREEN_H = 667
+// The phone screen of a scene's mobile version (PhoneFrame, an iPhone 8): the
+// site's promo bar and header on top (SiteHeader, 32 + 56px), the canvas
+// below. As the mobile designer lays it out, the shirt sits between the
+// canvas's insets (60px for its action header, 150px for the dots and dock),
+// as wide as fits.
 const MOBILE_HEADER_H = 88
-const MOBILE_STAGE_H = MOBILE_SCREEN_H - MOBILE_HEADER_H
+export const MOBILE_STAGE_H = PHONE_SCREEN_H - MOBILE_HEADER_H
 const MOBILE_PRODUCT_TOP = 60
 const MOBILE_PRODUCT_INSETS = 210
 
@@ -93,7 +94,7 @@ export type SceneDevice = {
  * phone the scene taps the dock's Done pill instead.
  */
 export const OUTSIDE = { x: 0.14, y: 0.3 }
-const HANDLE_POS: Record<Corner, string> = {
+export const HANDLE_POS: Record<Corner, string> = {
   nw: "-top-[7.5px] -left-[7.5px]",
   ne: "-top-[7.5px] -right-[7.5px]",
   sw: "-bottom-[7.5px] -left-[7.5px]",
@@ -462,7 +463,7 @@ function ReviewControls({ before }: { before: boolean }) {
 
 
 /** Whether `ref` is (mostly) on screen — scenes play only then, from the top. */
-function useInView(ref: React.RefObject<HTMLDivElement | null>) {
+export function useInView(ref: React.RefObject<HTMLDivElement | null>) {
   const [inView, setInView] = useState(false)
   useEffect(() => {
     const el = ref.current
@@ -616,12 +617,7 @@ export function Scene({
   return (
     <div ref={boxRef} className="flex flex-col gap-3">
       {showSteps && <StepList steps={steps} active={state.step} />}
-      <div className={mobile ? "mx-auto rounded-[44px] bg-neutral-900 p-2.5 shadow-xl" : "contents"}>
-      <div
-        className={
-          mobile ? "w-[375px] overflow-hidden rounded-[34px] bg-white [&_*]:pointer-events-none" : "contents"
-        }
-      >
+      <PhoneFrame on={mobile}>
       {mobile && <SiteHeader />}
       <div
         ref={stageRef}
@@ -779,8 +775,7 @@ export function Scene({
           />
         )}
       </div>
-      </div>
-      </div>
+      </PhoneFrame>
       {!device.hideControls && (
         <SceneControls
           leading={device.controlsLeading}

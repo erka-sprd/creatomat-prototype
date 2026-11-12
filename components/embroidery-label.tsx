@@ -12,6 +12,11 @@ import { createPortal } from "react-dom"
 
 import { EmbroiderySolutions } from "@/components/embroidery-solutions"
 import { KitButton } from "@/components/kit-button"
+import {
+  PREVIEW_STATEMENTS,
+  SWAP_DELAY_MS,
+  type PreviewStatements,
+} from "@/lib/embroidery-label"
 
 // Replica of create-omat's EmbroideryLabel (src/components/designer/EmbroideryLabel.tsx):
 // the vertical "EMBROIDERY" watermark on the right edge of the canvas, marking the
@@ -135,18 +140,7 @@ const PILL = "flex items-center rounded-full transition-all duration-300 ease-ou
 const visibility = (show: boolean) =>
   show ? "translate-y-0 opacity-100" : "-translate-y-3 opacity-0"
 
-// The pill's two statements per language. create-omat already translates
-// "creating-preview"; "Checking quality" has no key there yet, so those are
-// placeholders. The prototype is English-only — `?lang=de|fi|es` swaps them in
-// to check the fixed width and the font fit with longer languages.
-type PreviewStatements = { creating: string; checking: string }
-const PREVIEW_STATEMENTS: Record<string, PreviewStatements> = {
-  en: { creating: "Creating preview...", checking: "Checking quality..." },
-  de: { creating: "Vorschau erstellen...", checking: "Qualität wird geprüft..." },
-  fi: { creating: "Esikatselun luominen...", checking: "Laatua tarkistetaan..." },
-  es: { creating: "Creación de vista previa...", checking: "Comprobando la calidad..." },
-}
-export const PREVIEW_LANGS = Object.keys(PREVIEW_STATEMENTS)
+// The pill's statements per language live in lib/embroidery-label.ts.
 // `fixed` overrides the URL's language (the handoff shows several side by side).
 function usePreviewStatements(fixed?: string): PreviewStatements {
   const [lang, setLang] = useState("en")
@@ -470,7 +464,6 @@ export function EmbroiderySizeBadge({
 // pass rather than overlap. Kept mounted through its exit, holding the last
 // warning so it doesn't empty out on the way down.
 const DOCK_SLIDE_MS = 300
-export const SWAP_DELAY_MS = 150
 
 // A dock's presence: mounted from `show` until its exit slide is done,
 // entered (in its spot) a frame after mounting, so the entry slides.
@@ -713,47 +706,110 @@ export function EmbroideryIssueDock({
 // warning about the design — popping in, scaling up from the top centre with
 // a slight overshoot, and shrinking back out. Stays mounted so both ways
 // animate; the parent places it (absolute, under the object).
+// `tone="brand"` (the print-quality maximum, being tried out): create-omat's
+// brand-blue-light instead, the brand blue closest to #3355FF.
 const MAX_SIZE_BADGE = {
   icon: "!",
-  frame: "border-[#3355FF] text-[#3355FF]",
-  dot: "bg-[#3355FF]",
+  selection: {
+    frame: "border-[#3355FF] text-[#3355FF]",
+    dot: "bg-[#3355FF]",
+  },
+  brand: {
+    frame: "border-[var(--sprd-brand-blue-light)] text-[var(--sprd-brand-blue-light)]",
+    dot: "bg-[var(--sprd-brand-blue-light)]",
+  },
 }
 
 export function EmbroideryMaxSizeBadge({
   show,
   label = "Max. size for embroidery",
   icon = MAX_SIZE_BADGE.icon,
+  detail,
+  learnMoreLabel = "See details",
+  onLearnMore,
+  onHoverChange,
+  tone = "selection",
 }: {
   show: boolean
+  /** Its blue: the selection handles' (default), or create-omat's brand blue. */
+  tone?: "selection" | "brand"
   /** The limit it's about — "Min. size for embroidery" for a design's own minimum. */
   label?: string
-  /** "✓" where the size is a good one rather than a stop ("Perfect size"). */
-  icon?: string
+  /** "✓" where the size is a good one rather than a stop ("Perfect size"); null for none. */
+  icon?: string | null
+  /** A line under the label — the print maximum's image pixels. */
+  detail?: string
+  /** The button's words ("Upload larger" for the print-quality maximum). */
+  learnMoreLabel?: string
+  /** Adds a button under the label — what to do about the print-quality maximum. */
+  onLearnMore?: () => void
+  /** Pointer over the badge or off it — the parent holds it on screen meanwhile. */
+  onHoverChange?: (hovered: boolean) => void
 }) {
-  const badge = MAX_SIZE_BADGE
+  const badge = MAX_SIZE_BADGE[tone]
+  const interactive = show && (onLearnMore || onHoverChange)
   return (
     <div
       role="status"
       aria-hidden={!show}
+      // Clicks on it don't count as "outside" (the designer's print notice
+      // closes on any other click).
+      data-size-notice=""
+      onMouseEnter={() => onHoverChange?.(true)}
+      onMouseLeave={() => onHoverChange?.(false)}
+      // The object beneath would take a press on the badge as a drag.
+      onPointerDown={e => e.stopPropagation()}
       // Its own font and style, set outright: under a text object it would
       // otherwise take on that text's font, italics and alignment.
+      // With "See details" it's two lines, so it rounds as a box, not a pill.
       className={
-        "flex origin-top items-center gap-1.5 rounded-full border bg-white py-1.5 pr-3 pl-1.5 text-left font-sans not-italic transition-[opacity,scale] " +
+        "flex origin-top flex-col gap-1 border bg-white font-sans not-italic transition-[opacity,scale] " +
+        // With a detail line (the print maximum), every line is centred and,
+        // as the warning pills with their button, it's 16px in all round;
+        // otherwise it's the pill, icon first.
+        (detail ? "items-center p-4 text-center " : "items-start py-1.5 pr-3 pl-1.5 text-left ") +
+        (interactive ? "pointer-events-auto cursor-default " : "pointer-events-none ") +
+        (onLearnMore ? "rounded-2xl " : "rounded-full ") +
         `${badge.frame} ` +
         (show
           ? "scale-100 opacity-100 duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
           : "scale-75 opacity-0 duration-150 ease-in")
       }
     >
-      <span
-        aria-hidden="true"
-        className={`flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] leading-none font-bold text-white ${badge.dot}`}
-      >
-        {icon}
-      </span>
-      <span className="text-sm leading-none font-semibold whitespace-nowrap">
-        {label}
-      </span>
+      <div className="flex items-center gap-1.5">
+        {icon !== null && (
+          <span
+            aria-hidden="true"
+            className={`flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] leading-none font-bold text-white ${badge.dot}`}
+          >
+            {icon}
+          </span>
+        )}
+        <span className="text-sm leading-none font-semibold whitespace-nowrap">
+          {label}
+        </span>
+      </div>
+      {detail && (
+        // Under the label, centred like it.
+        <span className="text-sm leading-none whitespace-nowrap">{detail}</span>
+      )}
+      {onLearnMore && (
+        // Under it all, centred: the kit's secondary button (ghost, black),
+        // as the warning pills' "See solutions" — 16px under the message.
+        // The object beneath would take the click as a deselect — it
+        // doesn't get it.
+        <KitButton
+          variant="ghost"
+          tabIndex={show ? 0 : -1}
+          onClick={e => {
+            e.stopPropagation()
+            onLearnMore()
+          }}
+          className="mt-3 self-center whitespace-nowrap"
+        >
+          {learnMoreLabel}
+        </KitButton>
+      )}
     </div>
   )
 }

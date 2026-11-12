@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 
+import { KitButton } from "@/components/kit-button"
 import { hasImageDrag, startImageDrag } from "@/lib/canvas-drop"
+import { pixelSizeLabel } from "@/lib/print-quality"
 import { cn } from "@/lib/utils"
 
 // Ported from create-omat's upload panel (desktop). Self-contained: native
@@ -25,7 +27,7 @@ const MAX_FILES_LIMIT = 10
 type UploadStatus = "uploading" | "uploaded" | "error"
 type UploadError = "size_too_large" | "unsupported"
 
-type UploadEntry = {
+export type UploadEntry = {
     id: string
     name: string
     url: string
@@ -33,6 +35,8 @@ type UploadEntry = {
     progress: number
     error?: UploadError
     sizeMB?: number
+    // An SVG: prints sharp at any size.
+    vector?: boolean
 }
 
 const UploadIcon = ({ size = 24 }: { size?: number }) => (
@@ -89,7 +93,66 @@ const CheckIcon = ({ size = 20 }: { size?: number }) => (
     </svg>
 )
 
-function UploadCard({
+// create-omat's contrast check (app/api/image-quality, isLightImage): an image
+// whose average colour is brighter than this (0–255, perceived) gets a dark
+// tile, so a white logo doesn't vanish into the light grey.
+const LIGHT_IMAGE_BRIGHTNESS = 150
+
+// The image is averaged from a copy at most this many pixels a side — plenty
+// for an average, and cheap for a 4000 px upload.
+const CONTRAST_SAMPLE_PX = 128
+
+/**
+ * Whether an image is light — create-omat's check, in the browser: the
+ * image's average colour, each pixel weighted by its opacity (as sharp's
+ * resize to one pixel does), its perceived brightness against
+ * LIGHT_IMAGE_BRIGHTNESS. Averaged by hand: a canvas drawn down to one pixel
+ * samples only a few.
+ */
+function isLightImage(img: HTMLImageElement): boolean {
+    const scale = Math.min(1, CONTRAST_SAMPLE_PX / Math.max(img.naturalWidth, img.naturalHeight))
+    const w = Math.max(1, Math.round(img.naturalWidth * scale))
+    const h = Math.max(1, Math.round(img.naturalHeight * scale))
+    const canvas = document.createElement("canvas")
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return false
+    try {
+        ctx.drawImage(img, 0, 0, w, h)
+        const data = ctx.getImageData(0, 0, w, h).data
+        let r = 0
+        let g = 0
+        let b = 0
+        let alpha = 0
+        for (let i = 0; i < data.length; i += 4) {
+            const a = data[i + 3] ?? 0
+            r += (data[i] ?? 0) * a
+            g += (data[i + 1] ?? 0) * a
+            b += (data[i + 2] ?? 0) * a
+            alpha += a
+        }
+        if (alpha === 0) return false
+        return (r * 299 + g * 587 + b * 114) / 1000 / alpha > LIGHT_IMAGE_BRIGHTNESS
+    } catch (e) {
+        // A cross-origin image taints the canvas; the tile just stays light.
+        console.warn("Upload contrast check failed", e)
+        return false
+    }
+}
+
+// The tile's background, by contrast check and hover — the pixel size's chip
+// shares it. The kit's greys (--sprd-neutral-*), as create-omat's neutral-*
+// resolve — not Tailwind's own, whose neutral-900 is near-black.
+const TILE_BG = {
+    light: { rest: "bg-[var(--sprd-neutral-100)]", hover: "bg-[var(--sprd-neutral-200)]" },
+    dark: { rest: "bg-[var(--sprd-neutral-900)]", hover: "bg-black" },
+}
+
+// An upload's tile: the pixel size bottom left, on the tile's own background.
+// No print-quality badge — the canvas's "Maximum size" says it where it matters.
+// Exported for the print-quality handoff, which shows two tiles at rest.
+export function UploadCard({
     image,
     onRemove,
     onPlace,
@@ -101,26 +164,71 @@ function UploadCard({
     const uploading = image.status === "uploading"
     const error = image.status === "error"
     const done = image.status === "uploaded"
+    const [size, setSize] = useState<{ w: number; h: number } | null>(null)
+    // An SVG's pixel size says nothing about how it prints.
+    const sizeLabel = image.vector ? "Vector" : size && pixelSizeLabel(size)
+    // A light image sits on a dark tile (isLightImage).
+    const [light, setLight] = useState(false)
+    // Anywhere on the tile, the remove button shows and the tile darkens.
+    const [tileHover, setTileHovered] = useState(false)
+    const tone = TILE_BG[light ? "dark" : "light"]
+    const bg = tileHover ? tone.hover : tone.rest
+    // The image's pixel size and contrast, once it's loaded.
+    const imgRef = useRef<HTMLImageElement>(null)
+    const measure = (img: HTMLImageElement) => {
+        setSize({ w: img.naturalWidth, h: img.naturalHeight })
+        setLight(isLightImage(img))
+    }
+    // An image already in the cache can finish before React listens for its
+    // load, and then never fires it: measure it on mount instead.
+    useEffect(() => {
+        const img = imgRef.current
+        if (img?.complete && img.naturalWidth) measure(img)
+    }, [image.url])
     return (
         <div
             className={cn(
-                "group relative flex h-auto cursor-pointer flex-col gap-2 rounded-lg p-3",
-                error
-                    ? "items-center border-2 border-red-600"
-                    : "border border-neutral-200 bg-neutral-100 hover:bg-neutral-200"
+                // Radii in px, as create-omat's: its rounded-lg is Tailwind's
+                // 8px, this app's (shadcn's --radius) 10px. Below md, as
+                // create-omat's: a fixed 140px tile in a sideways row.
+                "relative flex h-[140px] min-w-[140px] flex-shrink-0 cursor-pointer flex-col gap-2 rounded-[8px] px-0 py-3 md:h-auto md:min-w-0 md:flex-shrink md:p-3",
+                error ? "items-center border-2 border-red-600" : cn("border border-neutral-200", bg)
             )}
+            onMouseEnter={() => setTileHovered(true)}
+            onMouseLeave={() => setTileHovered(false)}
             onClick={() => done && onPlace()}
         >
             {!error && (
                 <img
+                    ref={imgRef}
                     src={image.url}
                     alt={image.name}
                     // Draggable onto the canvas once uploaded — a half-uploaded
                     // image has nothing to place yet.
                     draggable={done}
                     onDragStart={e => startImageDrag(e, { src: image.url, source: "image-upload" })}
-                    className={cn("h-[130px] w-full object-contain", uploading && "opacity-50")}
+                    onLoad={e => measure(e.currentTarget)}
+                    className={cn(
+                        "mx-3 h-[116px] w-[116px] flex-shrink-0 object-contain md:mx-0 md:h-[130px] md:w-full",
+                        uploading && "opacity-50"
+                    )}
                 />
+            )}
+
+            {/* Only once the upload is in — not while loading. On the tile's
+                own background, solid; its text follows the tile's tone. */}
+            {done && sizeLabel && (
+                <span
+                    className={cn(
+                        // Flush in the corner: inside the 1px border, so its
+                        // corner takes the tile's inner radius (8px − 1px).
+                        "absolute bottom-0 left-0 z-[2] rounded-tr-[4px] rounded-bl-[7px] pt-0.5 pr-1 pb-1.5 pl-2 text-xs",
+                        light ? "text-[var(--sprd-neutral-200)]" : "text-neutral-500",
+                        bg
+                    )}
+                >
+                    {sizeLabel}
+                </span>
             )}
 
             {uploading && (
@@ -143,13 +251,16 @@ function UploadCard({
             )}
 
             {done && image.progress === 100 && (
-                <div className="absolute top-0 right-0 z-[2] rounded-lg bg-neutral-200 p-1.5">
+                <div className="absolute top-0 right-0 z-[2] rounded-[8px] bg-neutral-200 p-1.5">
                     <span className="text-green-700">
                         <CheckIcon size={20} />
                     </span>
                 </div>
             )}
 
+            {/* Remove: the ✕ in the top-right corner, with the tile's radius —
+                from md shown on any hover of the tile; below it, as in
+                create-omat, always (a phone has no hover). */}
             <button
                 type="button"
                 aria-label="Remove"
@@ -158,10 +269,12 @@ function UploadCard({
                     onRemove()
                 }}
                 className={cn(
-                    "absolute top-0 right-0 cursor-pointer rounded-[6px] bg-neutral-200 p-1.5 transition-opacity hover:bg-white",
+                    "absolute top-0 right-0 z-[4] cursor-pointer rounded-[6px] bg-neutral-200 p-1.5 transition-opacity hover:bg-white",
                     uploading
                         ? "opacity-100"
-                        : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:bg-neutral-300 group-hover:opacity-100",
+                        : tileHover
+                          ? "pointer-events-auto bg-neutral-300 opacity-100"
+                          : "md:pointer-events-none md:opacity-0",
                     error && "bg-red-600 text-white opacity-100 hover:bg-red-600 hover:text-black"
                 )}
             >
@@ -197,20 +310,20 @@ export function UploadPanel({
     }, [images])
     const placedRef = useRef<Set<string>>(new Set())
 
+    // Newest at the top: each upload goes in front of the list.
     const addFiles = useCallback((files: File[]) => {
         const accepted = files.slice(0, MAX_FILES_LIMIT)
         accepted.forEach((file, i) => {
             const id = `${file.name}-${i}-${performance.now()}`
             if (!SUPPORTED_MIME_TYPES.has(file.type)) {
                 setImages(prev => [
-                    ...prev,
                     { id, name: file.name, url: "", status: "error", progress: 0, error: "unsupported" },
+                    ...prev,
                 ])
                 return
             }
             if (file.size > MAX_FILE_SIZE) {
                 setImages(prev => [
-                    ...prev,
                     {
                         id,
                         name: file.name,
@@ -220,11 +333,16 @@ export function UploadPanel({
                         error: "size_too_large",
                         sizeMB: file.size / (1024 * 1024),
                     },
+                    ...prev,
                 ])
                 return
             }
             const url = URL.createObjectURL(file)
-            setImages(prev => [...prev, { id, name: file.name, url, status: "uploading", progress: 0 }])
+            const vector = file.type === "image/svg+xml"
+            setImages(prev => [
+                { id, name: file.name, url, status: "uploading", progress: 0, vector },
+                ...prev,
+            ])
             // Simulate an upload. Progress lives in a local so the state updater
             // stays pure; completion side-effects run once, outside the updater.
             let prog = 0
@@ -260,8 +378,15 @@ export function UploadPanel({
         pendingDoneRef.current = true
         const id = `${pending.name}-${performance.now()}`
         setImages(prev => [
+            {
+                id,
+                name: pending.name,
+                url: pending.dataUrl,
+                status: "uploaded",
+                progress: 0,
+                vector: pending.dataUrl.startsWith("data:image/svg+xml"),
+            },
             ...prev,
-            { id, name: pending.name, url: pending.dataUrl, status: "uploaded", progress: 0 },
         ])
         onPendingConsumed?.()
     }, [pending, onPendingConsumed])
@@ -274,6 +399,8 @@ export function UploadPanel({
         })
 
     const openFilePicker = () => inputRef.current?.click()
+    // While an upload runs, the mobile button reads "Uploading…" and opens nothing.
+    const uploadingAny = images.some(im => im.status === "uploading")
 
     const onDrop = (e: React.DragEvent) => {
         if (hasImageDrag(e)) return
@@ -321,16 +448,25 @@ export function UploadPanel({
                 }}
             />
 
-            <div className="flex-1 overflow-y-auto px-6 pb-6">
-                <div className="flex w-full flex-col items-center gap-9">
+            {/* Below md, as create-omat's mobile panel: reversed — the uploads
+                in one sideways row on top, a divider, then the big Upload
+                button and the policies line; no drop text, icon or "How to
+                optimise". From md, the desktop panel. */}
+            <div
+                className={cn(
+                    "flex flex-1 flex-col-reverse overflow-y-auto pb-4 md:flex-col md:gap-0 md:px-6 md:pb-6",
+                    images.length > 0 ? "gap-2" : "gap-0"
+                )}
+            >
+                <div className="flex w-full flex-col items-center gap-4 md:gap-9">
                     <div
                         className="flex w-full cursor-pointer flex-col items-center gap-9"
                         onClick={openFilePicker}
                     >
-                        <span className="mt-4 text-neutral-200">
+                        <span className="mt-4 hidden text-neutral-200 md:inline">
                             <UploadIcon size={64} />
                         </span>
-                        <div className="flex w-full flex-col items-center gap-3">
+                        <div className="hidden w-full flex-col items-center gap-3 md:flex">
                             <p className="text-sm leading-5 text-black">Drop your design here</p>
                             <p className="text-xs font-semibold text-neutral-600 uppercase">or</p>
                             <button
@@ -347,10 +483,31 @@ export function UploadPanel({
                                 SVG, JPEG, PNG, WEBP allowed
                             </p>
                         </div>
+                        {/* create-omat's mobile button: the kit's primary, size l,
+                            its icon before the word — "Uploading…" while one is. */}
+                        <div className="w-full px-4 md:hidden">
+                            <KitButton
+                                variant="primary"
+                                size="l"
+                                onClick={e => {
+                                    e.stopPropagation()
+                                    if (!uploadingAny) openFilePicker()
+                                }}
+                                className="mt-2 flex w-full items-end gap-2"
+                            >
+                                {uploadingAny ? (
+                                    "Uploading…"
+                                ) : (
+                                    <>
+                                        <UploadIcon /> Upload
+                                    </>
+                                )}
+                            </KitButton>
+                        </div>
                     </div>
-                    <div className="flex flex-col items-center gap-0.5 text-center">
+                    <div className="flex flex-col items-center gap-0.5 px-4 text-center md:px-0">
                         <a
-                            className="cursor-pointer text-xs leading-4 font-semibold text-neutral-700 underline"
+                            className="hidden cursor-pointer text-xs leading-4 font-semibold text-neutral-700 underline md:inline"
                             href="#"
                             target="_blank"
                             rel="noreferrer"
@@ -368,18 +525,22 @@ export function UploadPanel({
                 </div>
 
                 {images.length > 0 && (
-                    <div className="mt-6 border-t border-neutral-200 pt-6">
-                        <div className="grid grid-cols-2 gap-2">
-                            {images.map(img => (
-                                <UploadCard
-                                    key={img.id}
-                                    image={img}
-                                    onRemove={() => removeImage(img.id)}
-                                    onPlace={() => onPlaceImage(img.url)}
-                                />
-                            ))}
+                    <>
+                        {/* Below md only: the line between the row and the button. */}
+                        <span className="block h-px w-full bg-gray-200 md:hidden" />
+                        <div className="w-full md:mt-6 md:border-t md:border-neutral-200 md:pt-6">
+                            <div className="mb-2 flex w-full flex-row gap-2 overflow-x-auto pl-4 sm:grid sm:grid-cols-2 sm:overflow-x-visible md:mb-0 md:pl-0">
+                                {images.map(img => (
+                                    <UploadCard
+                                        key={img.id}
+                                        image={img}
+                                        onRemove={() => removeImage(img.id)}
+                                        onPlace={() => onPlaceImage(img.url)}
+                                    />
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    </>
                 )}
             </div>
 

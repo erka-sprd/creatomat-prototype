@@ -34,6 +34,37 @@ import {
 import { buildCarryMap, carryBox, carryTextPoint } from "@/lib/design-carry"
 import { IMAGE_SERVER_BASE, loadCatalog, modelImagesFor } from "@/lib/catalog"
 import { AI_MAX_PRINT_AREA_FRACTION, isAiImage } from "@/lib/graphics-library"
+import { printMaxWidthMm, printQualityMaxScale, uploadPixelWidth } from "@/lib/print-quality"
+import {
+  COMPLEX_GRAPHIC_SRCS,
+  EMBROIDERY_MIN_BOUNCE_MS,
+  EMBROIDERY_MIN_BOUNCE_SCALE,
+  EMBROIDERY_MIN_LOADER_MS,
+  HOOP_ARROW_MIN_RATIO_GAP,
+  HOOP_GUIDE_BLUR_MS,
+  HOOP_GUIDE_BLUR_TRANSITION,
+  HOOP_GUIDE_CONTENT_BLUR_PX,
+  HOOP_RESIZE_FIT_TOLERANCE,
+  isLightProductColor,
+  LIGHT_PRODUCT_IMAGE_SHADOW,
+  lightProductImageShadow,
+  MAX_ZOOM,
+  PRINT_MAX_BOUNCE_SCALE,
+  PRINT_MAX_SIZE_ACTION,
+  PRINT_MAX_SIZE_LABEL,
+  PRINT_MAX_SIZE_LINGER_MS,
+  printMaxSizeDetail,
+  RECOVERED_GOOD_SIZE_MS,
+  SELECTION_FRAME_TRANSITION,
+  SELECTION_TONE,
+  SIMPLIFY_RUN_MS,
+  THIN_LINE_GRAPHIC_SRCS,
+  TRASH_BUTTON_CLASS,
+  TRASH_BUTTON_SIZE,
+  TRASH_OFFSET,
+  ZOOM_HINT_TEXT,
+  ZOOM_STOPS,
+} from "@/lib/designer-constants"
 import { DesignsPanel } from "@/components/designs-panel/designs-panel"
 import { printAreaCosts, printAreaTotal } from "@/lib/print-area-pricing"
 import { FREE_SHIPPING_THRESHOLD } from "@/lib/shipping"
@@ -74,11 +105,11 @@ import {
   EmbroideryPreviewDock,
   EmbroiderySimplifyDock,
   EmbroiderySizeBadge,
-  SWAP_DELAY_MS,
   ThinLineHelpPopover,
   type EmbroideryDesignIssue,
   type EmbroiderySizeStatus,
 } from "@/components/embroidery-label"
+import { SWAP_DELAY_MS } from "@/lib/embroidery-label"
 import MobileEditSheet from "@/components/mobile/mobile-edit-sheet"
 import MobileEditorBar, {
   type MobileEditorBarPanel,
@@ -162,9 +193,6 @@ const DESKTOP_VIEW_SWITCHER: "thumbs" | "dropdown" = "thumbs"
 // canvas. Gated off for now — set to true to bring it back. (CS mode keeps its
 // own technique section inside the CS modal regardless.)
 const SHOW_PRINT_TECHNIQUE_SELECTOR: boolean = false
-// Shortest time the embroidery "Creating preview" loader stays up for a changed
-// design, so a fast render doesn't flash it by unseen.
-export const EMBROIDERY_MIN_LOADER_MS = 3500
 
 // Monotonic unique id — Date.now() alone collides when two elements are created
 // in the same millisecond (e.g. uploading/placing several at once).
@@ -177,11 +205,6 @@ const ROTATE_SNAP_DEG = 8
 
 // Where the zoom tip's "Zoom in" takes a phone's pinch zoom.
 const MOBILE_TIP_ZOOM = 2
-// Upper bound for every zoom path — slider, +/- stops, wheel, mobile pinch.
-// 1 = fit-to-canvas.
-export const MAX_ZOOM = 15
-// The +/- stops: create-omat's 0/10/50/100 % of the range (1× → 2.4× → 8× → 15×).
-export const ZOOM_STOPS = [0, 10, 50, 100].map(percent => 1 + (percent / 100) * (MAX_ZOOM - 1))
 // DTF: the zoom levels its render is remade at (see dtfZoomStep), and the
 // longest side that render may reach — the patch's shape is computed per
 // pixel, so this caps the wait at high zoom.
@@ -200,14 +223,8 @@ const isTypingTarget = (target: EventTarget | null) => {
 // lands in the same print area — same offset the duplicate action uses.
 const PASTE_OFFSET_PCT = 5
 
-// Floating delete button above the selected object — port of create-omat's
-// TrashCanPlugin (28px circle, 20px gap from the object's screen bounding box).
-export const TRASH_BUTTON_SIZE = 28
-export const TRASH_OFFSET = 20
-// The button's look, bar its colours (red, or the warning orange).
-export const TRASH_BUTTON_CLASS =
-  "flex cursor-pointer items-center justify-center rounded-full border-2 bg-[#f4f4f4] shadow-[0_2px_4px_rgba(0,0,0,0.1)] transition-colors duration-300 ease-out"
-
+// The floating delete button's glyph (its size, gap and look: TRASH_* in
+// lib/designer-constants.ts).
 export function TrashIcon() {
   return (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -312,72 +329,13 @@ const isDarkProductColor = (hex?: string): boolean => {
   return brightness < 80
 }
 
-// White / near-white products blend into the light (#F4F4F4) tile, so only they
-// get a drop shadow to lift the product image off the background.
-export const isLightProductColor = (hex?: string): boolean => {
-  if (!hex) return false
-  const h = hex.replace("#", "")
-  if (h.length !== 6) return false
-  const r = parseInt(h.slice(0, 2), 16)
-  const g = parseInt(h.slice(2, 4), 16)
-  const b = parseInt(h.slice(4, 6), 16)
-  if ([r, g, b].some(n => Number.isNaN(n))) return false
-  const brightness = (r * 299 + g * 587 + b * 114) / 1000
-  return brightness > 225
-}
-
-// Shadow for white/near-white product images. Sharp and tight: small blur (low
-// "spread"), a small vertical offset, and a touch more opacity so it stays
-// visible on the light (#F4F4F4) tile. Tweak the values here.
-// `scale` is for an image drawn inside a scaled-down box (ViewDesignThumb): the
-// blur is scaled up by the inverse so it still lands at 1px on screen.
-// Same subtle shadow on the colour swatches and the view thumbnails.
-const lightProductImageShadow = (scale = 1) =>
-  `drop-shadow(0px 0px ${1 / scale}px rgba(0, 0, 0, 0.35))`
-export const LIGHT_PRODUCT_IMAGE_SHADOW = lightProductImageShadow()
-
-// The mocked design-issue warnings: thin lines to the pink cat (the handoff's
-// example) and the marketplace designs in THIN_LINE_GRAPHIC_SRCS, too complex
-// to the mountain lake, the boy with the fish and the rest of
-// COMPLEX_GRAPHIC_SRCS. Everything else in the panel stitches without a verdict.
-export const THIN_LINE_GRAPHIC_SRC = "/img/graphics/graphics1.png"
-// Marketplace designs drawn with hairline strokes — pen outlines, engraved
-// feathers, script tails, dashed rays — that a needle can't follow.
-export const THIN_LINE_GRAPHIC_SRCS = [
-  THIN_LINE_GRAPHIC_SRC,
-  "/img/marketplace/136609547.png", // card symbols — hairline crossing lines
-  "/img/marketplace/584243.png", // Palms and Car — palm fronds, chrome details
-  "/img/marketplace/135816734.png", // racing car — single-stroke outline, wheel spokes
-  "/img/marketplace/16646016.png", // Hand drawn Arrow — ornate pen line
-  "/img/marketplace/631560.png", // Surfer — spray lines off the wave
-  "/img/marketplace/6273337.png", // White waveforms — hairline audio spikes
-  "/img/marketplace/1621193.png", // Gemini — fine engraved figures
-  "/img/marketplace/137633023.png", // wings — thin feather barbs
-  "/img/marketplace/16644940.png", // Moto Skull with Wings — thin feather barbs
-  "/img/marketplace/425445.png", // Mom with Flower — pen-outline rose
-  "/img/marketplace/2124148.png", // wolf — scratchy fur outline
-  "/img/marketplace/16645900.png", // Hand drawn light Circle — thin dashed rays
-  "/img/marketplace/135461518.png", // Teddy — thin sketch outline
-  "/img/marketplace/16647063.png", // Amerindian Symbol — thin arrow shafts
-  "/img/marketplace/136038370.png", // ornament — calligraphic hairline tails
-  "/img/marketplace/140859068.png", // Dream Team — script connectors thin out
-  "/img/marketplace/135706569.png", // frame — hand-drawn thin strokes
-]
-// How long the technique switcher's green tick holds in its icon's place
-// (TechniqueSwitcher's `confirmed`) — shown on the handoff.
-export const SWITCH_CONFIRM_MS = 2000
-// How long "Simplifying design for embroidery" runs before the result is
-// offered for review.
-export const SIMPLIFY_RUN_MS = 4000
 // How long an accepted result waits for its check to start before the bottom
 // row stops waiting for it (acceptCheck) — should the check not run at all.
 const ACCEPT_CHECK_START_MS = 1000
 // "Fit to best size": how long the object takes to shrink into the hoop
 // frame, and how far it overshoots on the way (easeOutBack's c1; 1.70158 is
 // the usual, this a smaller bounce).
-// The tip over the zoom-in button on the session's first stitched preview,
-// and where its "seen" is kept.
-export const ZOOM_HINT_TEXT = "Preview is done. Zoom in to check the stitch details"
+// Where the zoom tip's (ZOOM_HINT_TEXT) "seen" is kept.
 const ZOOM_HINT_SEEN_KEY = "embroidery-zoom-hint-seen"
 const FIT_TO_HOOP_MS = 500
 const FIT_TO_HOOP_OVERSHOOT = 1.2
@@ -388,31 +346,6 @@ const fitEaseOutBack = (p: number) =>
 const fitEaseInOut = (p: number) => (p < 0.5 ? 4 * p ** 3 : 1 - (-2 * p + 2) ** 3 / 2)
 // Bisection steps for how close a combination's objects must come.
 const FIT_GROUP_SEARCH_STEPS = 24
-// Too complex: the mountain lake, and the boy with the fish (8th in the
-// Graphics panel) — the one to try "Simplify with AI" on (the handoff relies
-// on it being second here) — then the marketplace designs with watercolour
-// shading, photographic detail, engraving hatching or dense tiny pieces that
-// no stitch count resolves.
-export const COMPLEX_GRAPHIC_SRCS = [
-  "/img/graphics/graphics2.png",
-  "/img/graphics/graphics8.png",
-  "/img/marketplace/136195447.png", // Tribal — dense interlocking dragons
-  "/img/marketplace/137454017.png", // Vintage Camera — sketch hatching
-  "/img/marketplace/306567432.png", // Orange Marmelade — speckle texture, script
-  "/img/marketplace/330660490.png", // Tiny Adventures Moon — watercolour
-  "/img/marketplace/195186171.png", // Call of Cthulhu — sketched, shaded eye
-  "/img/marketplace/195185430.png", // Dagon — dense ink illustration
-  "/img/marketplace/136299843.png", // Fox — zentangle mandala fur
-  "/img/marketplace/137184475.png", // compass — engraving hatching
-  "/img/marketplace/196221931.png", // Street Art — ink splatter, fine feathers
-  "/img/marketplace/302177058.png", // Robin Family — watercolour
-  "/img/marketplace/327536495.png", // Tiny Adventures Lion — watercolour
-  "/img/marketplace/327526047.png", // Tiny Adventures Funny Lion — watercolour
-  "/img/marketplace/171016667.png", // Bowhead Whale — watercolour, tiny caption
-  "/img/marketplace/306472629.png", // Birthday Party Monkey — confetti bits
-  "/img/marketplace/319384555.png", // Mama Bear — soft painted shading
-  "/img/marketplace/7876182.png", // audio cassette — glitch layers, tiny parts
-]
 const isComplexGraphic = (src: string) => COMPLEX_GRAPHIC_SRCS.some(s => src.endsWith(s))
 const isThinLineGraphic = (src: string) => THIN_LINE_GRAPHIC_SRCS.some(s => src.endsWith(s))
 // Designs whose lines become too thin to stitch below a size: in embroidery
@@ -429,24 +362,8 @@ const designMinMm = (src: string | undefined) =>
 // has to come to the hoop-frame size before it snaps onto it.
 const HOOP_SNAP_PX = 10
 
-// The hoop guide's arrow is dropped once the object is within this share of
-// the hoop-frame size (snapped, or about to be) — there is nowhere left to point.
-export const HOOP_ARROW_MIN_RATIO_GAP = 0.02
-
-// How strongly the object under the hoop guide is blurred, in px, and how long
-// it takes to blur in and back out — the 300ms ease of the canvas pills.
-export const HOOP_GUIDE_CONTENT_BLUR_PX = 4
-const HOOP_GUIDE_BLUR_MS = 300
-export const HOOP_GUIDE_BLUR_TRANSITION = `filter ${HOOP_GUIDE_BLUR_MS}ms ease-out`
-
-// During a guided resize the object counts as fitting the hoop frame within
-// this share of it — matches the snap, which lands it exactly on the frame.
-export const HOOP_RESIZE_FIT_TOLERANCE = 0.01
 // How long "Max. size for embroidery" stays after the resize is released.
 const EMBROIDERY_MAX_SIZE_LINGER_MS = 1000
-// How long the green "good size" badge stays once a lone design is brought
-// down to the hoop frame from past it.
-export const RECOVERED_GOOD_SIZE_MS = 2000
 // Its exit animation (EmbroideryMaxSizeBadge's duration-150).
 const EMBROIDERY_MAX_SIZE_EXIT_MS = 150
 // The bounce an object gives when its resize runs into the hoop frame: up to
@@ -459,38 +376,6 @@ const HOOP_SLOT_MIN = 0.25
 // How far inside the hoop frame a group is held (hoopGroupMetrics), as a share
 // of it.
 const HOOP_GROUP_MARGIN = 0.005
-// The bounce at the design's minimum size: how far it gives, and for how long.
-const EMBROIDERY_MIN_BOUNCE_SCALE = 0.93
-const EMBROIDERY_MIN_BOUNCE_MS = 360
-
-// Selection frame / corner handle / text-edit edge colours per state: the
-// gizmo blue, the too-large orange and the fits-the-hoop green. Literal class
-// names so Tailwind picks them up.
-// How a selection frame eases between tones: its colour, --selection-tone
-// (registered in globals.css), transitions — the ring itself doesn't, so it
-// still comes and goes at once.
-export const SELECTION_FRAME_TRANSITION = "--selection-tone 300ms ease-out"
-
-export const SELECTION_TONE = {
-  blue: {
-    hex: "#3355FF",
-    handle: "border-[#3355FF] hover:bg-[#3355FF]",
-    edge: "bg-[#3355FF]",
-    edgeHover: "bg-[#2B48D9]",
-  },
-  orange: {
-    hex: "#EA580C",
-    handle: "border-[#EA580C] hover:bg-[#EA580C]",
-    edge: "bg-[#EA580C]",
-    edgeHover: "bg-[#C2410C]",
-  },
-  green: {
-    hex: "#16A34A",
-    handle: "border-[#16A34A] hover:bg-[#16A34A]",
-    edge: "bg-[#16A34A]",
-    edgeHover: "bg-[#15803D]",
-  },
-} as const
 
 
 // Blur applied to the designer frame (canvas, left tools, right sidebar — not
@@ -1262,6 +1147,11 @@ export default function Designer({
     // Came from the AI panel: capped at AI_MAX_PRINT_AREA_FRACTION of the print
     // area on resize release, since the generated resolution can't carry more.
     isAi?: boolean
+    // Uploaded raster image: its pixel width, which sets how large it may be
+    // printed (lib/print-quality), and height — both shown when it hits that
+    // maximum. Absent for vectors and non-uploads.
+    pixelWidth?: number
+    pixelHeight?: number
   }
   const [graphicElements, setGraphicElements] = useState<GraphicElement[]>([])
   const [selectedGraphicId, setSelectedGraphicId] = useState<string | null>(null)
@@ -1271,6 +1161,8 @@ export default function Designer({
   // Id of the object whose resize just ran into its own smallest stitchable
   // size (hardMinScale) — drives the "Min. size for embroidery" notice under
   // it. There's no maximum: the hoop guide shows the hoop-frame size instead.
+  // In print, the same notice reads "Maximum size" for an
+  // upload that ran into its print-quality maximum (hardMaxScale).
   const [embroideryMaxSizeId, setEmbroideryMaxSizeId] = useState<string | null>(null)
   const graphicElementRefs = useRef<Record<string, HTMLElement>>({})
   // Monotonic stacking counter shared across texts and graphics. Every new or
@@ -1501,6 +1393,11 @@ export default function Designer({
     // Whether the drag is currently pushing against hardMinScale — the bounce
     // plays each time it starts to.
     atMin: boolean
+    // Print flow: an upload's maximum, held during the drag — the size scale
+    // where its pixels drop below MIN_PRINT_DPI. null for anything else.
+    hardMaxScale: number | null
+    // Whether the drag is currently pushing against hardMaxScale.
+    atMax: boolean
     // Embroidery flow: the smallest size scale allowed — where the object's
     // shorter side reaches EMBROIDERY_MIN_SIDE_MM. 0 outside embroidery.
     minScale: number
@@ -2010,7 +1907,13 @@ export default function Designer({
         ? { centerX: 76, centerY: 15, widthPct: 26 }
         : undefined)
     const clampPos = (v: number, size: number) => Math.max(0, Math.min(100 - size, v))
-    const place = (defaultWidth: number, defaultHeight: number, ink?: InkRect | null) => {
+    const place = (
+      defaultWidth: number,
+      defaultHeight: number,
+      ink?: InkRect | null,
+      pixelWidth?: number | null,
+      pixelHeight?: number
+    ) => {
       // Embroidery flow: fill the hoop frame instead of the default size — by
       // the image's ink (opaque area), as the too-large check and the resize
       // limit measure it, so it lands at the maximum, transparent margins
@@ -2032,10 +1935,18 @@ export default function Designer({
       // AI artwork lands at (or below) its print-quality cap rather than the
       // usual default size, so it never appears already too large.
       const fraction = (rawWidth / 100) * (rawHeight / 100)
-      const fit =
+      const aiFit =
         isAiImage(src) && fraction > AI_MAX_PRINT_AREA_FRACTION
           ? Math.sqrt(AI_MAX_PRINT_AREA_FRACTION / fraction)
           : 1
+      // Uploads in print land at (or below) the size their pixels print sharp
+      // at, so the resize never starts already past its maximum.
+      const boundary = productData?.printAreas.find(pa => pa.id === printAreaId)?.boundary
+      const maxWidthPct =
+        pixelWidth && boundary && effectivePrintTechnique !== "embroidery"
+          ? (printMaxWidthMm(pixelWidth) / boundary.width) * 100
+          : Infinity
+      const fit = Math.min(aiFit, maxWidthPct / rawWidth)
       const width = rawWidth * fit
       const height = rawHeight * fit
       // Centred by the ink, not the box: off-centre margins would otherwise
@@ -2048,7 +1959,19 @@ export default function Designer({
       const y = clampPos(centerY - height / 2 - inkOffY, height)
       setGraphicElements(prev => [
         ...prev,
-        { id, printAreaId, src, x, y, width, height, z: nextZ(), isAi: isAiImage(src) },
+        {
+          id,
+          printAreaId,
+          src,
+          x,
+          y,
+          width,
+          height,
+          z: nextZ(),
+          isAi: isAiImage(src),
+          pixelWidth: pixelWidth ?? undefined,
+          pixelHeight: pixelWidth ? pixelHeight : undefined,
+        },
       ])
       setActivePanel(null)
       // Selected, as in standard print — in embroidery too: the check behind
@@ -2079,8 +2002,13 @@ export default function Designer({
           }
         }
         // Embroidery sizes by the ink, so it waits for that (cached per src).
-        if (newElementHoopFrame !== null) graphicInkFractions(src).then(ink => place(width, height, ink))
-        else place(width, height)
+        // Both wait for an upload's pixel width, which caps its size in print.
+        if (newElementHoopFrame !== null)
+          Promise.all([graphicInkFractions(src), uploadPixelWidth(src)]).then(([ink, px]) =>
+            place(width, height, ink, px, img.naturalHeight)
+          )
+        else
+          uploadPixelWidth(src).then(px => place(width, height, null, px, img.naturalHeight))
       }
       img.onerror = () => place(targetWidthPct, targetWidthPct)
       img.src = src
@@ -2468,18 +2396,41 @@ export default function Designer({
     return () => clearTimeout(timer)
   }, [aiSizeCappedId])
   // The embroidery one lasts through the resize or move, then
-  // EMBROIDERY_MAX_SIZE_LINGER_MS past its release.
+  // EMBROIDERY_MAX_SIZE_LINGER_MS past its release. While the pointer is on
+  // it the countdown waits, and starts over once it leaves.
+  const [sizeNoticeHovered, setSizeNoticeHovered] = useState(false)
+  useEffect(() => {
+    // Hidden under the pointer (e.g. by "See details"), it gets no mouseleave.
+    if (!embroideryMaxSizeId) setSizeNoticeHovered(false)
+  }, [embroideryMaxSizeId])
   useEffect(() => {
     if (
       !embroideryMaxSizeId ||
+      sizeNoticeHovered ||
       resizingElId === embroideryMaxSizeId ||
       draggingElId === embroideryMaxSizeId
     ) {
       return
     }
-    const timer = setTimeout(() => setEmbroideryMaxSizeId(null), EMBROIDERY_MAX_SIZE_LINGER_MS)
+    const timer = setTimeout(
+      () => setEmbroideryMaxSizeId(null),
+      effectivePrintTechnique === "embroidery"
+        ? EMBROIDERY_MAX_SIZE_LINGER_MS
+        : PRINT_MAX_SIZE_LINGER_MS
+    )
     return () => clearTimeout(timer)
-  }, [embroideryMaxSizeId, resizingElId, draggingElId])
+  }, [embroideryMaxSizeId, sizeNoticeHovered, resizingElId, draggingElId, effectivePrintTechnique])
+  // In print, a click anywhere outside the notice ends it at once, countdown
+  // or not. Captured, so nothing the click lands on can swallow it.
+  useEffect(() => {
+    if (!embroideryMaxSizeId || effectivePrintTechnique === "embroidery") return
+    const onPointerDown = (e: PointerEvent) => {
+      if ((e.target as Element | null)?.closest?.("[data-size-notice]")) return
+      setEmbroideryMaxSizeId(null)
+    }
+    document.addEventListener("pointerdown", onPointerDown, true)
+    return () => document.removeEventListener("pointerdown", onPointerDown, true)
+  }, [embroideryMaxSizeId, effectivePrintTechnique])
   // The frames stay blue with the notice until it has fully popped out
   // (EmbroideryMaxSizeBadge's 150ms exit), then ease to their status colour.
   const [embroideryMaxSizeTone, setEmbroideryMaxSizeTone] = useState(false)
@@ -2679,6 +2630,24 @@ export default function Designer({
             // The notice shows while the drag pushes past the minimum, and goes
             // the moment it comes back within.
             setEmbroideryMaxSizeId(atMin ? rs.id : null)
+          }
+          // An upload's print-quality maximum holds the same way, from above:
+          // past it the image would print blurry.
+          if (rs.hardMaxScale !== null) {
+            sizeScale = Math.min(sizeScale, rs.hardMaxScale)
+            const atMax = unclampedScale >= rs.hardMaxScale
+            if (atMax && !rs.atMax) {
+              graphicElementRefs.current[rs.id]?.animate(
+                [{ scale: "1" }, { scale: String(PRINT_MAX_BOUNCE_SCALE) }, { scale: "1" }],
+                { duration: EMBROIDERY_MIN_BOUNCE_MS, easing: "ease-out" }
+              )
+            }
+            rs.atMax = atMax
+            // The notice shows while the drag pushes against the maximum and
+            // goes the moment it's pulled back smaller — no lingering. Released
+            // at the maximum, it lingers PRINT_MAX_SIZE_LINGER_MS.
+            if (atMax) setEmbroideryMaxSizeId(rs.id)
+            else setEmbroideryMaxSizeId(prev => (prev === rs.id ? null : prev))
           }
           rs.lastSizeScale = sizeScale
           setResizeHoopGuide(
@@ -3041,16 +3010,42 @@ export default function Designer({
   // "Min. size for embroidery" under an object whose resize hit its own
   // minimum, in the rotate/move handles' spot (hidden during the resize; z-40
   // over them once they're back). Mounted for every embroidery object so it
-  // can pop in and out.
-  const renderEmbroideryMaxSizeNotice = (id: string) =>
-    newElementHoopFrame !== null && (
+  // can pop in and out. In print it's an upload's print-quality maximum —
+  // "Maximum size", the image's pixels, and "Upload larger", which just opens the
+  // uploads panel.
+  const renderEmbroideryMaxSizeNotice = (id: string) => {
+    const embroidery = effectivePrintTechnique === "embroidery"
+    const element = graphicElements.find(g => g.id === id)
+    const src = element?.src
+    const pixels =
+      element?.pixelWidth && element.pixelHeight
+        ? { w: element.pixelWidth, h: element.pixelHeight }
+        : null
+    return (
       <div className="pointer-events-none absolute top-full left-1/2 z-40 mt-5 -translate-x-1/2">
         <EmbroideryMaxSizeBadge
           show={embroideryMaxSizeId === id}
-          label="Min. size for embroidery"
+          label={embroidery ? "Min. size for embroidery" : PRINT_MAX_SIZE_LABEL}
+          // The print message is text and its button only — no icon — and
+          // tries create-omat's brand blue.
+          icon={embroidery ? undefined : null}
+          tone={embroidery ? "selection" : "brand"}
+          detail={!embroidery && pixels ? printMaxSizeDetail(pixels) : undefined}
+          learnMoreLabel={PRINT_MAX_SIZE_ACTION}
+          onHoverChange={embroidery ? undefined : setSizeNoticeHovered}
+          onLearnMore={
+            !embroidery && src
+              ? () => {
+                  setEmbroideryMaxSizeId(null)
+                  setMobileSheetPanel(null)
+                  setActivePanel("uploads")
+                }
+              : undefined
+          }
         />
       </div>
     )
+  }
 
   const startResize = (
     e: React.PointerEvent,
@@ -3154,6 +3149,14 @@ export default function Designer({
       )
       return longerMm > 0 ? Math.min(1, minMm / longerMm) : null
     })()
+    // Print flow: an upload's maximum, where its pixels drop below
+    // MIN_PRINT_DPI. One already past it can't grow any further, but may shrink.
+    const hardMaxScale = (() => {
+      const pixelWidth = modelGraphic?.pixelWidth
+      const boundary = productData?.printAreas.find(pa => pa.id === currentPrintAreaId)?.boundary
+      if (!pixelWidth || !boundary || effectivePrintTechnique === "embroidery") return null
+      return printQualityMaxScale((initialWidthPct / 100) * boundary.width, pixelWidth)
+    })()
     setResizeCorner(corner)
     resizeStateRef.current = {
       kind,
@@ -3197,6 +3200,8 @@ export default function Designer({
       // warning (groupTooLarge).
       hardMinScale,
       atMin: false,
+      hardMaxScale,
+      atMax: false,
       minScale: (() => {
         const boundary = productData?.printAreas.find(pa => pa.id === currentPrintAreaId)?.boundary
         if (effectivePrintTechnique !== "embroidery" || dtf || !boundary) return 0

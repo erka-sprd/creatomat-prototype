@@ -338,6 +338,56 @@ html:has(.handoff) {
 .ho-art-technique {
     animation: ho-art-technique 6s cubic-bezier(0.45, 0, 0.2, 1) infinite;
 }
+/* Print quality, one 5s loop: the upload grows, gives a little past its stop
+   and settles on it; the message pops in under it, holds, and both reset.
+   Without motion it's shown stopped, message up. */
+@keyframes ho-art-quality-grow {
+    0%,
+    10% {
+        scale: 0.55;
+    }
+    38% {
+        scale: 1.06;
+    }
+    45%,
+    88% {
+        scale: 1;
+    }
+    100% {
+        scale: 0.55;
+    }
+}
+@keyframes ho-art-quality-pill {
+    0%,
+    38% {
+        opacity: 0;
+        scale: 0.75;
+    }
+    46%,
+    86% {
+        opacity: 1;
+        scale: 1;
+    }
+    94%,
+    100% {
+        opacity: 0;
+        scale: 0.75;
+    }
+}
+.ho-art-quality-grow {
+    transform-origin: 50% 0;
+    animation: ho-art-quality-grow 5s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+.ho-art-quality-pill {
+    animation: ho-art-quality-pill 5s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .ho-art-quality-grow,
+    .ho-art-quality-pill {
+        animation: none;
+    }
+}
+
 /* A changed number rises into place. */
 @keyframes ho-art-tick {
     from {

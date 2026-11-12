@@ -21,6 +21,8 @@ type MobilePanelsDrawerProps = {
     onPendingUploadConsumed?: () => void
 }
 
+const UPLOADS_DRAWER_HEIGHT = "h-auto max-h-[calc(100%-32px)]"
+
 const PANEL_TITLES: Record<MobilePanel, string> = {
     graphics: DESIGNS_PANEL_TITLE,
     uploads: "Uploads",
@@ -42,7 +44,9 @@ export default function MobilePanelsDrawer({
                 if (!open) onClose()
             }}
             title={panel ? PANEL_TITLES[panel] : ""}
-            heightClassName="h-[70dvh]"
+            // Uploads fit their content, as create-omat's (DRAWER_DEFAULT_HEIGHT:
+            // up to the screen less 32px); the other panels stay at 70%.
+            heightClassName={panel === "uploads" ? UPLOADS_DRAWER_HEIGHT : "h-[70dvh]"}
         >
             {panel === "graphics" && (
                 <DesignsPanel

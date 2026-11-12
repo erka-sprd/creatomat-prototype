@@ -12,6 +12,7 @@ import {
   CurveTextArt,
   EmbroideryArt,
   PriceCalcArt,
+  PrintQualityArt,
   ZoomArt,
 } from "@/components/handoff/handoff-card-art"
 
@@ -111,6 +112,13 @@ const TINTS = {
     ink: "#2F7A47",
     glow: ["22, 163, 74", "132, 204, 22", "45, 212, 191", "234, 88, 12"],
   },
+  // The size message's blue, #3355FF, with sky, violet and teal.
+  blue: {
+    tray: "#EEF1FF",
+    line: "#DAE0FE",
+    ink: "#3F57D6",
+    glow: ["51, 85, 255", "56, 189, 248", "167, 139, 250", "45, 212, 191"],
+  },
 } satisfies Record<string, Tint>
 
 export const ENTRIES: Entry[] = [
@@ -190,6 +198,17 @@ export const ENTRIES: Entry[] = [
     updated: { date: "November 9, 2026", time: "9:58 AM" },
     status: "live",
     tint: TINTS.green,
+  },
+  {
+    Art: PrintQualityArt,
+    slug: "print-quality",
+    title: "Print quality: max. size",
+    problem:
+      "“Why is my logo blurry on the shirt?” — a small upload can be enlarged far past what its pixels print sharp, and nothing in the designer says so.",
+    created: "2026-11-11",
+    updated: { date: "November 12, 2026", time: "12:45 PM" },
+    status: "live",
+    tint: TINTS.blue,
   },
 ]
 

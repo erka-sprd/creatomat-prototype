@@ -17,7 +17,8 @@
 import { X } from "lucide-react"
 import { useEffect, useState } from "react"
 
-import { SWAP_DELAY_MS, type EmbroideryDesignIssue } from "@/components/embroidery-label"
+import { type EmbroideryDesignIssue } from "@/components/embroidery-label"
+import { SWAP_DELAY_MS } from "@/lib/embroidery-label"
 import { EmbroiderySolutions } from "@/components/embroidery-solutions"
 import type { SceneState } from "@/components/handoff/embroidery-scene"
 import MobileActionHeader from "@/components/mobile/mobile-action-header"
@@ -134,7 +135,7 @@ const LIFT_MS = 500
  * A fingertip on the glass, where desktop draws the cursor: it presses in on
  * a tap and, once it lets go, lifts away — a hand doesn't rest on the screen.
  */
-function Fingertip({
+export function Fingertip({
   at,
   pressed,
   moveMs,

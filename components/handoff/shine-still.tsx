@@ -9,7 +9,7 @@
 
 import { useEffect, useState } from "react"
 
-import { EMBROIDERY_MIN_LOADER_MS } from "@/components/designer"
+import { EMBROIDERY_MIN_LOADER_MS } from "@/lib/designer-constants"
 import { EmbroideryPreviewStatus } from "@/components/embroidery-label"
 
 const DESIGN = "/img/graphics/graphics5.png"

@@ -6,16 +6,37 @@
  * postMessage; it reports its height back, so the frame fits it.
  */
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 
-import { useCanvasProduct } from "@/components/handoff/embroidery-canvas"
-import { MOBILE_SCENES, type MobileSceneKey } from "@/components/handoff/embroidery-scripts"
+import { useCanvasProduct, type CanvasProduct } from "@/components/handoff/embroidery-canvas"
+import type { SceneDevice } from "@/components/handoff/embroidery-scene"
+import { MOBILE_SCENES } from "@/components/handoff/embroidery-scripts"
+import {
+  QUALITY_MOBILE_SCENES,
+  QUALITY_PRODUCT_COLOR,
+} from "@/components/handoff/print-quality-scripts"
 
 export const FRAME_CONTROL = "ho-frame-control"
 export const FRAME_HEIGHT = "ho-frame-height"
 
-export default function MobileSceneFrame({ scene }: { scene: string }) {
-  const product = useCanvasProduct()
+type MobileScene = (props: { product: CanvasProduct | null; device?: SceneDevice }) => ReactNode
+// Each handoff's scenes with a mobile version, by the frame page's path.
+const FRAMES: Record<string, Record<string, MobileScene>> = {
+  embroidery: MOBILE_SCENES,
+  "print-quality": QUALITY_MOBILE_SCENES,
+}
+// A handoff's own T-shirt colour, where it isn't the default white.
+const FRAME_COLORS: Record<string, string> = { "print-quality": QUALITY_PRODUCT_COLOR }
+
+export default function MobileSceneFrame({
+  scene,
+  frame = "embroidery",
+}: {
+  scene: string
+  /** Whose scene it is: the handoff the frame page belongs to. */
+  frame?: string
+}) {
+  const product = useCanvasProduct(undefined, FRAME_COLORS[frame])
   const [control, setControl] = useState({ autoPlay: true, restart: 0 })
 
   useEffect(() => {
@@ -37,7 +58,7 @@ export default function MobileSceneFrame({ scene }: { scene: string }) {
     return () => ro.disconnect()
   }, [])
 
-  const Scene = MOBILE_SCENES[scene as MobileSceneKey]
+  const Scene = FRAMES[frame]?.[scene]
   if (!Scene) return null
   return (
     // White, like the handoff's demo frame it sits in — the phone screen alone

@@ -12,14 +12,14 @@
  */
 
 import { Fragment, useEffect, useState } from "react"
-import { EMBROIDERY_MIN_LOADER_MS } from "@/components/designer"
+import { EMBROIDERY_MIN_LOADER_MS } from "@/lib/designer-constants"
 import {
   EmbroideryMaxSizeBadge,
   EmbroideryPreviewStatus,
-  PREVIEW_LANGS,
   SizeBadgePill,
   type EmbroiderySizeStatus,
 } from "@/components/embroidery-label"
+import { PREVIEW_LANGS } from "@/lib/embroidery-label"
 import { useCanvasProduct } from "@/components/handoff/embroidery-canvas"
 import { DeviceDemo } from "@/components/handoff/device-demo"
 import { HoopSizeStill } from "@/components/handoff/hoop-size-still"
@@ -175,7 +175,7 @@ function Num({ n }: { n: number }) {
 }
 
 /** A rule: kicker, title, one line, and its scene. */
-function Rule({
+export function Rule({
   id,
   n,
   kicker,

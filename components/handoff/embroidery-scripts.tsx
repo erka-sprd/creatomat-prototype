@@ -15,7 +15,7 @@ import {
   SIMPLIFY_RUN_MS,
   THIN_LINE_GRAPHIC_SRC,
   ZOOM_STOPS,
-} from "@/components/designer"
+} from "@/lib/designer-constants"
 import type { CanvasProduct } from "@/components/handoff/embroidery-canvas"
 import {
   OUTSIDE,
