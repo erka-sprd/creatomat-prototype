@@ -391,8 +391,19 @@ export function ViewStrip({
     const pinned =
       centre < TILE_PX / 2 ? "left" : centre > w.width - TILE_PX / 2 ? "right" : null
     setLabelPinned(pinned)
-    setLabelX(pinned ? Math.min(Math.max(centre, half), w.width - half) : centre)
+    // Whole px, so a scroll that doesn't move it a pixel doesn't re-render.
+    setLabelX(Math.round(pinned ? Math.min(Math.max(centre, half), w.width - half) : centre))
   }
+  // Scrolling fires many times a frame: measure at most once per frame.
+  const measureFrame = useRef(0)
+  const measureLabelXNextFrame = () => {
+    if (measureFrame.current) return
+    measureFrame.current = requestAnimationFrame(() => {
+      measureFrame.current = 0
+      measureLabelX()
+    })
+  }
+  useLayoutEffect(() => () => cancelAnimationFrame(measureFrame.current), [])
   useLayoutEffect(() => {
     measureLabelX()
     const wrapper = wrapperRef.current
@@ -409,9 +420,22 @@ export function ViewStrip({
   // The close-up glides between tiles with the label while it's up, but
   // appears in place — no slide in from wherever it was last.
   const previewWasOpen = useRef(false)
+  // Of its sliding row, only the previews in or about to pass through the
+  // window are drawn: the shown one's neighbours, and the last shown one's
+  // (still sliding out). The rest hold their place empty — a preview is a
+  // whole product image with the design on it.
+  const shownIndex = shownView ? views.indexOf(shownView) : -1
+  const lastShownIndex = useRef(shownIndex)
+  const previewDrawn = (i: number) =>
+    Math.abs(i - shownIndex) <= 1 || Math.abs(i - lastShownIndex.current) <= 1
   useLayoutEffect(() => {
     previewWasOpen.current = !!hovered
+    lastShownIndex.current = shownIndex
   })
+  // The label and the close-up stand centred on an x from the strip's left
+  // edge — moved by translate, which the browser animates without layout.
+  const centredAt = (x: number | null | undefined) =>
+    x == null ? { left: "50%", translate: "-50% 0" } : { left: 0, translate: `calc(${x}px - 50%) 0` }
   return (
     <div ref={wrapperRef} className="relative">
       {/* The label: a view's name in a small white pill ACTIVE_LABEL_GAP_PX
@@ -422,10 +446,10 @@ export function ViewStrip({
         <div
           ref={labelRef}
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-full z-10 -translate-x-1/2 rounded-full bg-white px-2.5 py-1 text-xs font-semibold tracking-[0.1em] whitespace-nowrap text-black uppercase"
+          className="pointer-events-none absolute bottom-full z-10 rounded-full bg-white px-2.5 py-1 text-xs font-semibold tracking-[0.1em] whitespace-nowrap text-black uppercase"
           style={{
             marginBottom: ACTIVE_LABEL_GAP_PX,
-            left: shownLabelX ?? "50%",
+            ...centredAt(shownLabelX),
             // Pinned, its white fades in from the blurred end — from
             // PINNED_LABEL_FADE_FROM white to full over PINNED_LABEL_FADE_SHARE.
             ...(labelPinned && !hovered
@@ -433,7 +457,7 @@ export function ViewStrip({
                   background: `linear-gradient(to ${labelPinned === "left" ? "right" : "left"}, rgb(255 255 255 / ${PINNED_LABEL_FADE_FROM}), white ${PINNED_LABEL_FADE_SHARE * 100}%)`,
                 }
               : {}),
-            transition: `left ${LABEL_SLIDE_MS}ms ease-out`,
+            transition: `translate ${LABEL_SLIDE_MS}ms ease-out`,
           }}
         >
           {labelView.name}
@@ -450,14 +474,14 @@ export function ViewStrip({
           (which names the view). */}
       <div
         aria-hidden="true"
-        className={`pointer-events-none absolute bottom-full z-[100] -translate-x-1/2 origin-bottom ease-out ${
+        className={`pointer-events-none absolute bottom-full z-[100] origin-bottom ease-out ${
           hovered ? "scale-100 opacity-100" : "scale-95 opacity-0"
         }`}
         style={{
-          left: shown?.x ?? 0,
+          ...centredAt(shown?.x ?? 0),
           marginBottom: (labelSize?.h ?? 0) + ACTIVE_LABEL_GAP_PX + PREVIEW_GAP_PX,
           transition: `opacity 150ms ease-out, scale 150ms ease-out${
-            previewWasOpen.current && hovered ? `, left ${LABEL_SLIDE_MS}ms ease-out` : ""
+            previewWasOpen.current && hovered ? `, translate ${LABEL_SLIDE_MS}ms ease-out` : ""
           }`,
         }}
       >
@@ -476,18 +500,18 @@ export function ViewStrip({
               className="flex"
               style={{
                 width: previewPx + 2 * PREVIEW_PADDING_PX,
-                translate: `${-views.indexOf(shownView) * (previewPx + 2 * PREVIEW_PADDING_PX)}px 0`,
+                translate: `${-shownIndex * (previewPx + 2 * PREVIEW_PADDING_PX)}px 0`,
                 transition:
                   previewWasOpen.current && hovered ? `translate ${LABEL_SLIDE_MS}ms ease-out` : "none",
               }}
             >
-              {views.map(view => (
+              {views.map((view, i) => (
                 <div key={view.id} className="shrink-0" style={{ paddingInline: PREVIEW_PADDING_PX }}>
                   <div
                     className={`relative ${view.photo ? "overflow-hidden rounded-[12px]" : ""}`}
                     style={{ width: previewPx, height: previewPx }}
                   >
-                    {view.thumb(previewPx)}
+                    {previewDrawn(i) && view.thumb(previewPx)}
                   </div>
                 </div>
               ))}
@@ -508,7 +532,7 @@ export function ViewStrip({
           ref={ref}
           onScroll={() => {
             onScroll()
-            measureLabelX()
+            measureLabelXNextFrame()
             if (!pinnedHoverId) setHovered(null)
           }}
           // The hover ends on leaving the strip, not a tile: crossing the gap
