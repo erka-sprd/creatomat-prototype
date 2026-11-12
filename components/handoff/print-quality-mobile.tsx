@@ -21,14 +21,14 @@ import MobileActionHeader from "@/components/mobile/mobile-action-header"
 import MobileDock from "@/components/mobile/mobile-dock"
 import MobileViewSwitcher from "@/components/mobile/mobile-view-switcher"
 import { SWAP_DELAY_MS } from "@/lib/embroidery-label"
-import { PHONE_SCREEN_H } from "@/lib/handoff-phone"
+import { PHONE_VIEWPORT_H } from "@/lib/handoff-phone"
 
 const noop = () => {}
 // The shirt's views, for the dots under the canvas.
 const VIEWS = ["Front", "Back", "Left", "Right", "Neck Label"].map(name => ({ id: name, name }))
-// The uploads drawer fits its content, up to the phone screen less 32px —
+// The uploads drawer fits its content, up to the page's height less 32px —
 // as MobilePanelsDrawer's uploads, and create-omat's.
-const DRAWER_MAX_HEIGHT_PX = PHONE_SCREEN_H - 32
+const DRAWER_MAX_HEIGHT_PX = PHONE_VIEWPORT_H - 32
 
 export function QualityMobileChrome({
   color,

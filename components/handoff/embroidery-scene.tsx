@@ -53,7 +53,7 @@ import {
 } from "@/components/handoff/embroidery-canvas"
 import { MobileChrome } from "@/components/handoff/mobile-chrome"
 import { PhoneFrame } from "@/components/handoff/phone-frame"
-import { PHONE_SCREEN_H } from "@/lib/handoff-phone"
+import { PHONE_VIEWPORT_H } from "@/lib/handoff-phone"
 import { StepList } from "@/components/handoff/step-list"
 import SiteHeader from "@/components/site-header"
 import { useTweenedSizes } from "@/components/handoff/tweened-sizes"
@@ -67,13 +67,13 @@ export const PRODUCT_PX = 720
 /** Where the print area's centre sits, px from the stage's top. */
 const FOCUS_Y = 200
 export const STAGE_HEIGHT_PX = 420
-// The phone screen of a scene's mobile version (PhoneFrame, an iPhone 8): the
-// site's promo bar and header on top (SiteHeader, 32 + 56px), the canvas
+// The page of a scene's mobile version (PhoneFrame, an iPhone 12 mini, between its
+// status bar and Safari's tab bar): the site's promo bar and header on top (SiteHeader, 32 + 56px), the canvas
 // below. As the mobile designer lays it out, the shirt sits between the
 // canvas's insets (60px for its action header, 150px for the dots and dock),
 // as wide as fits.
 const MOBILE_HEADER_H = 88
-export const MOBILE_STAGE_H = PHONE_SCREEN_H - MOBILE_HEADER_H
+export const MOBILE_STAGE_H = PHONE_VIEWPORT_H - MOBILE_HEADER_H
 const MOBILE_PRODUCT_TOP = 60
 const MOBILE_PRODUCT_INSETS = 210
 
