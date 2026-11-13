@@ -112,9 +112,14 @@ export function FloatingScrollChevron({
   dir,
   onClick,
   offsetPx = -16,
+  onMouseEnter,
+  onMouseLeave,
 }: {
   dir: "left" | "right"
   onClick: () => void
+  /** For a row that names what the chevron does while it's hovered. */
+  onMouseEnter?: (e: React.MouseEvent<HTMLButtonElement>) => void
+  onMouseLeave?: () => void
   /**
    * From the row's end: -16 (the colour row) hangs it half outside; a row
    * with neighbours close by sets it inside, over its fade.
@@ -126,6 +131,8 @@ export function FloatingScrollChevron({
       type="button"
       aria-label={dir === "left" ? "Scroll left" : "Scroll right"}
       onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       className="absolute top-1/2 z-[20] flex h-[32px] w-[32px] -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border border-[#DEDEDE] bg-white shadow-sm"
       style={dir === "left" ? { left: offsetPx } : { right: offsetPx }}
     >

@@ -45,6 +45,9 @@ const VISIBLE_TILES = 5.5
 const PREVIEW_SCALE = 5
 // Between the label and the hover close-up above it.
 const PREVIEW_GAP_PX = 6
+// How long the hover outlives the pointer leaving the strip, the label or the
+// close-up — time to cross from one to the next without the close-up closing.
+const VIEW_HOVER_GRACE_MS = 120
 // The label while its view is scrolled out of the strip (ViewStrip's
 // labelPinned): blurred over this share of its width on the side its view went, by
 // this much (ScrollBlur, fading in from that end).
@@ -83,7 +86,17 @@ const STRIP_MAX_PX =
   TILE_PX * VISIBLE_TILES + TILE_GAP_PX * Math.floor(VISIBLE_TILES) + 2 * STRIP_PADDING_PX
 // How strongly the strip's cut-off end is blurred (ScrollBlur).
 const EDGE_BLUR_PX = 10
-// The technique button while its menu is open: its hover grey, held.
+// …and how wide that end is (ScrollBlur's own default).
+const EDGE_BLUR_WIDTH_PX = 64
+// The chevrons over the strip's ends: this far in, and this big
+// (FloatingScrollChevron).
+const CHEVRON_OFFSET_PX = 8
+const CHEVRON_PX = 32
+// The shield keeping the tile behind a chevron from being hovered or clicked:
+// from the strip's end to the chevron's inner edge, no further.
+const EDGE_SHIELD_PX = CHEVRON_OFFSET_PX + CHEVRON_PX
+// The label over a hovered chevron.
+const SEE_MORE_LABEL = "See more"// The technique button while its menu is open: its hover grey, held.
 const TILE_ACTIVE = "bg-neutral-100"
 
 // The zoom's tooltips: the existing zoom tooltip, moved above its button.
@@ -323,6 +336,7 @@ export function ViewStrip({
   activeViewId,
   onSelect,
   pinnedHoverId,
+  pinnedChevron,
 }: {
   views: MergedRowView[]
   activeViewId: string | null
@@ -332,6 +346,8 @@ export function ViewStrip({
    * shows the states side by side. The pointer then hovers nothing else.
    */
   pinnedHoverId?: string
+  /** Holds that end's scroll chevron in its hover state — for the handoff. */
+  pinnedChevron?: "left" | "right"
 }) {
   const { ref, onScroll, canScrollLeft, canScrollRight, scrollBy } = useHorizontalOverflow(
     [views.length],
@@ -350,6 +366,68 @@ export function ViewStrip({
     // Let go of, the pin ends the hover — a handoff scene scripting one.
     return () => setHovered(null)
   }, [pinnedHoverId, views.length])
+  // The strip, the label and the close-up hover as one: leaving one ends the
+  // hover only if the pointer hasn't reached another within the grace.
+  const hoverEndTimer = useRef(0)
+  const keepHover = () => clearTimeout(hoverEndTimer.current)
+  const endHoverSoon = () => {
+    clearTimeout(hoverEndTimer.current)
+    hoverEndTimer.current = window.setTimeout(() => {
+      setHovered(null)
+      setChevronHovered(null)
+    }, VIEW_HOVER_GRACE_MS)
+  }
+  // A hovered chevron takes the label too: it glides over the chevron
+  // (kept inside the strip's end) and reads SEE_MORE_LABEL on neutral-100 —
+  // no close-up; a click on it scrolls as the chevron does. Once the strip
+  // can't scroll that way any more the chevron is gone, and so is its label.
+  const [chevronHovered, setChevronHovered] = useState<{
+    dir: "left" | "right"
+    x: number
+    stripW: number
+  } | null>(null)
+  const chevron =
+    chevronHovered && (chevronHovered.dir === "left" ? canScrollLeft : canScrollRight)
+      ? chevronHovered
+      : null
+  const chevronHoverHandlers = (dir: "left" | "right") =>
+    pinnedHoverId
+      ? {}
+      : {
+          onMouseEnter: (e: React.MouseEvent<HTMLButtonElement>) => {
+            keepHover()
+            setHovered(null)
+            const c = e.currentTarget.getBoundingClientRect()
+            const w = wrapperRef.current!.getBoundingClientRect()
+            setChevronHovered({ dir, x: c.left - w.left + c.width / 2, stripW: w.width })
+          },
+          onMouseLeave: endHoverSoon,
+        }
+  useLayoutEffect(() => {
+    if (!pinnedChevron) return
+    const wrapper = wrapperRef.current
+    const button = wrapper?.querySelector<HTMLElement>(
+      `button[aria-label="Scroll ${pinnedChevron}"]`
+    )
+    if (!wrapper || !button) return
+    const c = button.getBoundingClientRect()
+    const w = wrapper.getBoundingClientRect()
+    setChevronHovered({ dir: pinnedChevron, x: c.left - w.left + c.width / 2, stripW: w.width })
+    return () => setChevronHovered(null)
+  }, [pinnedChevron, canScrollLeft, canScrollRight])
+  useLayoutEffect(() => () => clearTimeout(hoverEndTimer.current), [])
+  const hoverHandlers = pinnedHoverId
+    ? {}
+    : { onMouseEnter: keepHover, onMouseLeave: endHoverSoon }
+  // A click on the label or the close-up selects the view it shows, as its
+  // tile would — and brings the tile into the strip, should it be scrolled away.
+  const selectFromLabel = (id: string | undefined) => {
+    if (!id || pinnedHoverId) return
+    onSelect(id)
+    wrapperRef.current
+      ?.querySelector<HTMLElement>(`[data-view-id="${id}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" })
+  }
   // The view the close-up last showed — kept while it fades out, so it doesn't
   // empty mid-animation.
   const [shown, setShown] = useState<{ id: string; x: number } | null>(null)
@@ -372,7 +450,7 @@ export function ViewStrip({
     const observer = new ResizeObserver(measure)
     observer.observe(label)
     return () => observer.disconnect()
-  }, [labelView?.id])
+  }, [labelView?.id, !!chevronHovered])
   // Where the label rests: over the active tile's centre (measured from the
   // strip's left edge, so it follows the strip's scroll) — at the end tiles
   // too, where a long name may overhang the strip's end. Once the strip is
@@ -403,7 +481,40 @@ export function ViewStrip({
     measureFrame.current = requestAnimationFrame(() => {
       measureFrame.current = 0
       measureLabelX()
+      hoverUnderPointer()
     })
+  }
+  // A scroll slides tiles under a pointer that stays put, and the browser
+  // fires no mouseenter for that — so the pointer's last spot is kept, and
+  // after each scrolled frame the tile under it (if any) becomes the hovered
+  // one: the label follows it, as if the pointer had moved there. In a gap
+  // between tiles the last one stays hovered, the label following it as it
+  // slides; over a shielded end the hover ends.
+  const pointer = useRef<{ x: number; y: number } | null>(null)
+  const hoverUnderPointer = () => {
+    const strip = ref.current
+    const wrapper = wrapperRef.current
+    if (pinnedHoverId) {
+      // A held hover (the handoff's) follows its tile as the strip scrolls.
+      const held = wrapper?.querySelector<HTMLElement>(`[data-view-id="${pinnedHoverId}"]`)
+      if (!wrapper || !held) return
+      const h = held.getBoundingClientRect()
+      const w = wrapper.getBoundingClientRect()
+      return setHovered({ id: pinnedHoverId, x: h.left - w.left + h.width / 2 })
+    }
+    if (!pointer.current || !strip || !wrapper) return
+    const under = document.elementFromPoint(pointer.current.x, pointer.current.y)
+    if (under?.closest("[data-edge-shield]")) return setHovered(null)
+    if (!under || !strip.contains(under)) return
+    const tile =
+      under.closest<HTMLElement>("[data-view-id]") ??
+      (hovered && strip.querySelector<HTMLElement>(`[data-view-id="${hovered.id}"]`))
+    if (!tile) return
+    keepHover()
+    setChevronHovered(null)
+    const t = tile.getBoundingClientRect()
+    const w = wrapper.getBoundingClientRect()
+    setHovered({ id: tile.dataset.viewId!, x: t.left - w.left + t.width / 2 })
   }
   useLayoutEffect(() => () => cancelAnimationFrame(measureFrame.current), [])
   useLayoutEffect(() => {
@@ -414,7 +525,17 @@ export function ViewStrip({
     observer.observe(wrapper)
     return () => observer.disconnect()
   }, [activeViewId, views.length, labelSize?.w])
-  const shownLabelX = hovered?.x ?? labelX
+  const chevronLabelX =
+    chevron &&
+    Math.round(
+      Math.min(
+        Math.max(chevron.x, (labelSize?.w ?? 0) / 2),
+        chevron.stripW - (labelSize?.w ?? 0) / 2
+      )
+    )
+  const shownLabelX = chevronLabelX || (hovered?.x ?? labelX)
+  // Pinned to an end, faded and blurred, only while it rests on the active view.
+  const labelFaded = labelPinned && !hovered && !chevron ? labelPinned : null
   const notchMask =
     labelView && labelSize && shownLabelX !== null
       ? labelNotchMask(labelSize, shownLabelX, false)
@@ -439,33 +560,43 @@ export function ViewStrip({
   const centredAt = (x: number | null | undefined) =>
     x == null ? { left: "50%", translate: "-50% 0" } : { left: 0, translate: `calc(${x}px - 50%) 0` }
   return (
-    <div ref={wrapperRef} className="relative">
+    <div
+      ref={wrapperRef}
+      className="relative"
+      onPointerMove={e => (pointer.current = { x: e.clientX, y: e.clientY })}
+      onPointerLeave={() => (pointer.current = null)}
+    >
       {/* The label: a view's name in a small white pill ACTIVE_LABEL_GAP_PX
           above the strip — the hovered view's while the pointer is on the
-          strip, the active one's otherwise. It glides from tile to tile, the
-          notch with it. */}
+          strip, the active one's otherwise, SEE_MORE_LABEL over a hovered
+          chevron. It glides from tile to tile, the notch with it. */}
       {labelView && (
         <div
           ref={labelRef}
+          data-view-label
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-full z-10 rounded-full bg-white px-2.5 py-1 text-xs font-semibold tracking-[0.1em] whitespace-nowrap text-black uppercase"
+          {...hoverHandlers}
+          onClick={() => (chevron ? scrollBy(chevron.dir) : selectFromLabel(labelView.id))}
+          className={`absolute bottom-full z-10 rounded-full px-2.5 py-1 text-xs font-semibold tracking-[0.1em] whitespace-nowrap text-black uppercase transition-colors ${
+            pinnedHoverId ? "pointer-events-none" : "cursor-pointer"
+          } ${chevron ? "bg-[var(--sprd-neutral-100)]" : "bg-white"}`}
           style={{
             marginBottom: ACTIVE_LABEL_GAP_PX,
             ...centredAt(shownLabelX),
             // Pinned, its white fades in from the blurred end — from
             // PINNED_LABEL_FADE_FROM white to full over PINNED_LABEL_FADE_SHARE.
-            ...(labelPinned && !hovered
+            ...(labelFaded
               ? {
-                  background: `linear-gradient(to ${labelPinned === "left" ? "right" : "left"}, rgb(255 255 255 / ${PINNED_LABEL_FADE_FROM}), white ${PINNED_LABEL_FADE_SHARE * 100}%)`,
+                  background: `linear-gradient(to ${labelFaded === "left" ? "right" : "left"}, rgb(255 255 255 / ${PINNED_LABEL_FADE_FROM}), white ${PINNED_LABEL_FADE_SHARE * 100}%)`,
                 }
               : {}),
-            transition: `translate ${LABEL_SLIDE_MS}ms ease-out`,
+            transition: `translate ${LABEL_SLIDE_MS}ms ease-out, background-color 150ms ease-out`,
           }}
         >
-          {labelView.name}
-          {labelPinned && !hovered && labelSize && (
+          {chevron ? SEE_MORE_LABEL : labelView.name}
+          {labelFaded && labelSize && (
             <ScrollBlur
-              dir={labelPinned}
+              dir={labelFaded}
               widthPx={labelSize.w * PINNED_LABEL_BLUR_SHARE}
               blurPx={PINNED_LABEL_BLUR_PX}
             />
@@ -473,15 +604,20 @@ export function ViewStrip({
         </div>
       )}
       {/* The hover close-up, a card of its own PREVIEW_GAP_PX above the label
-          (which names the view). */}
+          (which names the view). The gap is the card's own (transparent)
+          padding, so the pointer climbing from the label onto the card never
+          leaves the hover. */}
       <div
         aria-hidden="true"
-        className={`pointer-events-none absolute bottom-full z-[100] origin-bottom ease-out ${
-          hovered ? "scale-100 opacity-100" : "scale-95 opacity-0"
-        }`}
+        data-view-preview
+        {...(hovered ? hoverHandlers : {})}
+        className={`absolute bottom-full z-[100] origin-bottom ease-out ${
+          hovered && !pinnedHoverId ? "" : "pointer-events-none"
+        } ${hovered ? "scale-100 opacity-100" : "scale-95 opacity-0"}`}
         style={{
           ...centredAt(shown?.x ?? 0),
-          marginBottom: (labelSize?.h ?? 0) + ACTIVE_LABEL_GAP_PX + PREVIEW_GAP_PX,
+          marginBottom: (labelSize?.h ?? 0) + ACTIVE_LABEL_GAP_PX,
+          paddingBottom: PREVIEW_GAP_PX,
           transition: `opacity 150ms ease-out, scale 150ms ease-out${
             previewWasOpen.current && hovered ? `, translate ${LABEL_SLIDE_MS}ms ease-out` : ""
           }`,
@@ -495,7 +631,8 @@ export function ViewStrip({
             padded, but sliding it runs out to the card's very edges. */}
         {shownView && (
           <div
-            className="overflow-hidden rounded-[16px] bg-white shadow-xl"
+            onClick={() => selectFromLabel(shownView.id)}
+            className="cursor-pointer overflow-hidden rounded-[16px] bg-white shadow-xl"
             style={{ paddingBlock: PREVIEW_PADDING_PX }}
           >
             <div
@@ -529,18 +666,23 @@ export function ViewStrip({
         className="relative h-14 overflow-hidden rounded-full bg-white"
         style={{ maxWidth: STRIP_MAX_PX, ...notchMask }}
       >
-        {canScrollLeft && <ScrollBlur dir="left" blurPx={EDGE_BLUR_PX} />}
+        {canScrollLeft && (
+          <>
+            <ScrollBlur dir="left" widthPx={EDGE_BLUR_WIDTH_PX} blurPx={EDGE_BLUR_PX} />
+            <EdgeShield dir="left" scroller={ref} />
+          </>
+        )}
         <div
           ref={ref}
           onScroll={() => {
             onScroll()
             measureLabelXNextFrame()
-            if (!pinnedHoverId) setHovered(null)
           }}
           // The hover ends on leaving the strip, not a tile: crossing the gap
           // between two tiles keeps the close-up up (on the last tile), so the
-          // active view's label doesn't flash back in between them.
-          onMouseLeave={pinnedHoverId ? undefined : () => setHovered(null)}
+          // active view's label doesn't flash back in between them. Leaving
+          // for the label or the close-up keeps it too.
+          {...hoverHandlers}
           className="no-scrollbar flex h-full overflow-x-auto scroll-smooth"
           style={{
             padding: STRIP_PADDING_PX,
@@ -562,6 +704,8 @@ export function ViewStrip({
                   pinnedHoverId
                     ? undefined
                     : e => {
+                        keepHover()
+                        setChevronHovered(null)
                         const tile = e.currentTarget.getBoundingClientRect()
                         const strip =
                           e.currentTarget.parentElement!.parentElement!.getBoundingClientRect()
@@ -592,18 +736,54 @@ export function ViewStrip({
             )
           })}
         </div>
-        {canScrollRight && <ScrollBlur dir="right" blurPx={EDGE_BLUR_PX} />}
+        {canScrollRight && (
+          <>
+            <ScrollBlur dir="right" widthPx={EDGE_BLUR_WIDTH_PX} blurPx={EDGE_BLUR_PX} />
+            <EdgeShield dir="right" scroller={ref} />
+          </>
+        )}
       </div>
       </div>
       {/* Inside the pill's ends rather than half outside as on the colour
           row: the zoom and the switcher are only 12px away. */}
       {canScrollLeft && (
-        <FloatingScrollChevron dir="left" offsetPx={8} onClick={() => scrollBy("left")} />
+        <FloatingScrollChevron
+          dir="left"
+          offsetPx={CHEVRON_OFFSET_PX}
+          onClick={() => scrollBy("left")}
+          {...chevronHoverHandlers("left")}
+        />
       )}
       {canScrollRight && (
-        <FloatingScrollChevron dir="right" offsetPx={8} onClick={() => scrollBy("right")} />
+        <FloatingScrollChevron
+          dir="right"
+          offsetPx={CHEVRON_OFFSET_PX}
+          onClick={() => scrollBy("right")}
+          {...chevronHoverHandlers("right")}
+        />
       )}
     </div>
+  )
+}
+
+// Over the strip's blurred, cut-off end: the half-hidden tile behind it can't
+// be hovered or clicked there — only the chevron on top can. A sideways
+// scroll over it still scrolls the strip.
+function EdgeShield({
+  dir,
+  scroller,
+}: {
+  dir: "left" | "right"
+  scroller: React.RefObject<HTMLDivElement | null>
+}) {
+  return (
+    <div
+      aria-hidden="true"
+      data-edge-shield
+      onWheel={e => scroller.current?.scrollBy({ left: e.deltaX })}
+      className={`absolute top-0 z-[15] h-full ${dir === "left" ? "left-0" : "right-0"}`}
+      style={{ width: EDGE_SHIELD_PX }}
+    />
   )
 }
 

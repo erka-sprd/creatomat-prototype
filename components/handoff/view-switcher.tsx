@@ -8,8 +8,9 @@
  * Every demo is the shipping ViewStrip from components/merged-bottom-row.tsx,
  * fed a real catalogue product. What is faked:
  * - the scripted demos drive it from outside — the selected view, the held
- *   hover (pinnedHoverId) and the strip's scroll position on a timer;
- * - the hover demo's cursor is drawn;
+ *   hover (pinnedHoverId, pinnedChevron) and the strip's scroll position on a
+ *   timer;
+ * - the hover demos' cursors are drawn;
  * - §2's backgrounds are flat patches in the product's own catalogue colours,
  *   standing in for a zoomed-in product behind the strip.
  */
@@ -32,7 +33,9 @@ import {
 } from "@/components/handoff/handoff-ui"
 import { ParkedCursor } from "@/components/handoff/rail-replica"
 import { ViewStrip, type MergedRowView } from "@/components/merged-bottom-row"
+import { COLOR_ROW_SCROLL_STEP_PX } from "@/components/ui/horizontal-scroll"
 import { loadCatalog } from "@/lib/catalog"
+import { ACTIVE_LABEL_GAP_PX } from "@/lib/view-strip-notch"
 
 const PROTOTYPE = "https://creatomat-prototype.vercel.app/"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
@@ -56,6 +59,10 @@ const NAV: NavItem[] = [
   { id: "s3", mark: "3", label: "Selected view" },
   { id: "s4", mark: "4", label: "Hover" },
   { id: "s5", mark: "5", label: "Scrolled away" },
+  { id: "s6", mark: "6", label: "Scroll arrows" },
+  { id: "s7", mark: "7", label: "Click “See more”" },
+  { id: "s8", mark: "8", label: "Behind the arrow" },
+  { id: "s9", mark: "9", label: "Resting pointer" },
 ]
 
 const noop = () => {}
@@ -232,23 +239,38 @@ function HoverLoop({ views }: { views: MergedRowView[] }) {
 }
 
 /**
- * §4 — the pointer resting in the gap after the second view, which stays
- * hovered. The arrow: the gap is not a button. Its spot is measured.
+ * §4 — the second view held hovered, the pointer resting `at` one spot of
+ * its hover area: the gap after it (the arrow: a gap is not a button), its
+ * label or its preview (the hand: both are clickable). The spot is measured —
+ * a frame late, once the strip has laid out its label and preview.
  */
-function GapHover({ views }: { views: MergedRowView[] }) {
+function HeldHover({ views, at }: { views: MergedRowView[]; at: "gap" | "label" | "preview" }) {
   const ref = useRef<HTMLDivElement>(null)
   const hoveredId = views[1]?.id
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null)
-  useLayoutEffect(() => {
-    const box = ref.current
-    const tile = hoveredId && box?.querySelector<HTMLElement>(`[data-view-id="${hoveredId}"]`)
-    const next = tile && (tile.nextElementSibling as HTMLElement | null)
-    if (!box || !tile || !next) return
-    const b = box.getBoundingClientRect()
-    const t = tile.getBoundingClientRect()
-    const n = next.getBoundingClientRect()
-    setCursor({ x: (t.right + n.left) / 2 - b.left, y: t.top - b.top + t.height / 2 })
-  }, [hoveredId, views.length])
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const box = ref.current
+      const tile = hoveredId && box?.querySelector<HTMLElement>(`[data-view-id="${hoveredId}"]`)
+      const next = tile && (tile.nextElementSibling as HTMLElement | null)
+      if (!box || !tile || !next) return
+      const b = box.getBoundingClientRect()
+      const t = tile.getBoundingClientRect()
+      const centre = t.left - b.left + t.width / 2
+      if (at === "gap") {
+        const n = next.getBoundingClientRect()
+        setCursor({ x: (t.right + n.left) / 2 - b.left, y: t.top - b.top + t.height / 2 })
+        return
+      }
+      // The label stands on the strip's top edge, the preview on the label:
+      // heights only, as both are still gliding into place.
+      const labelH = box.querySelector<HTMLElement>("[data-view-label]")?.offsetHeight ?? 0
+      const labelTop = -ACTIVE_LABEL_GAP_PX - labelH
+      const previewH = box.querySelector<HTMLElement>("[data-view-preview]")?.offsetHeight ?? 0
+      setCursor({ x: centre, y: at === "label" ? labelTop + labelH / 2 : labelTop - previewH / 2 })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [hoveredId, views.length, at])
   return (
     <Scripted>
       <div ref={ref}>
@@ -261,7 +283,53 @@ function GapHover({ views }: { views: MergedRowView[] }) {
       </div>
       {cursor && (
         <span className="absolute z-[120]" style={{ left: cursor.x, top: cursor.y }}>
-          <ParkedCursor className="top-0 left-0" />
+          <ParkedCursor hand={at !== "gap"} className="top-0 left-0" />
+        </span>
+      )}
+    </Scripted>
+  )
+}
+
+/**
+ * §6 — the pointer comes onto the scroll arrow and leaves again: the label
+ * glides over the arrow and reads "See more", then goes back to the selected
+ * view. The cursor's spot is measured from the arrow.
+ */
+function ArrowHoverLoop({ views }: { views: MergedRowView[] }) {
+  const beat = useBeat()
+  const ref = useRef<HTMLDivElement>(null)
+  const onArrow = beat % 2 === 1
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null)
+  useLayoutEffect(() => {
+    const box = ref.current
+    const arrow = box?.querySelector<HTMLElement>('button[aria-label="Scroll right"]')
+    if (!box || !arrow) return
+    const b = box.getBoundingClientRect()
+    if (!onArrow) {
+      // Parked beside the strip's end, clear of it.
+      setCursor({ x: b.width + 28, y: b.height + 14 })
+      return
+    }
+    const a = arrow.getBoundingClientRect()
+    setCursor({ x: a.left - b.left + a.width / 2, y: a.top - b.top + a.height * 0.6 })
+  }, [onArrow, views.length])
+  return (
+    <Scripted>
+      <div ref={ref}>
+        <ViewStrip
+          views={views}
+          activeViewId={views[0]?.id ?? null}
+          onSelect={noop}
+          pinnedChevron={onArrow ? "right" : undefined}
+        />
+      </div>
+      {/* The hand, as the arrow is a button. */}
+      {cursor && (
+        <span
+          className="absolute z-[120] transition-[left,top] duration-300 ease-out"
+          style={{ left: cursor.x, top: cursor.y }}
+        >
+          <ParkedCursor hand className="top-0 left-0" />
         </span>
       )}
     </Scripted>
@@ -303,6 +371,206 @@ function ScrolledStrip({
           onSelect={noop}
         />
       </div>
+    </Scripted>
+  )
+}
+
+/**
+ * §7 — the pointer comes onto the arrow, moves up onto the "See more" label
+ * and clicks it: the strip scrolls a step, as the arrow would scroll it. The
+ * cursor's spots are measured from the arrow and the label.
+ */
+function SeeMoreClickLoop({ views }: { views: MergedRowView[] }) {
+  const beat = useBeat()
+  const ref = useRef<HTMLDivElement>(null)
+  // Off the strip, on the arrow, on the label, clicked.
+  const step = beat % 4
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null)
+  useEffect(() => {
+    const scroller = ref.current?.querySelector<HTMLElement>(".no-scrollbar")
+    if (scroller) scroller.scrollLeft = step === 3 ? COLOR_ROW_SCROLL_STEP_PX : 0
+    // A frame late: the label has stood over the arrow since the beat before.
+    const frame = requestAnimationFrame(() => {
+      const box = ref.current
+      if (!box) return
+      const b = box.getBoundingClientRect()
+      const target =
+        step === 0
+          ? null
+          : box.querySelector<HTMLElement>(
+              step === 1 ? 'button[aria-label="Scroll right"]' : "[data-view-label]"
+            )
+      if (!target) {
+        // Parked beside the strip's end, clear of it.
+        setCursor({ x: b.width + 28, y: b.height + 14 })
+        return
+      }
+      const t = target.getBoundingClientRect()
+      setCursor({ x: t.left - b.left + t.width / 2, y: t.top - b.top + t.height * 0.6 })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [step, views.length])
+  return (
+    <Scripted>
+      <div ref={ref}>
+        <ViewStrip
+          views={views}
+          activeViewId={views[0]?.id ?? null}
+          onSelect={noop}
+          pinnedChevron={step > 0 ? "right" : undefined}
+        />
+      </div>
+      {/* The hand: the arrow and the label are both clickable. */}
+      {cursor && (
+        <span
+          className="absolute z-[120] transition-[left,top] duration-300 ease-out"
+          style={{ left: cursor.x, top: cursor.y }}
+        >
+          <ParkedCursor hand className="top-0 left-0" />
+        </span>
+      )}
+    </Scripted>
+  )
+}
+
+/**
+ * §9 — the pointer comes onto the arrow and clicks it: the strip scrolls to
+ * its end, the arrow goes, and the view that has arrived under the pointer —
+ * which hasn't moved — is hovered. The cursor's spot is measured from the
+ * arrow; the hover is then held from outside, on the view found under that
+ * spot once the strip has reached its end.
+ */
+function ArrowClickHoverLoop({ views }: { views: MergedRowView[] }) {
+  const beat = useBeat()
+  const ref = useRef<HTMLDivElement>(null)
+  // Off the strip, on the arrow, clicked, and a beat to look at it.
+  const step = beat % 4
+  const clicked = step >= 2
+  const [onArrow, setOnArrow] = useState<{ x: number; y: number } | null>(null)
+  const [parked, setParked] = useState<{ x: number; y: number } | null>(null)
+  const [hoveredId, setHoveredId] = useState<string | undefined>(undefined)
+  // The cursor's two spots, taken while the arrow is there (the strip at its
+  // start) — again whenever the strip redraws, as the arrow only appears once
+  // the strip knows it can scroll.
+  useEffect(() => {
+    const box = ref.current
+    if (!box) return
+    const measure = () => {
+      const arrow = box.querySelector<HTMLElement>('button[aria-label="Scroll right"]')
+      if (!arrow) return
+      const b = box.getBoundingClientRect()
+      const a = arrow.getBoundingClientRect()
+      const x = Math.round(a.left - b.left + a.width / 2)
+      const y = Math.round(a.top - b.top + a.height * 0.6)
+      setOnArrow(prev => (prev?.x === x && prev.y === y ? prev : { x, y }))
+      // Parked beside the strip's end, clear of it.
+      setParked({ x: Math.round(b.width + 28), y: Math.round(b.height + 14) })
+    }
+    measure()
+    const observer = new MutationObserver(measure)
+    observer.observe(box, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [views.length])
+  const arrowX = onArrow?.x
+  useEffect(() => {
+    const box = ref.current
+    const scroller = box?.querySelector<HTMLElement>(".no-scrollbar")
+    if (!box || !scroller) return
+    const end = scroller.scrollWidth - scroller.clientWidth
+    if (!clicked || arrowX === undefined) {
+      setHoveredId(undefined)
+      scroller.scrollLeft = 0
+      return
+    }
+    // The strip at its end (the arrow gone): the view under the cursor.
+    const underCursor = () => {
+      if (scroller.scrollLeft < end - 1) return
+      const x = box.getBoundingClientRect().left + arrowX
+      const tile = [...box.querySelectorAll<HTMLElement>("[data-view-id]")].find(t => {
+        const r = t.getBoundingClientRect()
+        return r.left <= x && x <= r.right
+      })
+      if (tile) setHoveredId(tile.dataset.viewId)
+    }
+    scroller.addEventListener("scroll", underCursor)
+    scroller.scrollLeft = end
+    return () => scroller.removeEventListener("scroll", underCursor)
+  }, [clicked, arrowX, views.length])
+  const cursor = step === 0 ? parked : onArrow
+  return (
+    <Scripted>
+      <div ref={ref}>
+        <ViewStrip
+          views={views}
+          activeViewId={views[0]?.id ?? null}
+          onSelect={noop}
+          pinnedHoverId={hoveredId}
+          pinnedChevron={step > 0 && !hoveredId ? "right" : undefined}
+        />
+      </div>
+      {/* The hand: the arrow is a button, and so is the view after it. */}
+      {cursor && (
+        <span
+          className="absolute z-[120] transition-[left,top] duration-300 ease-out"
+          style={{ left: cursor.x, top: cursor.y }}
+        >
+          <ParkedCursor hand className="top-0 left-0" />
+        </span>
+      )}
+    </Scripted>
+  )
+}
+
+/**
+ * §8 — the strip scrolled halfway, so both ends are cut off, and the area at
+ * each end that takes no hover and no click drawn over it: dashed and tinted.
+ * The areas are the strip's own (its edge shields), measured — whenever the
+ * strip redraws, as they only appear once it knows it can scroll.
+ */
+function BlockedEnds({ views }: { views: MergedRowView[] }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [areas, setAreas] = useState<{ left: number; top: number; width: number; height: number }[]>(
+    []
+  )
+  useEffect(() => {
+    const box = ref.current
+    if (!box) return
+    const scroller = box.querySelector<HTMLElement>(".no-scrollbar")
+    if (scroller) scroller.scrollLeft = (scroller.scrollWidth - scroller.clientWidth) / 2
+    const measure = () => {
+      const b = box.getBoundingClientRect()
+      const next = [...box.querySelectorAll<HTMLElement>("[data-edge-shield]")].map(shield => {
+        const s = shield.getBoundingClientRect()
+        return {
+          left: Math.round(s.left - b.left),
+          top: Math.round(s.top - b.top),
+          width: Math.round(s.width),
+          height: Math.round(s.height),
+        }
+      })
+      setAreas(prev => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
+    }
+    measure()
+    const observer = new MutationObserver(measure)
+    observer.observe(box, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [views.length])
+  return (
+    <Scripted>
+      <div ref={ref}>
+        <ViewStrip views={views} activeViewId={views[3]?.id ?? null} onSelect={noop} />
+      </div>
+      {areas.map(area => (
+        <span
+          key={area.left}
+          aria-hidden="true"
+          // Over the strip, under its arrows (z-20): the arrow is what reacts.
+          className={`absolute z-[18] border-[1.5px] border-dashed border-[#DC2626] bg-[#DC2626]/15 ${
+            area.left === 0 ? "rounded-l-full" : "rounded-r-full"
+          }`}
+          style={area}
+        />
+      ))}
     </Scripted>
   )
 }
@@ -487,9 +755,36 @@ export default function ViewSwitcher() {
         </p>
         <Demo padding="p-3.5" className="overflow-visible">
           <Canvas padding={PREVIEW_ROOM}>
-            <GapHover views={tshirt.views} />
+            <HeldHover views={tshirt.views} at="gap" />
           </Canvas>
         </Demo>
+        <p className="ho-caption">
+          The label and the preview belong to the hover too: the pointer can move up onto them,
+          and a click on either picks that view
+        </p>
+        <Demo padding="p-3.5" className="overflow-visible">
+          <div className="flex flex-col gap-3.5">
+            <StateCell label="pointer on the label">
+              <div className="w-full">
+                <Canvas padding={PREVIEW_ROOM}>
+                  <HeldHover views={tshirt.views} at="label" />
+                </Canvas>
+              </div>
+            </StateCell>
+            <StateCell label="pointer on the preview">
+              <div className="w-full">
+                <Canvas padding={PREVIEW_ROOM}>
+                  <HeldHover views={tshirt.views} at="preview" />
+                </Canvas>
+              </div>
+            </StateCell>
+          </div>
+        </Demo>
+        <Note>
+          Views, label and preview are one hover area. Leaving it ends the hover only after a
+          short moment, so crossing from one to the next never closes the preview. Without a
+          hover, a click on the label picks the selected view again.
+        </Note>
       </Section>
 
       {/* -------------------------------------------------------------- §5 */}
@@ -526,8 +821,70 @@ export default function ViewSwitcher() {
         <Note>
           The label never leaves the strip to follow its view, so it can&rsquo;t end up over the
           zoom or the print technique. Scrolled back into sight, the view gets its label back,
-          sharp. Hover works as always.
+          sharp. Hover works as always. A click on the waiting label scrolls its view back into
+          sight.
         </Note>
+      </Section>
+
+      {/* -------------------------------------------------------------- §6 */}
+      <Section id="s6">
+        <Kicker>§6 · Scroll arrows</Kicker>
+        <SectionHead title="Hovering the arrow: the label says “See more”" />
+        <p>
+          Hover the arrow: the label moves over it, grey, and reads &ldquo;See more&rdquo;. No
+          preview
+        </p>
+        <Demo padding="p-3.5" className="overflow-x-auto">
+          <Canvas padding={LABEL_ROOM}>
+            <ArrowHoverLoop views={hoodie.views} />
+          </Canvas>
+        </Demo>
+      </Section>
+
+      {/* -------------------------------------------------------------- §7 */}
+      <Section id="s7">
+        <Kicker>§7 · Click “See more”</Kicker>
+        <SectionHead title="A click on “See more” scrolls, like the arrow" />
+        <p>The pointer moves from the arrow up onto the label and clicks: the strip scrolls</p>
+        <Demo padding="p-3.5" className="overflow-x-auto">
+          <Canvas padding={LABEL_ROOM}>
+            <SeeMoreClickLoop views={hoodie.views} />
+          </Canvas>
+        </Demo>
+      </Section>
+
+      {/* -------------------------------------------------------------- §8 */}
+      <Section id="s8">
+        <Kicker>§8 · Behind the arrow</Kicker>
+        <SectionHead title="The view behind the arrow takes no hover and no click" />
+        <p>
+          In the marked area — from the strip&rsquo;s end to the arrow&rsquo;s inner edge — only
+          the arrow reacts
+        </p>
+        <Demo padding="p-3.5" className="overflow-x-auto">
+          <StateCell label="dashed red: no hover, no click on the views there">
+            <div className="w-full">
+              <Canvas padding={LABEL_ROOM}>
+                <BlockedEnds views={hoodie.views} />
+              </Canvas>
+            </div>
+          </StateCell>
+        </Demo>
+      </Section>
+
+      {/* -------------------------------------------------------------- §9 */}
+      <Section id="s9">
+        <Kicker>§9 · Resting pointer</Kicker>
+        <SectionHead title="After a scroll, the view under the pointer is hovered" />
+        <p>
+          Click the arrow: the strip scrolls and the arrow goes. The view that arrives under the
+          pointer is hovered right away
+        </p>
+        <Demo padding="p-3.5" className="overflow-visible">
+          <Canvas padding={PREVIEW_ROOM}>
+            <ArrowClickHoverLoop views={hoodie.views} />
+          </Canvas>
+        </Demo>
       </Section>
 
       <HandoffEnd />
