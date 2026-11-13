@@ -392,29 +392,30 @@ export function ViewStrip({
     chevronHovered && (chevronHovered.dir === "left" ? canScrollLeft : canScrollRight)
       ? chevronHovered
       : null
+  // The label sits over the chevron itself, wherever in its end the pointer is.
+  const hoverChevron = (dir: "left" | "right") => {
+    const wrapper = wrapperRef.current
+    const button = wrapper?.querySelector<HTMLElement>(`button[aria-label="Scroll ${dir}"]`)
+    if (!wrapper || !button) return
+    const c = button.getBoundingClientRect()
+    const w = wrapper.getBoundingClientRect()
+    setChevronHovered({ dir, x: c.left - w.left + c.width / 2, stripW: w.width })
+  }
+  // On the chevron and on its whole end of the strip (EdgeShield) alike.
   const chevronHoverHandlers = (dir: "left" | "right") =>
     pinnedHoverId
       ? {}
       : {
-          onMouseEnter: (e: React.MouseEvent<HTMLButtonElement>) => {
+          onMouseEnter: () => {
             keepHover()
             setHovered(null)
-            const c = e.currentTarget.getBoundingClientRect()
-            const w = wrapperRef.current!.getBoundingClientRect()
-            setChevronHovered({ dir, x: c.left - w.left + c.width / 2, stripW: w.width })
+            hoverChevron(dir)
           },
           onMouseLeave: endHoverSoon,
         }
   useLayoutEffect(() => {
     if (!pinnedChevron) return
-    const wrapper = wrapperRef.current
-    const button = wrapper?.querySelector<HTMLElement>(
-      `button[aria-label="Scroll ${pinnedChevron}"]`
-    )
-    if (!wrapper || !button) return
-    const c = button.getBoundingClientRect()
-    const w = wrapper.getBoundingClientRect()
-    setChevronHovered({ dir: pinnedChevron, x: c.left - w.left + c.width / 2, stripW: w.width })
+    hoverChevron(pinnedChevron)
     return () => setChevronHovered(null)
   }, [pinnedChevron, canScrollLeft, canScrollRight])
   useLayoutEffect(() => () => clearTimeout(hoverEndTimer.current), [])
@@ -491,7 +492,7 @@ export function ViewStrip({
   // after each scrolled frame the tile under it (if any) becomes the hovered
   // one: the label follows it, as if the pointer had moved there. In a gap
   // between tiles the last one stays hovered, the label following it as it
-  // slides; over a shielded end the hover ends.
+  // slides; over a strip's end the chevron there is hovered instead.
   const pointer = useRef<{ x: number; y: number } | null>(null)
   const hoverUnderPointer = () => {
     const strip = ref.current
@@ -506,7 +507,12 @@ export function ViewStrip({
     }
     if (!pointer.current || !strip || !wrapper) return
     const under = document.elementFromPoint(pointer.current.x, pointer.current.y)
-    if (under?.closest("[data-edge-shield]")) return setHovered(null)
+    const shield = under?.closest<HTMLElement>("[data-edge-shield]")
+    if (shield) {
+      keepHover()
+      setHovered(null)
+      return hoverChevron(shield.dataset.edgeShield as "left" | "right")
+    }
     if (!under || !strip.contains(under)) return
     const tile =
       under.closest<HTMLElement>("[data-view-id]") ??
@@ -671,7 +677,12 @@ export function ViewStrip({
         {canScrollLeft && (
           <>
             <ScrollBlur dir="left" widthPx={EDGE_BLUR_WIDTH_PX} blurPx={EDGE_BLUR_PX} />
-            <EdgeShield dir="left" scroller={ref} />
+            <EdgeShield
+              dir="left"
+              scroller={ref}
+              onClick={() => scrollBy("left")}
+              {...chevronHoverHandlers("left")}
+            />
           </>
         )}
         <div
@@ -741,7 +752,12 @@ export function ViewStrip({
         {canScrollRight && (
           <>
             <ScrollBlur dir="right" widthPx={EDGE_BLUR_WIDTH_PX} blurPx={EDGE_BLUR_PX} />
-            <EdgeShield dir="right" scroller={ref} />
+            <EdgeShield
+              dir="right"
+              scroller={ref}
+              onClick={() => scrollBy("right")}
+              {...chevronHoverHandlers("right")}
+            />
           </>
         )}
       </div>
@@ -768,22 +784,32 @@ export function ViewStrip({
   )
 }
 
-// Over the strip's blurred, cut-off end: the half-hidden tile behind it can't
-// be hovered or clicked there — only the chevron on top can. A sideways
-// scroll over it still scrolls the strip.
+// Over the strip's blurred, cut-off end: the whole end is the chevron's —
+// hovering or clicking anywhere on it is hovering or clicking the chevron,
+// never the half-hidden tile behind it. A sideways scroll over it still
+// scrolls the strip.
 function EdgeShield({
   dir,
   scroller,
+  onClick,
+  onMouseEnter,
+  onMouseLeave,
 }: {
   dir: "left" | "right"
   scroller: React.RefObject<HTMLDivElement | null>
+  onClick: () => void
+  onMouseEnter?: () => void
+  onMouseLeave?: () => void
 }) {
   return (
     <div
       aria-hidden="true"
-      data-edge-shield
+      data-edge-shield={dir}
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       onWheel={e => scroller.current?.scrollBy({ left: e.deltaX })}
-      className={`absolute top-0 z-[15] h-full ${dir === "left" ? "left-0" : "right-0"}`}
+      className={`absolute top-0 z-[15] h-full cursor-pointer ${dir === "left" ? "left-0" : "right-0"}`}
       style={{ width: EDGE_SHIELD_PX }}
     />
   )

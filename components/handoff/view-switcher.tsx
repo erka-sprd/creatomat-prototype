@@ -61,7 +61,7 @@ const NAV: NavItem[] = [
   { id: "s5", mark: "5", label: "Scrolled away" },
   { id: "s6", mark: "6", label: "Scroll arrows" },
   { id: "s7", mark: "7", label: "Click “See more”" },
-  { id: "s8", mark: "8", label: "Behind the arrow" },
+  { id: "s8", mark: "8", label: "The arrow's area" },
   { id: "s9", mark: "9", label: "Resting pointer" },
 ]
 
@@ -523,15 +523,18 @@ function ArrowClickHoverLoop({ views }: { views: MergedRowView[] }) {
 
 /**
  * §8 — the strip scrolled halfway, so both ends are cut off, and the area at
- * each end that takes no hover and no click drawn over it: dashed and tinted.
- * The areas are the strip's own (its edge shields), measured — whenever the
- * strip redraws, as they only appear once it knows it can scroll.
+ * each end that is the arrow's drawn over it: dashed and tinted. The areas
+ * are the strip's own (its edge shields), measured — whenever the strip
+ * redraws, as they only appear once it knows it can scroll. The hand rests in
+ * the right one, under its arrow rather than on it, and the label still says
+ * “See more”.
  */
-function BlockedEnds({ views }: { views: MergedRowView[] }) {
+function ArrowAreas({ views }: { views: MergedRowView[] }) {
   const ref = useRef<HTMLDivElement>(null)
   const [areas, setAreas] = useState<{ left: number; top: number; width: number; height: number }[]>(
     []
   )
+  const right = areas.find(area => area.left > 0)
   useEffect(() => {
     const box = ref.current
     if (!box) return
@@ -558,19 +561,33 @@ function BlockedEnds({ views }: { views: MergedRowView[] }) {
   return (
     <Scripted>
       <div ref={ref}>
-        <ViewStrip views={views} activeViewId={views[3]?.id ?? null} onSelect={noop} />
+        <ViewStrip
+          views={views}
+          activeViewId={views[3]?.id ?? null}
+          onSelect={noop}
+          pinnedChevron={right ? "right" : undefined}
+        />
       </div>
       {areas.map(area => (
         <span
           key={area.left}
           aria-hidden="true"
-          // Over the strip, under its arrows (z-20): the arrow is what reacts.
+          // Over the strip, under its arrows (z-20), so the arrow still shows.
           className={`absolute z-[18] border-[1.5px] border-dashed border-[#DC2626] bg-[#DC2626]/15 ${
             area.left === 0 ? "rounded-l-full" : "rounded-r-full"
           }`}
           style={area}
         />
       ))}
+      {/* The hand, as the whole area is the arrow's button. */}
+      {right && (
+        <span
+          className="absolute z-[120]"
+          style={{ left: right.left + right.width / 2, top: right.top + right.height - 9 }}
+        >
+          <ParkedCursor hand className="top-0 left-0" />
+        </span>
+      )}
     </Scripted>
   )
 }
@@ -664,7 +681,7 @@ export default function ViewSwitcher() {
       <Section id="s2">
         <Kicker>§2 · The cut</Kicker>
         <SectionHead title="The label cuts into the strip" />
-        <p>The gap around the label is a hole in the strip, not a border</p>
+        <p>The gap around the label is a hole, not a border</p>
         <Demo padding="p-3.5" className="overflow-x-auto">
           <div className="flex flex-col gap-3.5">
             <StateCell label="on the canvas">
@@ -691,9 +708,8 @@ export default function ViewSwitcher() {
           </div>
         </Demo>
         <Note>
-          Cut it with a mask: the strip, minus a pill slightly larger than the label. Whatever is
-          behind shows through, so it holds on any product colour and at any zoom. A border in
-          the canvas colour would show as soon as a product is behind it. The strip&rsquo;s
+          A mask: the strip minus a pill slightly larger than the label. What&rsquo;s behind shows
+          through, on any product colour and zoom — a canvas-coloured border wouldn&rsquo;t. The
           shadow is a drop shadow, so it follows the cut.
         </Note>
       </Section>
@@ -702,15 +718,14 @@ export default function ViewSwitcher() {
       <Section id="s3">
         <Kicker>§3 · Selected view</Kicker>
         <SectionHead title="The label sits over the selected view" />
-        <p>Pick a view: the label and its cut glide over, and the view pops</p>
+        <p>Pick a view: the label and its cut glide over, the view pops</p>
         <Demo padding="p-3.5" className="overflow-x-auto">
           <Canvas padding={LABEL_ROOM}>
             <SelectLoop views={tshirt.views} />
           </Canvas>
         </Demo>
         <p className="ho-caption">
-          Always centred on its view — on the first and the last one too, where a long name
-          overhangs the strip
+          Always centred on its view — at the ends too, where a long name overhangs
         </p>
         <Demo padding="p-3.5" className="overflow-x-auto">
           <div className="flex flex-col gap-3.5">
@@ -737,8 +752,7 @@ export default function ViewSwitcher() {
         <Kicker>§4 · Hover</Kicker>
         <SectionHead title="On hover, the label follows the pointer" />
         <p>
-          It names the hovered view, a preview above it. Leaving the strip, it goes back to the
-          selected view
+          It names the hovered view, with a preview. Off the strip, it returns to the selected one
         </p>
         <Demo padding="p-3.5" className="overflow-visible">
           <Canvas padding={PREVIEW_ROOM}>
@@ -746,12 +760,11 @@ export default function ViewSwitcher() {
           </Canvas>
         </Demo>
         <Note>
-          The preview is one card that glides along with the label; inside it the pictures slide
-          left or right, like a carousel.
+          One preview card glides with the label; its pictures slide inside, like a carousel.
         </Note>
         <p className="ho-caption">
-          No &ldquo;hover off&rdquo; between views: in the gap, the last hovered view stays
-          hovered. The hover ends only when the pointer leaves the strip
+          In the gap between views, the last one stays hovered — until the pointer leaves the
+          strip
         </p>
         <Demo padding="p-3.5" className="overflow-visible">
           <Canvas padding={PREVIEW_ROOM}>
@@ -759,8 +772,7 @@ export default function ViewSwitcher() {
           </Canvas>
         </Demo>
         <p className="ho-caption">
-          The label and the preview belong to the hover too: the pointer can move up onto them,
-          and a click on either picks that view
+          The label and preview keep the hover too; a click on either picks that view
         </p>
         <Demo padding="p-3.5" className="overflow-visible">
           <div className="flex flex-col gap-3.5">
@@ -781,9 +793,8 @@ export default function ViewSwitcher() {
           </div>
         </Demo>
         <Note>
-          Views, label and preview are one hover area. Leaving it ends the hover only after a
-          short moment, so crossing from one to the next never closes the preview. Without a
-          hover, a click on the label picks the selected view again.
+          Views, label and preview are one hover area, ending after a short delay — so crossing
+          between them never closes the preview.
         </Note>
       </Section>
 
@@ -792,14 +803,14 @@ export default function ViewSwitcher() {
         <Kicker>§5 · Scrolled away</Kicker>
         <SectionHead title="Selected view scrolled away: the label waits at that end" />
         <p>
-          It stops inside the strip&rsquo;s end, blurred and fading out on the side its view went
+          It stops at the strip&rsquo;s end, fading out towards its view
         </p>
         <Demo padding="p-3.5" className="overflow-x-auto">
           <Canvas padding={LABEL_ROOM}>
             <ScrolledStrip views={hoodie.views} activeIndex={0} scrolledTo="end" loop />
           </Canvas>
         </Demo>
-        <p className="ho-caption">Either end, the blur on the side of the hidden view</p>
+        <p className="ho-caption">Either end, blurred towards the hidden view</p>
         <Demo padding="p-3.5" className="overflow-x-auto">
           <div className="flex flex-col gap-3.5">
             <StateCell label="selected view is to the left">
@@ -825,8 +836,7 @@ export default function ViewSwitcher() {
         <Kicker>§6 · Scroll arrows</Kicker>
         <SectionHead title="Hovering the arrow: the label says “See more”" />
         <p>
-          Hover the arrow: the label moves over it, grey, and reads &ldquo;See more&rdquo;. No
-          preview
+          The label moves over the arrow, grey, reading &ldquo;See more&rdquo;. No preview
         </p>
         <Demo padding="p-3.5" className="overflow-x-auto">
           <Canvas padding={LABEL_ROOM}>
@@ -839,7 +849,7 @@ export default function ViewSwitcher() {
       <Section id="s7">
         <Kicker>§7 · Click “See more”</Kicker>
         <SectionHead title="A click on “See more” scrolls, like the arrow" />
-        <p>The pointer moves from the arrow up onto the label and clicks: the strip scrolls</p>
+        <p>From the arrow up onto the label, a click: the strip scrolls</p>
         <Demo padding="p-3.5" className="overflow-x-auto">
           <Canvas padding={LABEL_ROOM}>
             <SeeMoreClickLoop views={hoodie.views} />
@@ -849,17 +859,17 @@ export default function ViewSwitcher() {
 
       {/* -------------------------------------------------------------- §8 */}
       <Section id="s8">
-        <Kicker>§8 · Behind the arrow</Kicker>
-        <SectionHead title="The view behind the arrow takes no hover and no click" />
+        <Kicker>§8 · The arrow&rsquo;s area</Kicker>
+        <SectionHead title="The whole end of the strip is the arrow" />
         <p>
-          In the marked area — from the strip&rsquo;s end to the arrow&rsquo;s inner edge — only
-          the arrow reacts
+          Hover or click anywhere in the marked area and it&rsquo;s the arrow, never the view
+          behind
         </p>
         <Demo padding="p-3.5" className="overflow-x-auto">
-          <StateCell label="dashed red: no hover, no click on the views there">
+          <StateCell label="dashed red: the arrow's area">
             <div className="w-full">
               <Canvas padding={LABEL_ROOM}>
-                <BlockedEnds views={hoodie.views} />
+                <ArrowAreas views={hoodie.views} />
               </Canvas>
             </div>
           </StateCell>
@@ -871,8 +881,7 @@ export default function ViewSwitcher() {
         <Kicker>§9 · Resting pointer</Kicker>
         <SectionHead title="After a scroll, the view under the pointer is hovered" />
         <p>
-          Click the arrow: the strip scrolls and the arrow goes. The view that arrives under the
-          pointer is hovered right away
+          Click the arrow: the strip scrolls, and the view now under the pointer is hovered
         </p>
         <Demo padding="p-3.5" className="overflow-visible">
           <Canvas padding={PREVIEW_ROOM}>
