@@ -818,12 +818,6 @@ export default function ViewSwitcher() {
             </StateCell>
           </div>
         </Demo>
-        <Note>
-          The label never leaves the strip to follow its view, so it can&rsquo;t end up over the
-          zoom or the print technique. Scrolled back into sight, the view gets its label back,
-          sharp. Hover works as always. A click on the waiting label scrolls its view back into
-          sight.
-        </Note>
       </Section>
 
       {/* -------------------------------------------------------------- §6 */}

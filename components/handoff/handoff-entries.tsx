@@ -225,7 +225,7 @@ export const ENTRIES: Entry[] = [
     problem:
       "“Which side am I on — and what else can I design?” — since the new bottom row, fewer users on desktop switch views: the small circles carry no names.",
     created: "2026-11-12",
-    updated: { date: "November 13, 2026", time: "12:55 PM" },
+    updated: { date: "November 13, 2026", time: "12:56 PM" },
     status: "live",
     tint: TINTS.navy,
   },
