@@ -19,7 +19,12 @@ import { PRINT_MAX_SIZE_LABEL } from "@/lib/designer-constants"
 import { CONTACT_OPTIONS } from "@/components/help-menu"
 import { ZOOM_ICON_PATH } from "@/lib/designer-constants"
 import { loadCatalog } from "@/lib/catalog"
-import { ACTIVE_LABEL_GAP_PX, LABEL_SLIDE_MS, labelNotchMask } from "@/lib/view-strip-notch"
+import {
+  ACTIVE_LABEL_GAP_PX,
+  LABEL_SLIDE_MS,
+  labelNotchMask,
+  STRIP_SHADOW,
+} from "@/lib/view-strip-notch"
 import {
   discountedPrice,
   majorVolumeDiscountTiersForProduct,
@@ -156,12 +161,14 @@ export function CanvasRowArt() {
 
 // The big tee in a dark colour, so the label's cut shows the shirt through it.
 const VIEW_LABEL_COLOR = "navy"
-// A small views strip: four 22px tiles 2px apart, 3px in from the pill's ends.
+// A small views strip: four 36px tiles (their pictures 28px) 2px apart, 6px
+// in from the pill's edge all round.
 const VIEW_LABEL_TILES = 4
-const VIEW_LABEL_TILE_PX = 22
+const VIEW_LABEL_TILE_PX = 36
+const VIEW_LABEL_THUMB_PX = 28
 const VIEW_LABEL_GAP_PX = 2
-const VIEW_LABEL_PAD_PX = 3
-const VIEW_LABEL_SIZE = { w: 40, h: 15 }
+const VIEW_LABEL_PAD_PX = 6
+const VIEW_LABEL_SIZE = { w: 52, h: 19 }
 const VIEW_LABEL_NAMES = ["Front", "Back", "Right", "Left"]
 const VIEW_LABEL_STEP_MS = 1600
 
@@ -185,7 +192,7 @@ export function ViewLabelArt() {
       <BigTee src={views[0]} />
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
         <span
-          className="absolute bottom-full left-0 flex items-center justify-center rounded-full bg-white text-[8px] leading-none font-semibold tracking-[0.1em] text-black uppercase"
+          className="absolute bottom-full left-0 flex items-center justify-center rounded-full bg-white text-[10px] leading-none font-semibold tracking-[0.1em] text-black uppercase"
           style={{
             width: VIEW_LABEL_SIZE.w,
             height: VIEW_LABEL_SIZE.h,
@@ -196,10 +203,13 @@ export function ViewLabelArt() {
         >
           {VIEW_LABEL_NAMES[active]}
         </span>
-        {/* The strip, cut by the designer's own mask. */}
+        {/* The strip, cut by the designer's own mask — its shadow on a
+            wrapper, as there, so it follows the cut. */}
+        <div style={{ filter: STRIP_SHADOW }}>
         <div
-          className="flex h-7 items-center rounded-full bg-white"
+          className="flex items-center rounded-full bg-white"
           style={{
+            height: VIEW_LABEL_TILE_PX + 2 * VIEW_LABEL_PAD_PX,
             padding: VIEW_LABEL_PAD_PX,
             gap: VIEW_LABEL_GAP_PX,
             ...labelNotchMask(VIEW_LABEL_SIZE, x, false),
@@ -213,9 +223,16 @@ export function ViewLabelArt() {
               }`}
               style={{ width: VIEW_LABEL_TILE_PX, height: VIEW_LABEL_TILE_PX }}
             >
-              <img src={src} alt="" draggable={false} className="size-[16px] object-contain" />
+              <img
+                src={src}
+                alt=""
+                draggable={false}
+                className="object-contain"
+                style={{ width: VIEW_LABEL_THUMB_PX, height: VIEW_LABEL_THUMB_PX }}
+              />
             </span>
           ))}
+        </div>
         </div>
       </div>
     </div>

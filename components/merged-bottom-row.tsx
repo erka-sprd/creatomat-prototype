@@ -11,7 +11,12 @@ import {
   useHorizontalOverflow,
 } from "@/components/ui/horizontal-scroll"
 import { ZOOM_ICON_PATH } from "@/lib/designer-constants"
-import { ACTIVE_LABEL_GAP_PX, LABEL_SLIDE_MS, labelNotchMask } from "@/lib/view-strip-notch"
+import {
+  ACTIVE_LABEL_GAP_PX,
+  LABEL_SLIDE_MS,
+  labelNotchMask,
+  STRIP_SHADOW,
+} from "@/lib/view-strip-notch"
 
 // The designer's bottom row (desktop): three controls under the canvas in
 // one style — the zoom, the product views and the print technique switcher.
@@ -77,9 +82,6 @@ const VIEW_TILE_IDLE =
 const VIEW_TILE_HOVERED = "border border-[var(--sprd-neutral-100)] bg-[var(--sprd-neutral-50)]"
 // Between tiles.
 const TILE_GAP_PX = 2
-// The strip's shadow (shadow-xs) as a drop-shadow on a wrapper: a box-shadow
-// would be cut off by the strip's own mask, a drop-shadow follows the notch.
-const STRIP_SHADOW = "drop-shadow(0 1px 2px rgb(0 0 0 / 0.05))"
 // The strip's widest: five and a half tiles, the gaps between them, and the
 // padding.
 const STRIP_MAX_PX =

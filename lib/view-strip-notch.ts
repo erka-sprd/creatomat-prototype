@@ -12,6 +12,9 @@ export const ACTIVE_LABEL_GAP_PX = -6
 // label reads as biting into the strip — the canvas, whatever its colour,
 // shows through the gap. A mask, not a border, so there's nothing to match.
 const LABEL_NOTCH_GAP_PX = 3
+// The strip's shadow (shadow-xs) as a drop-shadow on a wrapper: a box-shadow
+// would be cut off by the strip's own mask, a drop-shadow follows the notch.
+export const STRIP_SHADOW = "drop-shadow(0 1px 2px rgb(0 0 0 / 0.05))"
 // How long the label (and its notch) takes to slide to a newly chosen view.
 export const LABEL_SLIDE_MS = 250
 
