@@ -33,6 +33,7 @@ const DRAWER_MAX_HEIGHT_PX = PHONE_VIEWPORT_H - 32
 export function QualityMobileChrome({
   color,
   selected,
+  dockHidden = false,
   drawer,
   drawerOpen,
   instant,
@@ -40,6 +41,8 @@ export function QualityMobileChrome({
   pressed,
   moveMs,
 }: {
+  /** A message holds the dock's place: the dock and the view dots make way. */
+  dockHidden?: boolean
   /** The T-shirt's colour, for the header's colour button. */
   color: { name: string; hex: string }
   /** The upload is on the canvas, selected: the dock shows "Done". */
@@ -73,7 +76,7 @@ export function QualityMobileChrome({
           views={VIEWS}
           activeIndex={0}
           onSelect={noop}
-          hidden={false}
+          hidden={dockHidden}
           swapDelayMs={SWAP_DELAY_MS}
         />
       )}
@@ -88,7 +91,7 @@ export function QualityMobileChrome({
         onTemplatesClick={noop}
         onFinish={noop}
         onUnselect={noop}
-        hidden={false}
+        hidden={dockHidden}
         swapDelayMs={SWAP_DELAY_MS}
       />
       {drawer && (

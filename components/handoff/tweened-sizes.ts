@@ -52,7 +52,17 @@ export function useTweenedSizes(designs: SceneDesign[], instant: boolean): Scene
   useEffect(() => () => cancelAnimationFrame(frame.current), [])
 
   return designs.map(d => {
-    const size = tweens.current[d.id] ? shown.current[d.id] : d.size
+    // A resize whose new size has just arrived: its tween only starts in the
+    // effect after this render, so until then the design keeps the size it
+    // had — or it would flash at the new size for a frame.
+    const before = targets.current[d.id]
+    const pending =
+      before !== undefined &&
+      before !== d.size &&
+      !!d.resizing &&
+      !instant &&
+      (d.motionMs ?? 0) > 0
+    const size = tweens.current[d.id] ? shown.current[d.id] : pending ? before : d.size
     return size === d.size || size === undefined ? d : { ...d, size }
   })
 }

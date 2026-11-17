@@ -128,17 +128,23 @@ export const HOOP_GUIDE_BLUR_TRANSITION = `filter ${HOOP_GUIDE_BLUR_MS}ms ease-o
 // During a guided resize the object counts as fitting the hoop frame within
 // this share of it — matches the snap, which lands it exactly on the frame.
 export const HOOP_RESIZE_FIT_TOLERANCE = 0.01
-// How long "Maximum size" stays after the resize is released.
-export const PRINT_MAX_SIZE_LINGER_MS = 4000
-// What that notice says: its title, and its button under the image's pixels.
-export const PRINT_MAX_SIZE_LABEL = "Maximum size"
-export const PRINT_MAX_SIZE_ACTION = "Upload larger"
-// Its secondary button, beside it: the size is fine as it is — just close.
-export const PRINT_MAX_SIZE_KEEP = "Keep this size"
-/** The notice's line under its title: the image's own pixels. */
-export function printMaxSizeDetail(size: { w: number; h: number }) {
-  return `Your image is ${pixelSizeLabel(size)}`
+// Print: an upload enlarged past the size its pixels print sharp at gets the
+// orange "too large" message in the bottom row's place, as embroidery's does —
+// its title, the upload's own pixels under it, and a button that shrinks it
+// back to that size.
+export const PRINT_TOO_LARGE_LABEL = "Too large to print sharp"
+export const PRINT_FIT_LABEL = "Fit to good size"
+// Primary, beside it: opens the Uploads panel for a larger file.
+export const PRINT_UPLOAD_LARGER_LABEL = "Upload larger"
+// Green, once it's brought back to its sharp size.
+export const PRINT_GOOD_SIZE_LABEL = "Good size to print sharp"
+/** The message's line under its title: the upload's own pixels. */
+export function printTooLargeDetail(size: { w: number; h: number }) {
+  return `Your design: ${pixelSizeLabel(size)}`
 }
+// It counts as too large past this share over its sharp size — so "Fit to
+// good size", which lands exactly on it, ends the message.
+export const PRINT_TOO_LARGE_TOLERANCE = 0.005
 // How long the green "good size" badge stays once a lone design is brought
 // down to the hoop frame from past it.
 export const RECOVERED_GOOD_SIZE_MS = 2000
@@ -147,8 +153,6 @@ export const EMBROIDERY_MIN_BOUNCE_SCALE = 0.93
 export const EMBROIDERY_MIN_BOUNCE_MS = 360
 // The desktop add panels' slide-in (their duration-300).
 export const PANEL_SLIDE_MS = 300
-// The same bounce at an upload's print-quality maximum, giving outwards.
-export const PRINT_MAX_BOUNCE_SCALE = 1 / EMBROIDERY_MIN_BOUNCE_SCALE
 
 // Selection frame / corner handle / text-edit edge colours per state: the
 // gizmo blue, the too-large orange and the fits-the-hoop green. Literal class

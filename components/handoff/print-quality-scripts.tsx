@@ -2,27 +2,41 @@
 
 /**
  * The print-quality handoff's scenes: each rule's "If → Then" steps and the
- * script that plays them (the engine is print-quality-scene.tsx), for desktop
- * and for a phone. A phone has no hover and no cursor at rest, so its scripts
- * drop those beats and its steps the rules that only a pointer has.
+ * script that plays them, for desktop and for a phone. An upload past the
+ * size it prints sharp at behaves as a design past embroidery's hoop frame
+ * does, so the rules play on that handoff's engine (embroidery-scene.tsx) —
+ * its "hoop" set to the upload's sharp size; only "Upload larger", which
+ * needs the Uploads panel, plays on print-quality-scene.tsx.
  */
 
+import { useMemo } from "react"
 import type { CanvasProduct } from "@/components/handoff/embroidery-canvas"
-import type { SceneDevice, Step } from "@/components/handoff/embroidery-scene"
+import {
+  Scene,
+  all,
+  design,
+  type SceneDesign,
+  type SceneDevice,
+  type SceneState,
+  type Step,
+} from "@/components/handoff/embroidery-scene"
 import {
   QualityScene,
-  SIZE_MESSAGE,
-  type Aim,
+  SHARP_WIDTH_PX,
+  UPLOAD_SRC,
+  useImageSize,
   type QualityState,
   type QualityUpdate,
 } from "@/components/handoff/print-quality-scene"
 import {
   PANEL_SLIDE_MS,
-  PRINT_MAX_SIZE_ACTION,
-  PRINT_MAX_SIZE_KEEP,
-  PRINT_MAX_SIZE_LABEL,
-  PRINT_MAX_SIZE_LINGER_MS,
+  PRINT_FIT_LABEL,
+  PRINT_TOO_LARGE_LABEL,
+  PRINT_UPLOAD_LARGER_LABEL,
+  RECOVERED_GOOD_SIZE_MS,
+  printTooLargeDetail,
 } from "@/lib/designer-constants"
+import { printMaxWidthMm } from "@/lib/print-quality"
 
 /**
  * The T-shirt's colour in these scenes, by its catalogue name: the upload they
@@ -38,284 +52,308 @@ type SceneProps = { product: CanvasProduct | null; device?: SceneDevice }
 const END_HOLD_MS = 2600
 const PRESS_MS = 150
 const POINT_MS = 700
-/** How long the pointer takes to get somewhere. */
-const TRAVEL_MS = 600
-/** Somewhere on the empty canvas, clear of the upload and the panel. */
-const CANVAS: Aim = { x: 0.9, y: 0.82 }
-/** How far the pointer pulls past the handle once the upload has stopped, px. */
-const PULL_PAST = { dx: 46, dy: 32 }
-/** How far below its stop the resize scene places the upload, as a share of it. */
-const PLACED_SMALLER = 0.6
 const seconds = (ms: number) => `${ms / 1000} seconds`
 
+type Update = Partial<SceneState> | ((s: SceneState) => SceneState)
+
 /** Beats from waits: each entry runs `wait` ms after the one before. */
-function timeline(...entries: [number, QualityUpdate][]) {
+function timeline<U>(...entries: [number, U][]) {
   let t = 0
   const beats = entries.map(([wait, set]) => ({ at: (t += wait), set }))
   return { beats, cycleMs: t + END_HOLD_MS }
 }
 
-/** The pointer out of the way: off to the empty canvas, or — a finger — lifted. */
-const rest = (mobile: boolean): Partial<QualityState> =>
-  mobile ? { cursor: null } : { cursor: CANVAS, cursorMs: TRAVEL_MS, hand: false }
+/** Point at `aim`, press, and on release do `then`. */
+function click(aim: SceneState["cursor"], then: Update, wait = 1000): [number, Update][] {
+  return [
+    [wait, { cursor: aim, cursorMs: 500 }],
+    [POINT_MS, { pressed: true }],
+    [PRESS_MS, all({ pressed: false }, then)],
+  ]
+}
 
-/** The upload runs into its stop: the pointer pulls on past the handle, it bounces, the message shows. */
-const hitStop = (s: QualityState): QualityState => ({
+/** A resize of the upload by its bottom-right handle — upload and hand travel together over `ms`. */
+const resize = (size: number, ms: number) =>
+  all(
+    { cursor: { design: "a", at: "se" }, cursorMs: ms },
+    design("a", { size, motionMs: ms, bounce: false, resizing: "se" })
+  )
+
+/** The pointer let go: the upload drops its resize, the green area goes. */
+const release = (s: SceneState): SceneState => ({
   ...s,
-  cursor: { corner: true, ...PULL_PAST },
-  cursorMs: 450,
-  bounce: s.bounce + 1,
-  notice: true,
+  pressed: false,
+  designs: s.designs.map(d => ({ ...d, resizing: null, hot: null, guide: null })),
 })
 
-/* ------------------------------------------------------- §1 the resize stop */
+/* ------------------------------------------------------------- the stage */
+
+// Where the upload's centre sits: down the print area (a share of its
+// height, so the collar shows above it), and px from the stage's top — on a
+// phone lower, clear of the editor bar. High enough on desktop that its
+// rotate/move handles stay clear of the message at the bottom.
+const UPLOAD_AREA_Y = 0.17
+const UPLOAD_STAGE_Y = { desktop: 135, mobile: 230 }
+/** How far past its sharp size the scenes take the upload, as a multiple of it. */
+const TOO_LARGE_SIZE = 1.5
+/** Where the scenes that enlarge it start it, below its sharp size. */
+const GOOD_SIZE = 0.75
+
+/**
+ * The stage for a scene: the product with its "hoop" set to the size the
+ * upload prints sharp at — so a size of 1 is that size, and the green area
+ * marks it — zoomed in until that size is SHARP_WIDTH_PX wide, and the line
+ * the message carries (the upload's own pixels). null until both are loaded.
+ */
+function usePrintStage(product: CanvasProduct | null, mobile: boolean) {
+  const pixels = useImageSize(UPLOAD_SRC)
+  return useMemo(() => {
+    if (!product || !pixels) return null
+    const sharpShare = printMaxWidthMm(pixels.w) / product.widthMm
+    const productPx = SHARP_WIDTH_PX / ((product.area.width / 100) * sharpShare)
+    const areaH = (productPx * product.area.height) / 100
+    return {
+      product: { ...product, hoop: sharpShare },
+      layout: {
+        productPx,
+        focusY: UPLOAD_STAGE_Y[mobile ? "mobile" : "desktop"] + (0.5 - UPLOAD_AREA_Y) * areaH,
+      },
+      detail: printTooLargeDetail(pixels),
+    }
+  }, [product, pixels, mobile])
+}
+
+/** The upload, selected, at `size` — resized, its top-left corner stays where it is at that size. */
+const upload = (size: number, patch: Partial<SceneDesign> = {}): SceneDesign => ({
+  id: "a",
+  src: UPLOAD_SRC,
+  cx: 0.5,
+  cy: UPLOAD_AREA_Y,
+  size,
+  pin: { corner: "nw", size },
+  selected: true,
+  ...patch,
+})
+
+// Past its sharp size: the message in the bottom row's place, the frame orange.
+const tooLarge = all(
+  { issue: "print-too-large", fit: true, row: false, editorBar: false, green: null },
+  design("a", { tone: "orange" })
+)
+// Back at it: the green message for RECOVERED_GOOD_SIZE_MS, the frame green.
+const goodSize = all({ issue: null, green: "print-good" }, design("a", { tone: "green" }))
+// And then as any selected upload: blue, its editor bar and the bottom row back.
+const settled = all({ green: null, row: true, editorBar: true }, design("a", { tone: "blue" }))
+
+const TOO_LARGE_START: Partial<SceneState> = {
+  technique: "standard",
+  issue: "print-too-large",
+  fit: true,
+  row: false,
+  designs: [upload(TOO_LARGE_SIZE, { tone: "orange" })],
+}
+const GOOD_START: Partial<SceneState> = {
+  technique: "standard",
+  editorBar: true,
+  designs: [upload(GOOD_SIZE)],
+}
+
+/** One rule on the canvas: `initial` with the message's line, on the print stage. */
+function PrintScene({
+  product,
+  device,
+  steps,
+  initial,
+  script,
+}: SceneProps & {
+  steps: Step[]
+  initial: Partial<SceneState>
+  script: { beats: { at: number; set: Update }[]; cycleMs: number }
+}) {
+  const stage = usePrintStage(product, !!device?.mobile)
+  const start = useMemo(() => ({ ...initial, detail: stage?.detail ?? null }), [initial, stage])
+  if (!stage) return null
+  return (
+    <Scene
+      product={stage.product}
+      layout={stage.layout}
+      steps={steps}
+      initial={start}
+      device={device}
+      {...script}
+    />
+  )
+}
+
+/* ------------------------------------------------------------ §1 too large */
 
 const RESIZE_STEPS: Step[] = [
-  { when: "a raster image is placed", then: "no larger than it prints sharp" },
-  { when: "it's enlarged", then: "it grows freely up to that size" },
-  {
-    when: "the resize pushes past that size",
-    then: `it stops with a small bounce — “${PRINT_MAX_SIZE_LABEL}”, the image's pixels, “${PRINT_MAX_SIZE_KEEP}” and “${PRINT_MAX_SIZE_ACTION}”`,
-  },
+  { when: "an upload is enlarged", then: "it grows freely" },
+  { when: "it passes its sharp size", then: "orange, green area, the message" },
+  { when: "the handle is released", then: "the message stays while too large" },
 ]
-// Placed below its stop, so the enlarging has room to show.
-const RESIZE_INITIAL: Partial<QualityState> = { placed: false, size: PLACED_SMALLER }
-/** How long the pointer stays on the held handle at the stop before the loop starts over. */
-const RESIZE_HOLD_MS = 2000
-// The pointer stays on the handle, held, at the stop — and the loop starts
-// over from there, with no end hold of its own.
-const RESIZE = (() => {
-  const { beats, cycleMs } = timeline(
-    [900, { placed: true }],
-    [1800, { cursor: { corner: true }, cursorMs: TRAVEL_MS }],
-    [POINT_MS, { pressed: true, resizing: true, step: 1 }],
-    [200, { size: 1, motionMs: 1100, cursorMs: 1100 }],
-    [1100, s => ({ ...hitStop(s), cursor: { corner: true }, step: 2 })]
-  )
-  return { beats, cycleMs: cycleMs - END_HOLD_MS + RESIZE_HOLD_MS }
-})()
-
-export function ResizeStopScene({ product, device }: SceneProps) {
-  return (
-    <QualityScene
-      product={product}
-      steps={RESIZE_STEPS}
-      initial={RESIZE_INITIAL}
-      device={device}
-      {...RESIZE}
-    />
-  )
-}
-
-/* ------------------------------------------------------- §2 made smaller */
-
-const SMALLER_STEPS: Step[] = [
-  { when: "the resize runs into the maximum, handle held", then: "the message shows" },
-  { when: "it's made smaller, still held", then: "the message disappears at once" },
-]
-const SMALLER_INITIAL: Partial<QualityState> = { placed: true }
-/** How far below its stop the upload is taken back, as a share of it. */
-const MADE_SMALLER = 0.8
-const smallerTimeline = () => {
-  const { beats, cycleMs } = timeline(
-    [900, { cursor: { corner: true }, cursorMs: TRAVEL_MS }],
-    [POINT_MS, { pressed: true, resizing: true }],
-    // At the stop, the pointer on the handle as in §1.
-    [300, s => ({ ...hitStop(s), cursor: { corner: true }, step: 0 })],
-    [1800, { size: MADE_SMALLER, motionMs: 600, cursorMs: 600, notice: false, step: 1 }],
-    [600, {}]
-  )
-  return { beats, cycleMs: cycleMs - END_HOLD_MS + RESIZE_HOLD_MS }
-}
-const SMALLER = smallerTimeline()
-
-export function MadeSmallerScene({ product, device }: SceneProps) {
-  return (
-    <QualityScene
-      product={product}
-      steps={SMALLER_STEPS}
-      initial={SMALLER_INITIAL}
-      device={device}
-      {...SMALLER}
-    />
-  )
-}
-
-/* ---------------------------------------------------- §3 how long it stays */
-
-const LINGER_STEPS: Step[] = [
-  { when: "the resize runs into the maximum", then: "the message shows" },
-  {
-    when: "the handle is released",
-    then: `it stays ${seconds(PRINT_MAX_SIZE_LINGER_MS)}, then disappears`,
-  },
-]
-const LINGER_INITIAL: Partial<QualityState> = { placed: true }
-/** The resize runs into the stop and is let go of straight away: the countdown starts. */
-const hitAndRelease = (mobile: boolean): [number, QualityUpdate][] => [
-  [900, { cursor: { corner: true }, cursorMs: TRAVEL_MS }],
-  [POINT_MS, { pressed: true, resizing: true }],
-  [300, s => ({ ...hitStop(s), step: 0 })],
-  [600, { pressed: false, resizing: false, step: 1, ...rest(mobile) }],
-]
-const lingerTimeline = (mobile: boolean) =>
-  timeline(...hitAndRelease(mobile), [PRINT_MAX_SIZE_LINGER_MS, { notice: false }])
-const LINGER = { desktop: lingerTimeline(false), mobile: lingerTimeline(true) }
-
-export function LingerScene({ product, device }: SceneProps) {
-  return (
-    <QualityScene
-      product={product}
-      steps={LINGER_STEPS}
-      initial={LINGER_INITIAL}
-      device={device}
-      {...LINGER[device?.mobile ? "mobile" : "desktop"]}
-    />
-  )
-}
-
-/* ------------------------------------------------- §4 the pointer on it */
-
-// Desktop only: a phone has no pointer to rest on the message.
-const HOVER_STEPS: Step[] = [
-  {
-    when: "the message shows, the handle released",
-    then: `its ${seconds(PRINT_MAX_SIZE_LINGER_MS)} countdown runs`,
-  },
-  {
-    when: "the pointer rests on the message",
-    then: "the countdown stops — the message stays as long as the pointer does",
-  },
-]
-const HOVER_INITIAL: Partial<QualityState> = { placed: true }
-// Onto the message well inside its countdown, and on it for longer than the
-// countdown: it only stays because of the pointer.
-const HOVER = timeline(
-  [900, { cursor: { corner: true }, cursorMs: TRAVEL_MS }],
-  [POINT_MS, { pressed: true, resizing: true }],
-  [300, hitStop],
-  [600, { pressed: false, resizing: false }],
-  [1000, { cursor: { sel: SIZE_MESSAGE, fx: 0.3, fy: 0.25 }, hand: false, cursorMs: TRAVEL_MS }],
-  [TRAVEL_MS, { step: 1 }],
-  [PRINT_MAX_SIZE_LINGER_MS + 2000, {}]
+const GROW_MS = 1600
+// When the resize — played linear, as a hand drags — passes the sharp size.
+const PASSES_AT_MS = Math.round((GROW_MS * (1 - GOOD_SIZE)) / (TOO_LARGE_SIZE - GOOD_SIZE))
+const RESIZE = timeline<Update>(
+  [900, { cursor: { design: "a", at: "se" }, cursorMs: 600 }],
+  [POINT_MS, all({ pressed: true }, design("a", { hot: "se", guide: "se" }))],
+  [400, resize(TOO_LARGE_SIZE, GROW_MS)],
+  [PASSES_AT_MS, all({ step: 1 }, tooLarge)],
+  [GROW_MS - PASSES_AT_MS + 1600, all({ step: 2 }, release)],
+  [900, { cursor: null }]
 )
 
-export function HoverScene({ product }: SceneProps) {
+export function TooLargeScene(props: SceneProps) {
+  return <PrintScene {...props} steps={RESIZE_STEPS} initial={GOOD_START} script={RESIZE} />
+}
+
+/* -------------------------------------------------------- §2 stays selected */
+
+const selectedSteps = (mobile: boolean): Step[] => [
+  { when: "an upload is too large", then: "selected, in orange" },
+  { when: mobile ? "tapped outside" : "clicked outside", then: "stays selected until it fits" },
+]
+const SELECTED_STEPS = { desktop: selectedSteps(false), mobile: selectedSteps(true) }
+// Two spots on the empty canvas, either side of the upload.
+const SELECTED = timeline<Update>(
+  ...click({ x: 0.14, y: 0.32 }, { step: 1 }, 1600),
+  ...click({ x: 0.84, y: 0.24 }, {}, 1100),
+  [900, { cursor: null }]
+)
+
+export function StaysSelectedScene(props: SceneProps) {
+  const key = props.device?.mobile ? "mobile" : "desktop"
   return (
-    <QualityScene
-      product={product}
-      steps={HOVER_STEPS}
-      initial={HOVER_INITIAL}
-      {...HOVER}
-    />
+    <PrintScene {...props} steps={SELECTED_STEPS[key]} initial={TOO_LARGE_START} script={SELECTED} />
   )
 }
 
-/* -------------------------------------------------- §5 a click outside it */
+/* ---------------------------------------------------------- §3 no editor bar */
 
-const outsideSteps = (mobile: boolean): Step[] => [
-  { when: "the resize runs into the maximum", then: "the message shows" },
+const barSteps = (mobile: boolean): Step[] => [
+  { when: "a good-size upload is selected", then: "its editor bar shows" },
+  { when: "enlarged past its sharp size", then: "the editor bar goes" },
   {
-    when: mobile
-      ? "a tap lands anywhere outside it — here, on “Done”"
-      : "a click lands anywhere outside it",
-    then: "it goes at once, whatever is left of its countdown",
+    when: `“${PRINT_FIT_LABEL}” is ${mobile ? "tapped" : "clicked"}`,
+    then: "the editor bar returns",
   },
 ]
-const OUTSIDE_STEPS = { desktop: outsideSteps(false), mobile: outsideSteps(true) }
-const OUTSIDE_INITIAL: Partial<QualityState> = { placed: true }
-/** On the empty canvas, a short way right of the message's edge. */
-const JUST_OUTSIDE: Aim = { sel: SIZE_MESSAGE, fx: 1, fy: 0.5, dx: 50 }
-const outsideTimeline = (mobile: boolean) =>
-  timeline(
-    [900, { cursor: { corner: true }, cursorMs: TRAVEL_MS }],
-    [POINT_MS, { pressed: true, resizing: true }],
-    [300, s => ({ ...hitStop(s), step: 0 })],
-    [1400, { pressed: false, resizing: false }],
-    // Well inside its countdown: the click, not the timer, ends it — and,
-    // landing on the empty canvas just beside the message (a phone: on the
-    // dock's Done), lets the upload go.
-    [900, { cursor: mobile ? { button: "Done" } : JUST_OUTSIDE, cursorMs: TRAVEL_MS, hand: false }],
-    [TRAVEL_MS + 300, { pressed: true, notice: false, selected: false, step: 1 }],
-    [PRESS_MS, { pressed: false }]
-  )
-const OUTSIDE = { desktop: outsideTimeline(false), mobile: outsideTimeline(true) }
+const BAR_STEPS = { desktop: barSteps(false), mobile: barSteps(true) }
+const FIT_MS = 500
+const BAR = timeline<Update>(
+  [1400, { cursor: { design: "a", at: "se" }, cursorMs: 600 }],
+  [POINT_MS, all({ pressed: true }, design("a", { hot: "se", guide: "se" }))],
+  [400, resize(TOO_LARGE_SIZE, GROW_MS)],
+  [PASSES_AT_MS, all({ step: 1 }, tooLarge)],
+  [GROW_MS - PASSES_AT_MS + 900, release],
+  ...click(
+    { button: PRINT_FIT_LABEL },
+    all({ cursor: null }, design("a", { size: 1, motionMs: FIT_MS, bounce: true })),
+    1400
+  ),
+  [FIT_MS, all({ step: 2, editorBar: true }, goodSize)],
+  [RECOVERED_GOOD_SIZE_MS, settled]
+)
 
-export function ClickOutsideScene({ product, device }: SceneProps) {
-  const key = device?.mobile ? "mobile" : "desktop"
-  return (
-    <QualityScene
-      product={product}
-      steps={OUTSIDE_STEPS[key]}
-      initial={OUTSIDE_INITIAL}
-      device={device}
-      {...OUTSIDE[key]}
-    />
-  )
+export function EditorBarScene(props: SceneProps) {
+  const key = props.device?.mobile ? "mobile" : "desktop"
+  return <PrintScene {...props} steps={BAR_STEPS[key]} initial={GOOD_START} script={BAR} />
 }
 
-/* -------------------------------------------------------- §6 keep this size */
+/* ---------------------------------------------------------- §4 add to basket */
 
-const keep = (mobile: boolean): Step[] => [
-  {
-    when: `“${PRINT_MAX_SIZE_LABEL}” shows`,
-    then: `it offers “${PRINT_MAX_SIZE_KEEP}” and “${PRINT_MAX_SIZE_ACTION}”`,
-  },
-  {
-    when: `“${PRINT_MAX_SIZE_KEEP}” is ${mobile ? "tapped" : "clicked"}`,
-    then: "the message goes — the image stays at its maximum, still selected",
-  },
+const BASKET_STEPS: Step[] = [
+  { when: "add to basket, message up", then: "refused — the message shakes" },
 ]
-const KEEP_STEPS = { desktop: keep(false), mobile: keep(true) }
-// Already at its stop, the message up.
-const KEEP_INITIAL: Partial<QualityState> = { notice: true }
-const keepTimeline = (mobile: boolean) =>
-  timeline(
-    [1600, { cursor: { button: PRINT_MAX_SIZE_KEEP }, cursorMs: TRAVEL_MS }],
-    [POINT_MS, { pressed: true }],
-    [PRESS_MS, { pressed: false, notice: false, step: 1 }],
-    [900, rest(mobile)],
-    [1800, {}]
-  )
-const KEEP = { desktop: keepTimeline(false), mobile: keepTimeline(true) }
+// The basket button is off the canvas: its click is told by the shake and the flash.
+const refuse = (s: SceneState): SceneState => ({ ...s, shake: s.shake + 1, flash: s.flash + 1 })
+const BASKET = timeline<Update>([2000, refuse], [3000, refuse])
 
-export function KeepSizeScene({ product, device }: SceneProps) {
-  const key = device?.mobile ? "mobile" : "desktop"
-  return (
-    <QualityScene
-      product={product}
-      steps={KEEP_STEPS[key]}
-      initial={KEEP_INITIAL}
-      device={device}
-      {...KEEP[key]}
-    />
-  )
+export function BasketScene(props: SceneProps) {
+  return <PrintScene {...props} steps={BASKET_STEPS} initial={TOO_LARGE_START} script={BASKET} />
 }
 
-/* -------------------------------------------------------- §7 upload larger */
+/* ------------------------------------------------------ §5 back to a good size */
+
+const BACK_STEPS: Step[] = [
+  { when: "a corner handle is held", then: "the green area shows its sharp size" },
+  { when: "resized down to it", then: "snaps, turns green" },
+  { when: "the handle is released", then: `green for ${seconds(RECOVERED_GOOD_SIZE_MS)}` },
+]
+const SHRINK_MS = 1400
+const BACK = timeline<Update>(
+  [900, { cursor: { design: "a", at: "se" }, cursorMs: 600 }],
+  [POINT_MS, all({ pressed: true }, design("a", { hot: "se", guide: "se" }))],
+  [1600, all({ step: 1 }, resize(1, SHRINK_MS))],
+  [SHRINK_MS, goodSize],
+  [1200, all({ step: 2, editorBar: true }, release)],
+  [RECOVERED_GOOD_SIZE_MS, settled],
+  [600, { cursor: null }]
+)
+
+export function BackToGoodSizeScene(props: SceneProps) {
+  return <PrintScene {...props} steps={BACK_STEPS} initial={TOO_LARGE_START} script={BACK} />
+}
+
+/* --------------------------------------------------------- §6 fit to good size */
+
+const fitSteps = (mobile: boolean): Step[] => [
+  {
+    when: `“${PRINT_FIT_LABEL}” is ${mobile ? "tapped" : "clicked"}`,
+    then: "shrinks to its sharp size, small bounce",
+  },
+  { when: "it's there", then: `green for ${seconds(RECOVERED_GOOD_SIZE_MS)}` },
+]
+const FIT_STEPS = { desktop: fitSteps(false), mobile: fitSteps(true) }
+// About its centre: no pinned corner.
+const FIT_START: Partial<SceneState> = {
+  ...TOO_LARGE_START,
+  designs: [upload(TOO_LARGE_SIZE, { tone: "orange", pin: undefined })],
+}
+const FIT = timeline<Update>(
+  ...click(
+    { button: PRINT_FIT_LABEL },
+    all({ cursor: null }, design("a", { size: 1, motionMs: FIT_MS, bounce: true })),
+    1800
+  ),
+  [FIT_MS, all({ step: 1, editorBar: true }, goodSize)],
+  [RECOVERED_GOOD_SIZE_MS, settled]
+)
+
+export function FitScene(props: SceneProps) {
+  const key = props.device?.mobile ? "mobile" : "desktop"
+  return <PrintScene {...props} steps={FIT_STEPS[key]} initial={FIT_START} script={FIT} />
+}
+
+/* ------------------------------------------------------------ §7 upload larger */
 
 const larger = (mobile: boolean): Step[] => [
   {
-    when: `“${PRINT_MAX_SIZE_LABEL}” shows`,
-    then: `it offers “${PRINT_MAX_SIZE_KEEP}” and “${PRINT_MAX_SIZE_ACTION}”`,
+    when: `“${PRINT_TOO_LARGE_LABEL}” shows`,
+    then: `it offers “${PRINT_FIT_LABEL}” and “${PRINT_UPLOAD_LARGER_LABEL}”`,
   },
   {
-    when: `“${PRINT_MAX_SIZE_ACTION}” is ${mobile ? "tapped" : "clicked"}`,
+    when: `“${PRINT_UPLOAD_LARGER_LABEL}” is ${mobile ? "tapped" : "clicked"}`,
     then: `the Uploads ${mobile ? "drawer" : "panel"} opens`,
   },
 ]
 const LARGER_STEPS = { desktop: larger(false), mobile: larger(true) }
-// Already at its stop, the message up, and the upload already in the panel —
-// so it opens on it. Just the one upload: the rule is the button, not the list.
-const LARGER_INITIAL: Partial<QualityState> = { notice: true, uploaded: true }
+// Too large, the message up, and the upload already in the panel — so it
+// opens on it. Just the one upload: the rule is the button, not the list.
+const LARGER_INITIAL: Partial<QualityState> = {
+  size: TOO_LARGE_SIZE,
+  notice: true,
+  uploaded: true,
+}
 /** How much taller than the other scenes this stage is, so the opened panel shows its tiles. */
 const LARGER_EXTRA_HEIGHT_PX = 200
 const largerTimeline = (mobile: boolean) =>
-  timeline(
-    [1600, { cursor: { button: PRINT_MAX_SIZE_ACTION }, cursorMs: TRAVEL_MS }],
+  timeline<QualityUpdate>(
+    [1600, { cursor: { button: PRINT_UPLOAD_LARGER_LABEL }, cursorMs: 600 }],
     [POINT_MS, { pressed: true }],
-    [PRESS_MS, { pressed: false, notice: false, panel: true, step: 1 }],
-    [PANEL_SLIDE_MS + 600, rest(mobile)],
+    [PRESS_MS, { pressed: false, panel: true, step: 1 }],
+    [PANEL_SLIDE_MS + 600, mobile ? { cursor: null } : { cursor: { x: 0.9, y: 0.3 }, hand: false }],
     [1800, {}]
   )
 const LARGER = { desktop: largerTimeline(false), mobile: largerTimeline(true) }
@@ -338,11 +376,11 @@ export function UploadLargerScene({ product, device }: SceneProps) {
 
 /** The scenes with a mobile version, by the key the mobile frame page is opened with. */
 export const QUALITY_MOBILE_SCENES = {
-  resize: ResizeStopScene,
-  smaller: MadeSmallerScene,
-  linger: LingerScene,
-  outside: ClickOutsideScene,
-  keep: KeepSizeScene,
+  resize: TooLargeScene,
+  selected: StaysSelectedScene,
+  bar: EditorBarScene,
+  back: BackToGoodSizeScene,
+  fit: FitScene,
   larger: UploadLargerScene,
 } as const
 export type QualityMobileSceneKey = keyof typeof QUALITY_MOBILE_SCENES

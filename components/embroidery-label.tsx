@@ -13,6 +13,12 @@ import { createPortal } from "react-dom"
 import { EmbroiderySolutions } from "@/components/embroidery-solutions"
 import { KitButton } from "@/components/kit-button"
 import {
+  PRINT_FIT_LABEL,
+  PRINT_GOOD_SIZE_LABEL,
+  PRINT_TOO_LARGE_LABEL,
+  PRINT_UPLOAD_LARGER_LABEL,
+} from "@/lib/designer-constants"
+import {
   PREVIEW_STATEMENTS,
   SWAP_DELAY_MS,
   type PreviewStatements,
@@ -85,15 +91,29 @@ const STACK_PX: Record<CanvasStatusStack, [number, number]> = {
 // `shakeSignal`: a counter that goes up each time add to basket is refused;
 // each increase shakes the badge once (.embroidery-shake), by remounting the
 // wrapper on a new key. Only an increase does — a badge that appears, hides
-// or changes message never shakes on its own.
+// or changes message never shakes on its own. The class comes off once the
+// shake ends, so a message that slides back in later doesn't shake again.
 function useShakes(shakeSignal: number) {
   const [shakes, setShakes] = useState(0)
+  const [shaking, setShaking] = useState(false)
   const lastSignal = useRef(shakeSignal)
   useEffect(() => {
-    if (shakeSignal > lastSignal.current) setShakes(n => n + 1)
+    if (shakeSignal > lastSignal.current) {
+      setShakes(n => n + 1)
+      setShaking(true)
+    }
     lastSignal.current = shakeSignal
   }, [shakeSignal])
-  return shakes
+  return {
+    // The wrapper's key (not spreadable with the rest): a new one restarts the shake.
+    key: shakes,
+    props: {
+      className: shaking ? "embroidery-shake" : undefined,
+      onAnimationEnd: (e: React.AnimationEvent) => {
+        if (e.target === e.currentTarget) setShaking(false)
+      },
+    },
+  }
 }
 
 function CanvasStatusSlot({
@@ -113,7 +133,7 @@ function CanvasStatusSlot({
 }) {
   const [mobile, desktop] = stack ? STACK_PX[stack] : [0, 0]
   const extra = offsetPx
-  const shakes = useShakes(shakeSignal)
+  const shake = useShakes(shakeSignal)
   return (
     <div
       className={
@@ -128,7 +148,7 @@ function CanvasStatusSlot({
         } as CSSProperties
       }
     >
-      <div key={shakes} className={shakes ? "embroidery-shake" : undefined}>
+      <div key={shake.key} {...shake.props}>
         {children}
       </div>
     </div>
@@ -334,7 +354,13 @@ export function EmbroideryPreviewStatus({
   return <CanvasStatusSlot className={className}>{pill}</CanvasStatusSlot>
 }
 
-export type EmbroiderySizeStatus = "too-large" | "good" | "print-switched" | EmbroideryDesignIssue
+export type EmbroiderySizeStatus =
+  | "too-large"
+  | "good"
+  | "print-switched"
+  | "print-too-large"
+  | "print-good"
+  | EmbroideryDesignIssue
 
 // Problems with the design itself rather than its size — each warns with a
 // "See options" row and blocks add to basket.
@@ -344,13 +370,28 @@ const isDesignIssue = (status: EmbroiderySizeStatus): status is EmbroideryDesign
   status === "thin-line" || status === "too-complex"
 
 const SIZE_BADGE = {
-  // Two tones brighter than the thin-line warning's orange (400/500 against
-  // its 600/700).
+  // One tone brighter than the thin-line warning's orange (500/600 against
+  // its 600/700) — was 400/500, a level darker on the user's word (2026-11-17).
   "too-large": {
     label: "Design too large for embroidery",
     icon: "!",
-    frame: "border-[#FB923C] text-[#F97316]",
-    dot: "bg-[#FB923C]",
+    frame: "border-[#F97316] text-[#EA580C]",
+    dot: "bg-[#F97316]",
+  },
+  // Print: an upload past the size its pixels print sharp at — the same
+  // orange as embroidery's too large.
+  "print-too-large": {
+    label: PRINT_TOO_LARGE_LABEL,
+    icon: "!",
+    frame: "border-[#F97316] text-[#EA580C]",
+    dot: "bg-[#F97316]",
+  },
+  // Print: brought back to that size — embroidery's "good size" green.
+  "print-good": {
+    label: PRINT_GOOD_SIZE_LABEL,
+    icon: "✓",
+    frame: "border-[#16A34A] text-[#15803D]",
+    dot: "bg-[#16A34A]",
   },
   good: {
     label: "Good design size for embroidery",
@@ -657,21 +698,30 @@ export function EmbroideryIssueDock({
   shakeSignal = 0,
   combination = false,
   concealed = false,
+  detail,
+  onUploadLarger,
 }: {
   status: EmbroiderySizeStatus | null
   onSeeOptions: () => void
   onFitToSize?: () => void
+  /** Print too large: the primary "Upload larger" beside "Fit to good size". */
+  onUploadLarger?: () => void
   shakeSignal?: number
   /** Several objects: too large reads as the combination being too large. */
   combination?: boolean
   /** While ThinLineHelpPopover draws its sharp copy over it. */
   concealed?: boolean
+  /** A line under the message (print too large: the upload's pixels). */
+  detail?: string
 }) {
+  // Kept while the dock slides away, like the status.
+  const [shownDetail, setShownDetail] = useState(detail)
+  if (status && detail !== shownDetail) setShownDetail(detail)
   const show = status !== null
   const [shownStatus, setShownStatus] = useState<EmbroiderySizeStatus>(status ?? "too-large")
   if (status && status !== shownStatus) setShownStatus(status)
   const { mounted, entered } = useDockPresence(show)
-  const shakes = useShakes(shakeSignal)
+  const shake = useShakes(shakeSignal)
 
   if (!mounted) return null
   return (
@@ -683,12 +733,14 @@ export function EmbroideryIssueDock({
         visibility: concealed ? "hidden" : undefined,
       }}
     >
-      <div key={shakes} className={shakes ? "embroidery-shake" : undefined}>
+      <div key={shake.key} {...shake.props}>
         <SizeBadgePill
           status={shownStatus}
           onSeeOptions={onSeeOptions}
           onFitToSize={onFitToSize}
           docked
+          detail={shownDetail}
+          onUploadLarger={onUploadLarger}
           label={
             combination && shownStatus === "too-large"
               ? "Combination of designs too large for embroidery"
@@ -863,24 +915,36 @@ export function SizeBadgePill({
   onFitToSize,
   label,
   docked = false,
+  detail,
+  onUploadLarger,
 }: {
   status: EmbroiderySizeStatus
   hidden?: boolean
   onSeeOptions?: () => void
-  /** Shrinks the design into the hoop frame — offered under "too-large". */
+  /**
+   * Shrinks the design into the hoop frame — offered under "too-large" — or,
+   * under "print-too-large", to the size it prints sharp at.
+   */
   onFitToSize?: () => void
   /** In place of the status's own message. */
   label?: string
   /** In the bottom row's place (EmbroideryIssueDock): the 16px frame, options or not. */
   docked?: boolean
+  /** A line under the message, lined up with its text. */
+  detail?: string
+  /** Print too large: the primary "Upload larger" beside the fit button. */
+  onUploadLarger?: () => void
 }) {
   const badge = SIZE_BADGE[status]
+  const uploadLarger = status === "print-too-large" ? onUploadLarger : undefined
   const action =
     isDesignIssue(status) && onSeeOptions
       ? { label: "See solutions", onClick: onSeeOptions }
       : status === "too-large" && onFitToSize
         ? { label: "Fit to best size", onClick: onFitToSize }
-        : null
+        : status === "print-too-large" && onFitToSize
+          ? { label: PRINT_FIT_LABEL, onClick: onFitToSize }
+          : null
   const withOptions = action !== null
   // The button's label, kept while its row folds away, so it doesn't empty
   // out mid-fold.
@@ -918,6 +982,9 @@ export function SizeBadgePill({
           {label ?? badge.label}
         </span>
       </div>
+      {/* Under the message, in from the icon (16px + the 6px gap), so it
+          starts where the message's text does. */}
+      {detail && <span className="mt-1.5 pl-[22px] text-sm leading-tight">{detail}</span>}
       {actionLabel && (
         // The kit's secondary button (ghost), 16px under the message, as below
         // it (p-4). Its row folds open and shut with the frame's own 300ms
@@ -929,18 +996,41 @@ export function SizeBadgePill({
           }
         >
           <div className="flex min-h-0 justify-center overflow-hidden">
-            <KitButton
-              variant="ghost"
-              onClick={action?.onClick}
-              tabIndex={hidden || !action ? -1 : 0}
-              aria-hidden={!action}
+            {/* Print too large adds the kit's primary "Upload larger": beside
+                the fit button from dlg (fit left), stacked full-width on a
+                phone with Upload larger on top. */}
+            <div
               className={
-                "mt-4 whitespace-nowrap transition-colors " +
-                (hidden || !action ? "pointer-events-none" : "pointer-events-auto")
+                "mt-4 flex gap-2 " +
+                (uploadLarger ? "max-dlg:w-full max-dlg:flex-col-reverse max-dlg:[&>button]:w-full" : "")
               }
             >
-              {actionLabel}
-            </KitButton>
+              <KitButton
+                variant="ghost"
+                onClick={action?.onClick}
+                tabIndex={hidden || !action ? -1 : 0}
+                aria-hidden={!action}
+                className={
+                  "whitespace-nowrap transition-colors " +
+                  (hidden || !action ? "pointer-events-none" : "pointer-events-auto")
+                }
+              >
+                {actionLabel}
+              </KitButton>
+              {uploadLarger && (
+                <KitButton
+                  variant="primary"
+                  onClick={uploadLarger}
+                  tabIndex={hidden ? -1 : 0}
+                  className={
+                    "whitespace-nowrap transition-colors " +
+                    (hidden ? "pointer-events-none" : "pointer-events-auto")
+                  }
+                >
+                  {PRINT_UPLOAD_LARGER_LABEL}
+                </KitButton>
+              )}
+            </div>
           </div>
         </div>
       )}

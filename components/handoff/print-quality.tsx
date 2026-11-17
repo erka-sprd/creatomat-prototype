@@ -1,15 +1,19 @@
 "use client"
 
 /**
- * /handoff/print-quality — an uploaded image can't be resized past the size
- * its pixels still print sharp at, and the designer says why. Every rule is a
- * scene: its "If → Then" steps, played on the canvas and the Uploads panel
- * (the scripts are print-quality-scripts.tsx, the engine
- * print-quality-scene.tsx), with a Desktop / Mobile switch under each.
+ * /handoff/print-quality — an uploaded image resized past the size its pixels
+ * still print sharp at is "too large", and the designer treats it as it
+ * treats a design past embroidery's hoop frame: a message in the bottom
+ * row's place, the upload held selected, no editor bar, no add to basket.
+ * Every rule is a scene: its "If → Then" steps, played on the canvas (the
+ * scripts are print-quality-scripts.tsx, on the embroidery handoff's engine;
+ * "Upload larger" on print-quality-scene.tsx, with the Uploads panel), with a
+ * Desktop / Mobile switch under each.
  *
- * The message, the panel and its tiles are the shipping components, and every
- * size is computed by lib/print-quality.ts. Faked are the script and the
- * uploads themselves (files from /public); the 150 dpi the limit uses is the
+ * The messages, the editor bar, the panel and its tiles are the shipping
+ * components, and every size is computed by lib/print-quality.ts. Faked are
+ * the script and the uploads themselves (files from /public); the 150 dpi the
+ * limit uses is the
  * prototype's own pick — production gets it per print technique from the
  * decoration service.
  */
@@ -29,34 +33,30 @@ import {
   type NavItem,
 } from "@/components/handoff/handoff-ui"
 import {
-  ClickOutsideScene,
-  HoverScene,
-  KeepSizeScene,
-  LingerScene,
-  MadeSmallerScene,
+  BackToGoodSizeScene,
+  BasketScene,
+  EditorBarScene,
+  FitScene,
   QUALITY_PRODUCT_COLOR,
-  ResizeStopScene,
+  StaysSelectedScene,
+  TooLargeScene,
   UploadLargerScene,
 } from "@/components/handoff/print-quality-scripts"
 import { SECOND_UPLOAD_SRC, UPLOAD_SRC } from "@/components/handoff/print-quality-scene"
 import { UploadCard, type UploadEntry } from "@/components/ui/upload-panel/UploadPanel"
-import {
-  PRINT_MAX_SIZE_ACTION,
-  PRINT_MAX_SIZE_KEEP,
-  PRINT_MAX_SIZE_LINGER_MS,
-} from "@/lib/designer-constants"
+import { PRINT_FIT_LABEL, PRINT_UPLOAD_LARGER_LABEL } from "@/lib/designer-constants"
 
 const PROTOTYPE = "https://creatomat-prototype.vercel.app/"
 const REPO = "https://github.com/erka-sprd/creatomat-prototype"
 
 const NAV: NavItem[] = [
   { id: "brief", mark: "◆", label: "Problem & Hypotheses" },
-  { id: "s1", mark: "1", label: "Resize stop" },
-  { id: "s2", mark: "2", label: "Made smaller" },
-  { id: "s3", mark: "3", label: "How long it stays" },
-  { id: "s4", mark: "4", label: "Pointer on it" },
-  { id: "s5", mark: "5", label: "Click outside" },
-  { id: "s6", mark: "6", label: "Keep this size" },
+  { id: "s1", mark: "1", label: "Too large" },
+  { id: "s2", mark: "2", label: "Stays selected" },
+  { id: "s3", mark: "3", label: "No editor bar" },
+  { id: "s4", mark: "4", label: "Add to basket" },
+  { id: "s5", mark: "5", label: "Back to a good size" },
+  { id: "s6", mark: "6", label: "Fit to good size" },
   { id: "s7", mark: "7", label: "Upload larger" },
   { id: "s8", mark: "8", label: "Dimensions on the tiles" },
 ]
@@ -77,7 +77,7 @@ const TILES: { entry: UploadEntry; note: string }[] = [
 ]
 
 /**
- * §6 — the pixel size on the Uploads panel's tiles, standing still: the real
+ * §8 — the pixel size on the Uploads panel's tiles, standing still: the real
  * tiles in the panel's own width and padding, a light image's and another's,
  * each captioned with its colours.
  */
@@ -122,7 +122,7 @@ export default function PrintQuality() {
       ]}
     >
       <HandoffHeader
-        title="Print quality: max. size"
+        title="Print quality: too large"
         actions={[
           { label: "See prototype", href: PROTOTYPE, live: true },
           { label: "See repo", href: REPO, ghost: true },
@@ -145,10 +145,9 @@ export default function PrintQuality() {
             </ul>
           </BriefCard>
           <BriefCard tone="hypothesis" label="Hypothesis">
-            We believe stopping an upload at the largest size it prints sharp, saying so on the
-            canvas with the image&rsquo;s own pixels, and offering to upload a larger one lets users
-            either accept the size or come back with a better file — so fewer blurry prints are
-            ordered.
+            We believe telling users the moment their upload is too large to print sharp, and
+            letting them fit it or upload a larger one before add to basket, means fewer blurry
+            prints are ordered.
           </BriefCard>
           <BriefCard tone="win" label="What win looks like">
             <WinTable
@@ -158,12 +157,12 @@ export default function PrintQuality() {
                   signals: "Fewer complaints and reprints about blurry uploads",
                 },
                 {
-                  win: "People at the maximum size make a clear choice.",
-                  signals: `“${PRINT_MAX_SIZE_ACTION}” and “${PRINT_MAX_SIZE_KEEP}” clicks per message shown`,
+                  win: "People who see the message fix their upload.",
+                  signals: `“${PRINT_FIT_LABEL}” and “${PRINT_UPLOAD_LARGER_LABEL}” clicks per message shown`,
                 },
                 {
-                  win: "One message is enough — it rarely comes back.",
-                  signals: "How often the message comes back for the same upload",
+                  win: "Nobody gets stuck at add to basket.",
+                  signals: "How often add to basket is refused with the message up",
                 },
                 {
                   win: "The limit doesn't hurt conversion.",
@@ -181,70 +180,70 @@ export default function PrintQuality() {
       <Rule
         id="s1"
         n={1}
-        kicker="Resize stop"
-        title="The resize stops where the print would blur"
-        line="The same stop as embroidery's minimum size, from above — in print only"
+        kicker="Too large"
+        title="Past its sharp size, the upload is too large"
+        line="Nothing stops the resize — embroidery's “too large” message instead"
       >
         <DeviceDemo frame="print-quality" scene="resize">
-          {device => <ResizeStopScene product={product} device={device} />}
+          {device => <TooLargeScene product={product} device={device} />}
         </DeviceDemo>
       </Rule>
 
       <Rule
         id="s2"
         n={2}
-        kicker="Made smaller"
-        title="Made smaller, the message goes at once"
-        line="No countdown while the handle is still held"
+        kicker="Stays selected"
+        title="A too-large upload can't be unselected"
+        line="It can still be moved, resized, rotated and removed"
       >
-        <DeviceDemo frame="print-quality" scene="smaller">
-          {device => <MadeSmallerScene product={product} device={device} />}
+        <DeviceDemo frame="print-quality" scene="selected">
+          {device => <StaysSelectedScene product={product} device={device} />}
         </DeviceDemo>
       </Rule>
 
       <Rule
         id="s3"
         n={3}
-        kicker="How long it stays"
-        title={`Released, the message stays ${PRINT_MAX_SIZE_LINGER_MS / 1000} seconds`}
-        line="Long enough to read and act on, then it goes by itself"
+        kicker="No editor bar"
+        title="No editor bar while the upload is too large"
+        line="The message is the only thing to act on"
       >
-        <DeviceDemo frame="print-quality" scene="linger">
-          {device => <LingerScene product={product} device={device} />}
+        <DeviceDemo frame="print-quality" scene="bar">
+          {device => <EditorBarScene product={product} device={device} />}
         </DeviceDemo>
       </Rule>
 
       <Rule
         id="s4"
         n={4}
-        kicker="Pointer on it"
-        title="The pointer on the message stops its countdown"
-        line="Desktop only — a phone has no pointer to rest on it"
+        kicker="Add to basket"
+        title="Add to basket is refused while it's too large"
+        line="On a phone, Finish does the same"
       >
-        <HoverScene product={product} />
+        <BasketScene product={product} />
       </Rule>
 
       <Rule
         id="s5"
         n={5}
-        kicker="Click outside"
-        title="A click outside ends it at once"
-        line="Anywhere outside the message"
+        kicker="Back to a good size"
+        title="Resized back, it snaps onto its sharp size"
+        line="As a design back within embroidery's hoop frame"
       >
-        <DeviceDemo frame="print-quality" scene="outside">
-          {device => <ClickOutsideScene product={product} device={device} />}
+        <DeviceDemo frame="print-quality" scene="back">
+          {device => <BackToGoodSizeScene product={product} device={device} />}
         </DeviceDemo>
       </Rule>
 
       <Rule
         id="s6"
         n={6}
-        kicker="Keep this size"
-        title="Keep this size closes the message"
-        line="The size is fine as it is — nothing else changes"
+        kicker="Fit to good size"
+        title="Fit to good size shrinks it to its sharp size"
+        line="About its centre, as embroidery's “Fit to best size”"
       >
-        <DeviceDemo frame="print-quality" scene="keep">
-          {device => <KeepSizeScene product={product} device={device} />}
+        <DeviceDemo frame="print-quality" scene="fit">
+          {device => <FitScene product={product} device={device} />}
         </DeviceDemo>
       </Rule>
 

@@ -1,17 +1,19 @@
 "use client"
 
 /**
- * The print-quality handoff's scene engine: one rule, played on the designer's
- * canvas and its Uploads panel. A scene is an "If → Then" list and a script of
- * beats; each beat sets the stage and lights the step it shows.
+ * The print-quality handoff's scene engine for the rule that needs the
+ * Uploads panel ("Upload larger"): played on the designer's canvas and that
+ * panel. A scene is an "If → Then" list and a script of beats; each beat sets
+ * the stage and lights the step it shows. (The other rules play on the
+ * embroidery handoff's engine — see print-quality-scripts.tsx.)
  *
- * Real: the size message (EmbroideryMaxSizeBadge), the selection's handles,
- * the Uploads panel with its tiles, and every
- * number — the stop is the designer's own, from the image's pixels and the
- * print area's millimetres. Faked: the script (the resize is CSS-tweened, not
- * dragged; hovers are dispatched, not pointed), the canvas shown zoomed in on
- * the chest without its bottom row, and the files — two images from /public,
- * handed to the panel's own file input rather than picked from disk.
+ * Real: the "too large" message (EmbroideryIssueDock), the selection's
+ * handles, the Uploads panel with its tiles, and every number — the sharp
+ * size is the designer's own, from the image's pixels and the print area's
+ * millimetres. Faked: the script (hovers are dispatched, not pointed), the
+ * canvas shown zoomed in on the chest without its bottom row, and the files —
+ * two images from /public, handed to the panel's own file input rather than
+ * picked from disk.
  *
  * `device.mobile`: the same rule on a phone screen — the designer's mobile
  * header, dots and dock around the canvas, the Uploads panel in its bottom
@@ -20,16 +22,8 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { SelectionBottomHandles } from "@/components/designer"
-import {
-  EMBROIDERY_MIN_BOUNCE_MS,
-  PRINT_MAX_BOUNCE_SCALE,
-  PRINT_MAX_SIZE_ACTION,
-  PRINT_MAX_SIZE_KEEP,
-  PRINT_MAX_SIZE_LABEL,
-  SELECTION_TONE,
-  printMaxSizeDetail,
-} from "@/lib/designer-constants"
-import { EmbroideryMaxSizeBadge } from "@/components/embroidery-label"
+import { SELECTION_TONE, printTooLargeDetail } from "@/lib/designer-constants"
+import { EmbroideryIssueDock } from "@/components/embroidery-label"
 import {
   CORNERS,
   SceneControls,
@@ -59,13 +53,13 @@ const UPLOAD_NAME = "low-res-upload.png"
 export const SECOND_UPLOAD_SRC = "/img/graphics/graphics5.png"
 const SECOND_UPLOAD = { src: SECOND_UPLOAD_SRC, name: "mushroom.png" }
 
-/** What the scripts aim at, as the panel and the message mark them up. */
+/** What the scripts aim at, as the panel marks it up. */
 export const TILE = `img[alt="${UPLOAD_NAME}"]`
-export const SIZE_MESSAGE = '[role="status"]'
 
-// How wide the upload is on the stage at its stop — the canvas is zoomed in
-// until it is, so a few centimetres of print read at all.
-const STOP_WIDTH_PX = 104
+// How wide the upload is on the stage at the size it prints sharp at — the
+// canvas is zoomed in until it is, so a few centimetres of print read at all.
+export const SHARP_WIDTH_PX = 104
+const STOP_WIDTH_PX = SHARP_WIDTH_PX
 // Where the upload's centre sits: down the print area (a share of its
 // height, so the collar shows above it), and px from the stage's top.
 const DESIGN_AREA_Y = 0.17
@@ -79,8 +73,6 @@ const STAGE_HEIGHT_PX = 420
 // The designer's desktop add panel: its width and its inset from the canvas.
 const PANEL_WIDTH_PX = 375
 const PANEL_INSET_PX = 4
-// The least gap between the size message and the stage's right edge.
-const MESSAGE_EDGE_GAP_PX = 16
 const DEFAULT_MOTION_MS = 500
 const EASE = "cubic-bezier(0.4,0,0.2,1)"
 
@@ -104,13 +96,11 @@ export type QualityState = {
   placed: boolean
   /** It's selected: its frame and handles show. A click outside lets it go. */
   selected: boolean
-  /** Its width, as a share of the widest it prints sharp (1 = the stop). */
+  /** Its width, as a multiple of the widest it prints sharp (past 1: too large). */
   size: number
   /** Held by its bottom-right handle: only that handle stays. */
   resizing: boolean
-  /** Each new value plays the stop's bounce. */
-  bounce: number
-  /** The size message under it. */
+  /** The "too large" message, in the bottom row's place — and the frame orange. */
   notice: boolean
   /** The Uploads panel, open. */
   panel: boolean
@@ -133,7 +123,6 @@ export const BASE_QUALITY_STATE: QualityState = {
   selected: true,
   size: 1,
   resizing: false,
-  bounce: 0,
   notice: false,
   panel: false,
   uploaded: false,
@@ -308,27 +297,15 @@ export function QualityScene({
     restart
   )
 
-  // The size message's width, measured once it's on the stage (mounted even
-  // while hidden, so it's there from the first frame on).
-  const [messageW, setMessageW] = useState(0)
-  useLayoutEffect(() => {
-    const message = stageRef.current?.querySelector<HTMLElement>(SIZE_MESSAGE)
-    if (message && message.offsetWidth !== messageW) setMessageW(message.offsetWidth)
-  })
-
-  // The upload at its stop, px: as wide as its pixels print sharp, on a canvas
-  // zoomed in until that is STOP_WIDTH_PX. Resized, its top-left corner stays.
+  // The upload at its sharp size, px: as wide as its pixels print sharp, on a
+  // canvas zoomed in until that is STOP_WIDTH_PX. Resized, its top-left corner stays.
   const geo = useMemo(() => {
     if (!product || !pixels || !stageW) return null
     const stopShare = printMaxWidthMm(pixels.w) / product.widthMm
     const productPx = STOP_WIDTH_PX / ((product.area.width / 100) * stopShare)
-    // Beside the panel: in the middle of what's left of the canvas — but no
-    // further right than lets the message under it fit, whole, on the stage.
+    // Beside the panel: in the middle of what's left of the canvas.
     const centreX = besidePanel
-      ? Math.min(
-          PANEL_INSET_PX + PANEL_WIDTH_PX + (stageW - PANEL_INSET_PX - PANEL_WIDTH_PX) / 2,
-          stageW - messageW / 2 - MESSAGE_EDGE_GAP_PX
-        )
+      ? PANEL_INSET_PX + PANEL_WIDTH_PX + (stageW - PANEL_INSET_PX - PANEL_WIDTH_PX) / 2
       : stageW / 2
     const stopH = (STOP_WIDTH_PX * pixels.h) / pixels.w
     return {
@@ -340,18 +317,11 @@ export function QualityScene({
       top: designY - stopH / 2,
       stopH,
     }
-  }, [product, pixels, stageW, besidePanel, designY, messageW])
+  }, [product, pixels, stageW, besidePanel, designY])
   const width = STOP_WIDTH_PX * state.size
   const height = (geo?.stopH ?? 0) * state.size
-
-  // Running into the stop, the upload gives a little — past it and back.
-  useEffect(() => {
-    if (!state.bounce) return
-    designRef.current?.animate(
-      [{ scale: "1" }, { scale: String(PRINT_MAX_BOUNCE_SCALE) }, { scale: "1" }],
-      { duration: EMBROIDERY_MIN_BOUNCE_MS, easing: "ease-out" }
-    )
-  }, [state.bounce])
+  // Too large, with the message up: the frame and handles in its orange.
+  const tone = SELECTION_TONE[state.notice ? "orange" : "blue"]
 
   // The panel's hover, told to the real tile.
   useEffect(() => {
@@ -499,15 +469,13 @@ export function QualityScene({
                   <span
                     aria-hidden="true"
                     className="absolute inset-0"
-                    style={{ boxShadow: `0 0 0 1px ${SELECTION_TONE.blue.hex}` }}
+                    style={{ boxShadow: `0 0 0 1px ${tone.hex}` }}
                   />
                   {corners.map(corner => (
                     <span
                       key={corner}
-                      className={`absolute ${HANDLE_POS[corner]} z-30 block size-[15px] rounded-full border-2 ${SELECTION_TONE.blue.handle} bg-white`}
-                      style={
-                        state.resizing ? { backgroundColor: SELECTION_TONE.blue.hex } : undefined
-                      }
+                      className={`absolute ${HANDLE_POS[corner]} z-30 block size-[15px] rounded-full border-2 ${tone.handle} bg-white`}
+                      style={state.resizing ? { backgroundColor: tone.hex } : undefined}
                     />
                   ))}
                   {!state.resizing && (
@@ -515,24 +483,17 @@ export function QualityScene({
                   )}
                 </>
               )}
-              {/* In the rotate/move handles' spot, over them once they're back. */}
-              <div className="absolute top-full left-1/2 z-40 mt-5 -translate-x-1/2">
-                <EmbroideryMaxSizeBadge
-                  show={state.notice}
-                  label={PRINT_MAX_SIZE_LABEL}
-                  icon={null}
-                  tone="brand"
-                  detail={pixels ? printMaxSizeDetail(pixels) : undefined}
-                  learnMoreLabel={PRINT_MAX_SIZE_ACTION}
-                  onLearnMore={() => {}}
-                  dismissLabel={PRINT_MAX_SIZE_KEEP}
-                  onDismiss={() => {}}
-                  onHoverChange={() => {}}
-                />
-              </div>
             </div>
           </>
         )}
+        {/* The "too large" message, in the bottom row's place. */}
+        <EmbroideryIssueDock
+          status={state.notice ? "print-too-large" : null}
+          onSeeOptions={() => {}}
+          onFitToSize={() => {}}
+          onUploadLarger={() => {}}
+          detail={pixels ? printTooLargeDetail(pixels) : undefined}
+        />
         {besidePanel && (
           // The designer's desktop add panel, as it wraps its Uploads panel.
           <div
@@ -561,6 +522,8 @@ export function QualityScene({
           <QualityMobileChrome
             color={{ name: product.colorName, hex: product.colorHex }}
             selected={state.placed && state.selected}
+            // The message takes the dock's place, as the bottom row's on desktop.
+            dockHidden={state.notice}
             drawer={withPanel ? uploads : null}
             drawerOpen={state.panel}
             instant={instant}

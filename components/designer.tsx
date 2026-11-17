@@ -34,7 +34,7 @@ import {
 import { buildCarryMap, carryBox, carryTextPoint } from "@/lib/design-carry"
 import { IMAGE_SERVER_BASE, loadCatalog, modelImagesFor } from "@/lib/catalog"
 import { AI_MAX_PRINT_AREA_FRACTION, isAiImage } from "@/lib/graphics-library"
-import { printMaxWidthMm, printQualityMaxScale, uploadPixelWidth } from "@/lib/print-quality"
+import { printMaxWidthMm, uploadPixelWidth } from "@/lib/print-quality"
 import {
   COMPLEX_GRAPHIC_SRCS,
   EMBROIDERY_MIN_BOUNCE_MS,
@@ -49,12 +49,8 @@ import {
   LIGHT_PRODUCT_IMAGE_SHADOW,
   lightProductImageShadow,
   MAX_ZOOM,
-  PRINT_MAX_BOUNCE_SCALE,
-  PRINT_MAX_SIZE_ACTION,
-  PRINT_MAX_SIZE_KEEP,
-  PRINT_MAX_SIZE_LABEL,
-  PRINT_MAX_SIZE_LINGER_MS,
-  printMaxSizeDetail,
+  PRINT_TOO_LARGE_TOLERANCE,
+  printTooLargeDetail,
   RECOVERED_GOOD_SIZE_MS,
   SELECTION_FRAME_TRANSITION,
   SELECTION_TONE,
@@ -1162,8 +1158,6 @@ export default function Designer({
   // Id of the object whose resize just ran into its own smallest stitchable
   // size (hardMinScale) — drives the "Min. size for embroidery" notice under
   // it. There's no maximum: the hoop guide shows the hoop-frame size instead.
-  // In print, the same notice reads "Maximum size" for an
-  // upload that ran into its print-quality maximum (hardMaxScale).
   const [embroideryMaxSizeId, setEmbroideryMaxSizeId] = useState<string | null>(null)
   const graphicElementRefs = useRef<Record<string, HTMLElement>>({})
   // Monotonic stacking counter shared across texts and graphics. Every new or
@@ -1394,11 +1388,6 @@ export default function Designer({
     // Whether the drag is currently pushing against hardMinScale — the bounce
     // plays each time it starts to.
     atMin: boolean
-    // Print flow: an upload's maximum, held during the drag — the size scale
-    // where its pixels drop below MIN_PRINT_DPI. null for anything else.
-    hardMaxScale: number | null
-    // Whether the drag is currently pushing against hardMaxScale.
-    atMax: boolean
     // Embroidery flow: the smallest size scale allowed — where the object's
     // shorter side reaches EMBROIDERY_MIN_SIDE_MM. 0 outside embroidery.
     minScale: number
@@ -2397,41 +2386,18 @@ export default function Designer({
     return () => clearTimeout(timer)
   }, [aiSizeCappedId])
   // The embroidery one lasts through the resize or move, then
-  // EMBROIDERY_MAX_SIZE_LINGER_MS past its release. While the pointer is on
-  // it the countdown waits, and starts over once it leaves.
-  const [sizeNoticeHovered, setSizeNoticeHovered] = useState(false)
-  useEffect(() => {
-    // Hidden under the pointer (e.g. by "See details"), it gets no mouseleave.
-    if (!embroideryMaxSizeId) setSizeNoticeHovered(false)
-  }, [embroideryMaxSizeId])
+  // EMBROIDERY_MAX_SIZE_LINGER_MS past its release.
   useEffect(() => {
     if (
       !embroideryMaxSizeId ||
-      sizeNoticeHovered ||
       resizingElId === embroideryMaxSizeId ||
       draggingElId === embroideryMaxSizeId
     ) {
       return
     }
-    const timer = setTimeout(
-      () => setEmbroideryMaxSizeId(null),
-      effectivePrintTechnique === "embroidery"
-        ? EMBROIDERY_MAX_SIZE_LINGER_MS
-        : PRINT_MAX_SIZE_LINGER_MS
-    )
+    const timer = setTimeout(() => setEmbroideryMaxSizeId(null), EMBROIDERY_MAX_SIZE_LINGER_MS)
     return () => clearTimeout(timer)
-  }, [embroideryMaxSizeId, sizeNoticeHovered, resizingElId, draggingElId, effectivePrintTechnique])
-  // In print, a click anywhere outside the notice ends it at once, countdown
-  // or not. Captured, so nothing the click lands on can swallow it.
-  useEffect(() => {
-    if (!embroideryMaxSizeId || effectivePrintTechnique === "embroidery") return
-    const onPointerDown = (e: PointerEvent) => {
-      if ((e.target as Element | null)?.closest?.("[data-size-notice]")) return
-      setEmbroideryMaxSizeId(null)
-    }
-    document.addEventListener("pointerdown", onPointerDown, true)
-    return () => document.removeEventListener("pointerdown", onPointerDown, true)
-  }, [embroideryMaxSizeId, effectivePrintTechnique])
+  }, [embroideryMaxSizeId, resizingElId, draggingElId])
   // The frames stay blue with the notice until it has fully popped out
   // (EmbroideryMaxSizeBadge's 150ms exit), then ease to their status colour.
   const [embroideryMaxSizeTone, setEmbroideryMaxSizeTone] = useState(false)
@@ -2631,24 +2597,6 @@ export default function Designer({
             // The notice shows while the drag pushes past the minimum, and goes
             // the moment it comes back within.
             setEmbroideryMaxSizeId(atMin ? rs.id : null)
-          }
-          // An upload's print-quality maximum holds the same way, from above:
-          // past it the image would print blurry.
-          if (rs.hardMaxScale !== null) {
-            sizeScale = Math.min(sizeScale, rs.hardMaxScale)
-            const atMax = unclampedScale >= rs.hardMaxScale
-            if (atMax && !rs.atMax) {
-              graphicElementRefs.current[rs.id]?.animate(
-                [{ scale: "1" }, { scale: String(PRINT_MAX_BOUNCE_SCALE) }, { scale: "1" }],
-                { duration: EMBROIDERY_MIN_BOUNCE_MS, easing: "ease-out" }
-              )
-            }
-            rs.atMax = atMax
-            // The notice shows while the drag pushes against the maximum and
-            // goes the moment it's pulled back smaller — no lingering. Released
-            // at the maximum, it lingers PRINT_MAX_SIZE_LINGER_MS.
-            if (atMax) setEmbroideryMaxSizeId(rs.id)
-            else setEmbroideryMaxSizeId(prev => (prev === rs.id ? null : prev))
           }
           rs.lastSizeScale = sizeScale
           setResizeHoopGuide(
@@ -3011,48 +2959,16 @@ export default function Designer({
   // "Min. size for embroidery" under an object whose resize hit its own
   // minimum, in the rotate/move handles' spot (hidden during the resize; z-40
   // over them once they're back). Mounted for every embroidery object so it
-  // can pop in and out. In print it's an upload's print-quality maximum —
-  // "Maximum size", the image's pixels, and "Upload larger", which just opens the
-  // uploads panel.
-  const renderEmbroideryMaxSizeNotice = (id: string) => {
-    const embroidery = effectivePrintTechnique === "embroidery"
-    const element = graphicElements.find(g => g.id === id)
-    const src = element?.src
-    const pixels =
-      element?.pixelWidth && element.pixelHeight
-        ? { w: element.pixelWidth, h: element.pixelHeight }
-        : null
-    return (
-      // pt-5 rather than mt-5, and scaled from the top, as the rotate/move
-      // handles: a phone's pinch zoom is undone (--inv-zoom) for the gap and
-      // the message alike, so both keep their size on screen.
-      <div className="pointer-events-none absolute top-full left-1/2 z-40 origin-top -translate-x-1/2 scale-[var(--inv-zoom,1)] pt-5">
-        <EmbroideryMaxSizeBadge
-          show={embroideryMaxSizeId === id}
-          label={embroidery ? "Min. size for embroidery" : PRINT_MAX_SIZE_LABEL}
-          // The print message is text and its button only — no icon — and
-          // tries create-omat's brand blue.
-          icon={embroidery ? undefined : null}
-          tone={embroidery ? "selection" : "brand"}
-          detail={!embroidery && pixels ? printMaxSizeDetail(pixels) : undefined}
-          learnMoreLabel={PRINT_MAX_SIZE_ACTION}
-          onHoverChange={embroidery ? undefined : setSizeNoticeHovered}
-          onLearnMore={
-            !embroidery && src
-              ? () => {
-                  setEmbroideryMaxSizeId(null)
-                  setMobileSheetPanel(null)
-                  setActivePanel("uploads")
-                }
-              : undefined
-          }
-          // "Keep this size": the size is fine as it is — the message just goes.
-          dismissLabel={PRINT_MAX_SIZE_KEEP}
-          onDismiss={embroidery ? undefined : () => setEmbroideryMaxSizeId(null)}
-        />
-      </div>
-    )
-  }
+  // can pop in and out. (Print has no size stop: an upload past its sharp size
+  // gets the orange "too large" message in the bottom row's place instead.)
+  const renderEmbroideryMaxSizeNotice = (id: string) => (
+    // pt-5 rather than mt-5, and scaled from the top, as the rotate/move
+    // handles: a phone's pinch zoom is undone (--inv-zoom) for the gap and
+    // the message alike, so both keep their size on screen.
+    <div className="pointer-events-none absolute top-full left-1/2 z-40 origin-top -translate-x-1/2 scale-[var(--inv-zoom,1)] pt-5">
+      <EmbroideryMaxSizeBadge show={embroideryMaxSizeId === id} label="Min. size for embroidery" />
+    </div>
+  )
 
   const startResize = (
     e: React.PointerEvent,
@@ -3144,6 +3060,18 @@ export default function Designer({
         ? embroideryHoopFillScale((ink.r - ink.l) / baseW, (ink.b - ink.t) / baseH, newElementHoopFrame)
         : embroideryHoopFillScale(initialWidthPct / 100, initialHeightPct / 100, newElementHoopFrame)
     })()
+    // Print: an upload's sharp size as a scale of its size now — where the
+    // green guide sits and the resize snaps, as the hoop frame in embroidery.
+    // None when it still prints sharp filling the print area: it can't get
+    // past that, so there's nothing to show.
+    const printSharpScale = (() => {
+      const pixelWidth = modelGraphic?.pixelWidth
+      const boundary = productData?.printAreas.find(pa => pa.id === currentPrintAreaId)?.boundary
+      if (!pixelWidth || !boundary || effectivePrintTechnique === "embroidery") return null
+      if (initialWidthPct <= 0 || initialHeightPct <= 0) return null
+      const sharp = printMaxWidthMm(pixelWidth) / ((initialWidthPct / 100) * boundary.width)
+      return sharp < Math.min(100 / initialWidthPct, 100 / initialHeightPct) ? sharp : null
+    })()
     // The design's own minimum, by its longer side. One already under it
     // can't shrink any further, but may grow.
     const hardMinScale = (() => {
@@ -3155,19 +3083,6 @@ export default function Designer({
         (initialHeightPct / 100) * boundary.height
       )
       return longerMm > 0 ? Math.min(1, minMm / longerMm) : null
-    })()
-    // Print flow: an upload's maximum, where its pixels drop below
-    // MIN_PRINT_DPI. One already past it can't grow any further, but may shrink.
-    // None at all when the upload still prints sharp at the size that fills
-    // the print area (its corners on the print area's edges): then the print
-    // area is the limit, and there's nothing to stop or say.
-    const hardMaxScale = (() => {
-      const pixelWidth = modelGraphic?.pixelWidth
-      const boundary = productData?.printAreas.find(pa => pa.id === currentPrintAreaId)?.boundary
-      if (!pixelWidth || !boundary || effectivePrintTechnique === "embroidery") return null
-      const qualityMax = printQualityMaxScale((initialWidthPct / 100) * boundary.width, pixelWidth)
-      const fillsPrintArea = Math.min(100 / initialWidthPct, 100 / initialHeightPct)
-      return qualityMax !== null && qualityMax < fillsPrintArea ? qualityMax : null
     })()
     setResizeCorner(corner)
     resizeStateRef.current = {
@@ -3203,17 +3118,17 @@ export default function Designer({
       // no maximum, so the guide shows the hoop-frame size whenever the object
       // grows past it, and the resize snaps onto that size on the way.
       hoopScale:
-        embroideryResizeGuide && embroiderySizeWarned && lone && fillScale !== null
-          ? embroideryHoopFillScale(initialWidthPct / 100, initialHeightPct / 100, newElementHoopFrame)
-          : !embroideryResizeGuide && lone && fillScale !== null
-            ? fillScale
-            : null,
+        printSharpScale !== null
+          ? printSharpScale
+          : embroideryResizeGuide && embroiderySizeWarned && lone && fillScale !== null
+            ? embroideryHoopFillScale(initialWidthPct / 100, initialHeightPct / 100, newElementHoopFrame)
+            : !embroideryResizeGuide && lone && fillScale !== null
+              ? fillScale
+              : null,
       // A group grows freely too; whether it fits is left to its frame and
       // warning (groupTooLarge).
       hardMinScale,
       atMin: false,
-      hardMaxScale,
-      atMax: false,
       minScale: (() => {
         const boundary = productData?.printAreas.find(pa => pa.id === currentPrintAreaId)?.boundary
         if (effectivePrintTechnique !== "embroidery" || dtf || !boundary) return 0
@@ -3882,11 +3797,14 @@ export default function Designer({
   // frame right now (the guide is at least the object's size). Live, unlike
   // embroideryTooLarge, which is measured on deselect. null when no guide.
   // After release it keeps the final verdict until the design is measured again.
-  const resizeFitsHoop = thinLineWarning
-    ? null
-    : resizeHoopGuide !== null
-      ? resizeHoopGuide.ratio >= 1 - HOOP_RESIZE_FIT_TOLERANCE
-      : resizeFitAfterRelease
+  // Embroidery only: in print the same guide shows an upload's sharp size
+  // (printTooLarge), which has its own verdict.
+  const resizeFitsHoop =
+    thinLineWarning || effectivePrintTechnique !== "embroidery"
+      ? null
+      : resizeHoopGuide !== null
+        ? resizeHoopGuide.ratio >= 1 - HOOP_RESIZE_FIT_TOLERANCE
+        : resizeFitAfterRelease
   // A fresh measurement (on deselect) takes over from the resize's verdict.
   useEffect(() => {
     setResizeFitAfterRelease(null)
@@ -4549,6 +4467,91 @@ export default function Designer({
   // A lone object's green lasts as long as its "good size" badge
   // (singleRecovered), then eases back to blue with it.
   const [singleRecovered, setSingleRecovered] = useState(false)
+
+  // Print: an upload enlarged past the size its pixels print sharp at
+  // (MIN_PRINT_DPI) — no stop, it grows freely, as a design past embroidery's
+  // hoop frame does, with the same details: the green guide and snap while
+  // resizing (hoopScale), the orange "too large" message in the bottom row's
+  // place (live mid-resize), orange frame and handles, selected and held
+  // selected, no editor bar, add to basket refused with a shake. The selected
+  // upload's if it's one of them, else the topmost. Its ratio is how far
+  // "Fit to good size" shrinks it.
+  const printTooLarge = (() => {
+    if (effectivePrintTechnique === "embroidery") return null
+    const boundary = productData?.printAreas.find(pa => pa.id === currentPrintAreaId)?.boundary
+    if (!boundary) return null
+    const over = visibleGraphicElements
+      .filter(g => g.pixelWidth && g.width > 0)
+      .map(g => ({ g, ratio: ((printMaxWidthMm(g.pixelWidth!) / boundary.width) * 100) / g.width }))
+      .filter(({ ratio }) => ratio < 1 - PRINT_TOO_LARGE_TOLERANCE)
+      .sort((a, b) => b.g.z - a.g.z)
+    const hit = over.find(({ g }) => g.id === selectedGraphicId) ?? over[0]
+    if (!hit) return null
+    const { g, ratio } = hit
+    return {
+      id: g.id,
+      ratio,
+      detail: g.pixelHeight
+        ? printTooLargeDetail({ w: g.pixelWidth!, h: g.pixelHeight })
+        : undefined,
+    }
+  })()
+  const printTooLargeId = printTooLarge?.id ?? null
+  // Brought back to its sharp size (resized or "Fit to good size"): green
+  // frame and handles and "good size" for RECOVERED_GOOD_SIZE_MS, as a lone
+  // design brought back within embroidery's hoop frame. Not when the upload
+  // was removed, or the view or technique changed under it.
+  const [printRecovered, setPrintRecovered] = useState(false)
+  const prevPrintTooLargeRef = useRef<string | null>(null)
+  useEffect(() => {
+    const prev = prevPrintTooLargeRef.current
+    prevPrintTooLargeRef.current = printTooLargeId
+    if (printTooLargeId) setPrintRecovered(false)
+    else if (prev && visibleGraphicElements.some(g => g.id === prev)) setPrintRecovered(true)
+  }, [printTooLargeId])
+  useEffect(() => {
+    if (!printRecovered) return
+    const timer = setTimeout(() => setPrintRecovered(false), RECOVERED_GOOD_SIZE_MS)
+    return () => clearTimeout(timer)
+  }, [printRecovered])
+  useEffect(() => {
+    setPrintRecovered(false)
+  }, [effectivePrintTechnique, currentPrintAreaId])
+  // "Fit to good size": shrinks that upload about its centre to the size it
+  // prints sharp at, eased as embroidery's "Fit to best size" (the overshoot
+  // goes smaller, never past the limit) — the green "good size" follows.
+  const fitToPrintSize = () => {
+    if (!printTooLarge || fitAnimRef.current) return
+    const { id, ratio } = printTooLarge
+    const g = visibleGraphicElements.find(el => el.id === id)
+    if (!g) return
+    const start = { w: g.width, h: g.height }
+    const cx = g.x + g.width / 2
+    const cy = g.y + g.height / 2
+    const t0 = performance.now()
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / FIT_TO_HOOP_MS)
+      const s = 1 + (ratio - 1) * fitEaseOutBack(p)
+      const w = start.w * s
+      const h = start.h * s
+      setGraphicElements(prev =>
+        prev.map(el =>
+          el.id === id ? { ...el, x: cx - w / 2, y: cy - h / 2, width: w, height: h } : el
+        )
+      )
+      fitAnimRef.current = p < 1 ? requestAnimationFrame(step) : 0
+    }
+    fitAnimRef.current = requestAnimationFrame(step)
+  }
+  // The print tone of the selected upload: orange while it's the one too
+  // large, green while its "good size" shows.
+  const printTone =
+    selectedGraphicId && selectedGraphicId === printTooLargeId
+      ? ("orange" as const)
+      : selectedGraphicId && printRecovered
+        ? ("green" as const)
+        : null
+
   const selectionTone: "blue" | "orange" | "green" = embroideryMaxSizeTone || movingLoneDesign
     ? "blue"
     : thinLineShown
@@ -4565,7 +4568,7 @@ export default function Designer({
           : "green"
       : effectivePrintTechnique === "embroidery" && embroideryTooLarge && embroiderySizeWarned
         ? "orange"
-        : "blue"
+        : (printTone ?? "blue")
   // The ring reads its colour from --selection-tone, set on the object
   // (selectionToneStyle) so tone changes can ease.
   const selectionFrameShadow = "0 0 0 1px var(--selection-tone)"
@@ -4631,13 +4634,17 @@ export default function Designer({
   // thin-line or too-complex warning any selected design stays selected too,
   // until the issue is gone (switched to standard print, or the graphic
   // removed). Read by the deselect handlers, so a ref.
+  // In print, the upload past its sharp size the same way.
   selectionLockedRef.current =
-    (!!selectedTextId || !!selectedGraphicId) &&
-    (thinLineShown || (!isCombination && sizeBadgeStatus === "too-large"))
+    ((!!selectedTextId || !!selectedGraphicId) &&
+      (thinLineShown || (!isCombination && sizeBadgeStatus === "too-large"))) ||
+    (!!selectedGraphicId && selectedGraphicId === printTooLargeId)
   // And it's selected as soon as the warning shows, if it isn't already — so
   // it can be moved, resized, rotated or removed straight away.
   const loneTooLargeId =
-    !isCombination && sizeBadgeStatus === "too-large" ? (designEls[0]?.id ?? null) : null
+    !isCombination && sizeBadgeStatus === "too-large"
+      ? (designEls[0]?.id ?? null)
+      : printTooLargeId
   useEffect(() => {
     if (!loneTooLargeId || selectedTextId || selectedGraphicId) return
     const isText = visibleTextElements.some(t => t.id === loneTooLargeId)
@@ -4647,14 +4654,17 @@ export default function Designer({
   // A warning on the canvas means the design can't be embroidered as it is, so
   // add to basket is refused — and each try shakes the warning
   // (embroideryShakeSignal) instead.
-  const embroideryBlocksBasket = thinLineShown || sizeBadgeStatus === "too-large"
+  // An upload past its sharp size in print too.
+  const embroideryBlocksBasket =
+    thinLineShown || sizeBadgeStatus === "too-large" || printTooLargeId !== null
   // A selected design gets no editor bar while a warning is up (any but the
   // green badge) — the warning holds the top of the canvas instead. A
   // selected text keeps its bar regardless.
   // While a resize is held with a size message up — too large, or the green
   // "good size" it snaps to — no editor bar either: it comes once the handle
   // is let go.
-  const sizeMessageResize = resizingElId !== null && sizeBadgeStatus !== null
+  const sizeMessageResize =
+    resizingElId !== null && (sizeBadgeStatus !== null || printTooLargeId !== null || printRecovered)
   const graphicEditorBarShown =
     !!selectedGraphicId && !selectedText && !embroideryBlocksBasket && !sizeMessageResize
   // What the canvas badges stack under while it holds the top spot.
@@ -5323,8 +5333,13 @@ export default function Designer({
   // "Creating preview" takes the spot first while it runs (EmbroideryPreviewDock).
   const creatingPreview = embroideryLoading && !!designBbox
   // Simplify with AI holds the warning back too, running and under review.
+  // In print: an upload past its sharp size, or "good size" once brought back.
   const dockedWarning =
-    creatingPreview || simplifyRun ? null : (designIssueWarning ?? sizeBadgeStatus)
+    creatingPreview || simplifyRun
+      ? null
+      : (designIssueWarning ??
+        sizeBadgeStatus ??
+        (printTooLarge ? "print-too-large" : printRecovered ? "print-good" : null))
   // The solutions popover's "Switch to print": closes it and makes the switch
   // at once — the warning leaves with the embroidery. In its place comes
   // only "Switched to standard print", in green (a dock of its own), said for
@@ -7651,22 +7666,41 @@ export default function Designer({
                 way and back up — rather than repainting it in place. */}
             {mergedDesigner && (
               <EmbroideryIssueDock
-                status={dockedWarning === "good" ? null : dockedWarning}
+                status={
+                  dockedWarning === "good" || dockedWarning === "print-good" ? null : dockedWarning
+                }
                 combination={isCombination}
                 shakeSignal={embroideryShakeSignal}
                 onSeeOptions={toggleThinLineHelp}
-                onFitToSize={fitDesignToBestSize}
+                onFitToSize={
+                  dockedWarning === "print-too-large" ? fitToPrintSize : fitDesignToBestSize
+                }
+                detail={dockedWarning === "print-too-large" ? printTooLarge?.detail : undefined}
+                // Print's "Upload larger": just opens the Uploads panel (on a
+                // phone its drawer), as the earlier "Maximum size" message did.
+                onUploadLarger={
+                  dockedWarning === "print-too-large"
+                    ? () => {
+                        setMobileSheetPanel(null)
+                        setActivePanel("uploads")
+                      }
+                    : undefined
+                }
                 concealed={thinLineHelpOpen || thinLineHelpPresent}
               />
             )}
             {/* The green messages: "Good design size" (back within the hoop
                 frame) and, after "Switch to print", "Switched to standard
                 print" — in the same spot, arriving from below as the warning
-                leaves. */}
+                leaves. In print, "Good size to print sharp". */}
             {mergedDesigner && (
               <EmbroideryIssueDock
                 status={
-                  printSwitched ? "print-switched" : dockedWarning === "good" ? "good" : null
+                  printSwitched
+                    ? "print-switched"
+                    : dockedWarning === "good" || dockedWarning === "print-good"
+                      ? dockedWarning
+                      : null
                 }
                 onSeeOptions={toggleThinLineHelp}
               />

@@ -340,18 +340,15 @@ html:has(.handoff) {
 .ho-art-technique {
     animation: ho-art-technique 6s cubic-bezier(0.45, 0, 0.2, 1) infinite;
 }
-/* Print quality, one 5s loop: the upload grows, gives a little past its stop
-   and settles on it; the message pops in under it, holds, and both reset.
+/* Print quality, one 5s loop: the upload grows past its sharp size; the
+   "too large" message pops in under it, holds, and both reset.
    Without motion it's shown stopped, message up. */
 @keyframes ho-art-quality-grow {
     0%,
     10% {
         scale: 0.55;
     }
-    38% {
-        scale: 1.06;
-    }
-    45%,
+    38%,
     88% {
         scale: 1;
     }

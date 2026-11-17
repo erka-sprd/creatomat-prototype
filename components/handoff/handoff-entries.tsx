@@ -210,11 +210,11 @@ export const ENTRIES: Entry[] = [
   {
     Art: PrintQualityArt,
     slug: "print-quality",
-    title: "Print quality: max. size",
+    title: "Print quality: too large",
     problem:
       "“Why is my logo blurry on the shirt?” — a small upload can be enlarged far past what its pixels print sharp, and nothing in the designer says so.",
     created: "2026-11-11",
-    updated: { date: "November 12, 2026", time: "3:28 PM" },
+    updated: { date: "November 17, 2026", time: "12:30 PM" },
     status: "live",
     tint: TINTS.blue,
   },

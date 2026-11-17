@@ -58,6 +58,7 @@ import { StepList } from "@/components/handoff/step-list"
 import SiteHeader from "@/components/site-header"
 import { useTweenedSizes } from "@/components/handoff/tweened-sizes"
 import { KitButton } from "@/components/kit-button"
+import { GraphicEditorBar } from "@/components/ui/editor-bar/GraphicEditorBar"
 import { MergedBottomRow } from "@/components/merged-bottom-row"
 import { printAreaTotal } from "@/lib/print-area-pricing"
 import { simplifyImage, thickenLines } from "@/lib/simplify-image"
@@ -179,7 +180,11 @@ export type SceneState = {
   issue: EmbroiderySizeStatus | null
   combination: boolean
   fit: boolean
-  green: "good" | "print-switched" | null
+  /** A line under the warning (print too large: the upload's pixels). */
+  detail: string | null
+  /** The selected graphic's editor bar, at the top of the canvas. */
+  editorBar: boolean
+  green: "good" | "print-switched" | "print-good" | null
   loader: boolean
   ai: EmbroideryDesignIssue | null
   zoomTip: boolean
@@ -203,6 +208,8 @@ export const BASE_STATE: SceneState = {
   issue: null,
   combination: false,
   fit: false,
+  detail: null,
+  editorBar: false,
   green: null,
   loader: false,
   ai: null,
@@ -490,6 +497,7 @@ export function Scene({
   beats,
   cycleMs,
   showSteps = true,
+  layout: ownLayout,
   device = {},
 }: {
   product: CanvasProduct | null
@@ -497,6 +505,8 @@ export function Scene({
   initial: Partial<SceneState>
   beats: Beat[]
   cycleMs: number
+  /** The product shot's size and where its print area's middle sits, when the scene zooms in by itself. */
+  layout?: { productPx: number; focusY: number }
   /** Off where the canvas alone is the point (the way-of-work page). */
   showSteps?: boolean
   device?: SceneDevice
@@ -543,8 +553,9 @@ export function Scene({
 
   // A phone fits the shirt to its width, just under the header (as the mobile
   // designer does); desktop keeps it large, the print area at FOCUS_Y.
-  const layout =
-    mobile && product
+  const layout = ownLayout
+    ? ownLayout
+    : mobile && product
       ? (() => {
           const productPx = Math.min(stageW, stageH - MOBILE_PRODUCT_INSETS)
           return {
@@ -726,7 +737,12 @@ export function Scene({
           shakeSignal={state.shake}
           onSeeOptions={() => {}}
           onFitToSize={state.fit ? () => {} : undefined}
+          detail={state.detail ?? undefined}
+          onUploadLarger={() => {}}
         />
+        {product && (
+          <GraphicEditorBar show={state.editorBar} onDuplicate={() => {}} onDelete={() => {}} />
+        )}
         <EmbroideryIssueDock status={state.green} onSeeOptions={() => {}} />
         <EmbroideryPreviewDock loading={state.loader} durationMs={EMBROIDERY_MIN_LOADER_MS} />
         <EmbroiderySimplifyDock issue={state.ai} />
@@ -734,6 +750,7 @@ export function Scene({
         {mobile && (
           <MobileChrome
             state={state}
+            color={product ? { name: product.colorName, hex: product.colorHex } : undefined}
             issueSrc={issueDesign?.src ?? null}
             printSavingLabel={PRINT_SAVING_LABEL}
             tap={cursorAt}

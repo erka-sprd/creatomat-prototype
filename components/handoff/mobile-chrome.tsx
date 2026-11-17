@@ -31,12 +31,15 @@ const VIEWS = ["Front", "Back", "Left", "Right", "Neck Label"].map(name => ({ id
 
 export function MobileChrome({
   state,
+  color = { name: "White", hex: "#ffffff" },
   issueSrc,
   printSavingLabel,
   tap,
   moveMs,
 }: {
   state: SceneState
+  /** The product's colour, for the header's colour button. */
+  color?: { name: string; hex: string }
   issueSrc: string | null
   printSavingLabel: string | null
   /** Where the finger is, if it's on the screen. */
@@ -55,8 +58,8 @@ export function MobileChrome({
           canRedo={false}
           onUndo={noop}
           onRedo={noop}
-          colorName="White"
-          colorHex="#ffffff"
+          colorName={color.name}
+          colorHex={color.hex}
           onColorClick={noop}
           onMoreClick={noop}
         />
