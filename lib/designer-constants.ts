@@ -3,8 +3,6 @@
 // Fast Refresh then swaps an edit to it in place instead of reloading the
 // whole page.
 
-import { pixelSizeLabel } from "@/lib/print-quality"
-
 // Shortest time the embroidery "Creating preview" loader stays up for a changed
 // design, so a fast render doesn't flash it by unseen.
 export const EMBROIDERY_MIN_LOADER_MS = 3500
@@ -130,18 +128,13 @@ export const HOOP_GUIDE_BLUR_TRANSITION = `filter ${HOOP_GUIDE_BLUR_MS}ms ease-o
 export const HOOP_RESIZE_FIT_TOLERANCE = 0.01
 // Print: an upload enlarged past the size its pixels print sharp at gets the
 // orange "too large" message in the bottom row's place, as embroidery's does —
-// its title, the upload's own pixels under it, and a button that shrinks it
-// back to that size.
+// its title and a button that shrinks it back to that size.
 export const PRINT_TOO_LARGE_LABEL = "Too large to print sharp"
 export const PRINT_FIT_LABEL = "Fit to good size"
 // Primary, beside it: opens the Uploads panel for a larger file.
 export const PRINT_UPLOAD_LARGER_LABEL = "Upload larger"
 // Green, once it's brought back to its sharp size.
 export const PRINT_GOOD_SIZE_LABEL = "Good size to print sharp"
-/** The message's line under its title: the upload's own pixels. */
-export function printTooLargeDetail(size: { w: number; h: number }) {
-  return `Your design: ${pixelSizeLabel(size)}`
-}
 // It counts as too large past this share over its sharp size — so "Fit to
 // good size", which lands exactly on it, ends the message.
 export const PRINT_TOO_LARGE_TOLERANCE = 0.005

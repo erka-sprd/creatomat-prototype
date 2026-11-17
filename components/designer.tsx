@@ -50,7 +50,6 @@ import {
   lightProductImageShadow,
   MAX_ZOOM,
   PRINT_TOO_LARGE_TOLERANCE,
-  printTooLargeDetail,
   RECOVERED_GOOD_SIZE_MS,
   SELECTION_FRAME_TRANSITION,
   SELECTION_TONE,
@@ -4487,14 +4486,7 @@ export default function Designer({
       .sort((a, b) => b.g.z - a.g.z)
     const hit = over.find(({ g }) => g.id === selectedGraphicId) ?? over[0]
     if (!hit) return null
-    const { g, ratio } = hit
-    return {
-      id: g.id,
-      ratio,
-      detail: g.pixelHeight
-        ? printTooLargeDetail({ w: g.pixelWidth!, h: g.pixelHeight })
-        : undefined,
-    }
+    return { id: hit.g.id, ratio: hit.ratio }
   })()
   const printTooLargeId = printTooLarge?.id ?? null
   // Brought back to its sharp size (resized or "Fit to good size"): green
@@ -7675,7 +7667,6 @@ export default function Designer({
                 onFitToSize={
                   dockedWarning === "print-too-large" ? fitToPrintSize : fitDesignToBestSize
                 }
-                detail={dockedWarning === "print-too-large" ? printTooLarge?.detail : undefined}
                 // Print's "Upload larger": just opens the Uploads panel (on a
                 // phone its drawer), as the earlier "Maximum size" message did.
                 onUploadLarger={

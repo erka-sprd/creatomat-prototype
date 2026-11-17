@@ -34,7 +34,6 @@ import {
   PRINT_TOO_LARGE_LABEL,
   PRINT_UPLOAD_LARGER_LABEL,
   RECOVERED_GOOD_SIZE_MS,
-  printTooLargeDetail,
 } from "@/lib/designer-constants"
 import { printMaxWidthMm } from "@/lib/print-quality"
 
@@ -102,8 +101,8 @@ const GOOD_SIZE = 0.75
 /**
  * The stage for a scene: the product with its "hoop" set to the size the
  * upload prints sharp at — so a size of 1 is that size, and the green area
- * marks it — zoomed in until that size is SHARP_WIDTH_PX wide, and the line
- * the message carries (the upload's own pixels). null until both are loaded.
+ * marks it — zoomed in until that size is SHARP_WIDTH_PX wide. null until
+ * both are loaded.
  */
 function usePrintStage(product: CanvasProduct | null, mobile: boolean) {
   const pixels = useImageSize(UPLOAD_SRC)
@@ -118,7 +117,6 @@ function usePrintStage(product: CanvasProduct | null, mobile: boolean) {
         productPx,
         focusY: UPLOAD_STAGE_Y[mobile ? "mobile" : "desktop"] + (0.5 - UPLOAD_AREA_Y) * areaH,
       },
-      detail: printTooLargeDetail(pixels),
     }
   }, [product, pixels, mobile])
 }
@@ -158,7 +156,7 @@ const GOOD_START: Partial<SceneState> = {
   designs: [upload(GOOD_SIZE)],
 }
 
-/** One rule on the canvas: `initial` with the message's line, on the print stage. */
+/** One rule on the canvas, from `initial`, on the print stage. */
 function PrintScene({
   product,
   device,
@@ -171,14 +169,13 @@ function PrintScene({
   script: { beats: { at: number; set: Update }[]; cycleMs: number }
 }) {
   const stage = usePrintStage(product, !!device?.mobile)
-  const start = useMemo(() => ({ ...initial, detail: stage?.detail ?? null }), [initial, stage])
   if (!stage) return null
   return (
     <Scene
       product={stage.product}
       layout={stage.layout}
       steps={steps}
-      initial={start}
+      initial={initial}
       device={device}
       {...script}
     />

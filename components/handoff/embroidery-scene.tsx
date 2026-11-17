@@ -180,8 +180,6 @@ export type SceneState = {
   issue: EmbroiderySizeStatus | null
   combination: boolean
   fit: boolean
-  /** A line under the warning (print too large: the upload's pixels). */
-  detail: string | null
   /** The selected graphic's editor bar, at the top of the canvas. */
   editorBar: boolean
   green: "good" | "print-switched" | "print-good" | null
@@ -208,7 +206,6 @@ export const BASE_STATE: SceneState = {
   issue: null,
   combination: false,
   fit: false,
-  detail: null,
   editorBar: false,
   green: null,
   loader: false,
@@ -737,7 +734,6 @@ export function Scene({
           shakeSignal={state.shake}
           onSeeOptions={() => {}}
           onFitToSize={state.fit ? () => {} : undefined}
-          detail={state.detail ?? undefined}
           onUploadLarger={() => {}}
         />
         {product && (

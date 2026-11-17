@@ -22,7 +22,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { SelectionBottomHandles } from "@/components/designer"
-import { SELECTION_TONE, printTooLargeDetail } from "@/lib/designer-constants"
+import { SELECTION_TONE } from "@/lib/designer-constants"
 import { EmbroideryIssueDock } from "@/components/embroidery-label"
 import {
   CORNERS,
@@ -492,7 +492,6 @@ export function QualityScene({
           onSeeOptions={() => {}}
           onFitToSize={() => {}}
           onUploadLarger={() => {}}
-          detail={pixels ? printTooLargeDetail(pixels) : undefined}
         />
         {besidePanel && (
           // The designer's desktop add panel, as it wraps its Uploads panel.

@@ -698,7 +698,6 @@ export function EmbroideryIssueDock({
   shakeSignal = 0,
   combination = false,
   concealed = false,
-  detail,
   onUploadLarger,
 }: {
   status: EmbroiderySizeStatus | null
@@ -711,12 +710,7 @@ export function EmbroideryIssueDock({
   combination?: boolean
   /** While ThinLineHelpPopover draws its sharp copy over it. */
   concealed?: boolean
-  /** A line under the message (print too large: the upload's pixels). */
-  detail?: string
 }) {
-  // Kept while the dock slides away, like the status.
-  const [shownDetail, setShownDetail] = useState(detail)
-  if (status && detail !== shownDetail) setShownDetail(detail)
   const show = status !== null
   const [shownStatus, setShownStatus] = useState<EmbroiderySizeStatus>(status ?? "too-large")
   if (status && status !== shownStatus) setShownStatus(status)
@@ -739,7 +733,6 @@ export function EmbroideryIssueDock({
           onSeeOptions={onSeeOptions}
           onFitToSize={onFitToSize}
           docked
-          detail={shownDetail}
           onUploadLarger={onUploadLarger}
           label={
             combination && shownStatus === "too-large"
@@ -915,7 +908,6 @@ export function SizeBadgePill({
   onFitToSize,
   label,
   docked = false,
-  detail,
   onUploadLarger,
 }: {
   status: EmbroiderySizeStatus
@@ -930,8 +922,6 @@ export function SizeBadgePill({
   label?: string
   /** In the bottom row's place (EmbroideryIssueDock): the 16px frame, options or not. */
   docked?: boolean
-  /** A line under the message, lined up with its text. */
-  detail?: string
   /** Print too large: the primary "Upload larger" beside the fit button. */
   onUploadLarger?: () => void
 }) {
@@ -982,9 +972,6 @@ export function SizeBadgePill({
           {label ?? badge.label}
         </span>
       </div>
-      {/* Under the message, in from the icon (16px + the 6px gap), so it
-          starts where the message's text does. */}
-      {detail && <span className="mt-1.5 pl-[22px] text-sm leading-tight">{detail}</span>}
       {actionLabel && (
         // The kit's secondary button (ghost), 16px under the message, as below
         // it (p-4). Its row folds open and shut with the frame's own 300ms
