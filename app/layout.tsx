@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import DevEditMount from "@/components/dev-edit/DevEditMount"
+import DevTabTitle from "@/components/dev-tab-title"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
@@ -42,6 +43,7 @@ export default function RootLayout({
         {children}
         <Analytics />
         {process.env.NODE_ENV === "development" && <DevEditMount />}
+        {process.env.NODE_ENV === "development" && <DevTabTitle />}
       </body>
     </html>
   )
