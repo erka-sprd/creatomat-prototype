@@ -133,6 +133,11 @@ import {
   ScopedDialogTitle,
 } from "@/components/ui/scoped-dialog"
 import { FontPanel } from "@/components/ui/font-panel/FontPanel"
+import { ShapePanel } from "@/components/ui/shape-panel/ShapePanel"
+import { shapeBoxScale, shapedImageStyle, type ShapeDef } from "@/lib/shapes"
+import { EffectsPanel } from "@/components/ui/effects-panel/EffectsPanel"
+import { defaultEffectValues, type AppliedEffect, type EffectDef } from "@/lib/effects"
+import { effectRenderKey, renderEffect } from "@/lib/effect-render"
 import { CurvedText } from "@/components/ui/text-path/CurvedText"
 import { TextPathPanel } from "@/components/ui/text-path/TextPathPanel"
 import {
@@ -176,6 +181,8 @@ import { UploadPanel } from "@/components/ui/upload-panel/UploadPanel"
  */
 
 type DesignerPanel = "graphics" | "uploads" | "ai" | "templates"
+// The selected image's own panels (editor bar → Shape / Effects).
+type ImagePanel = "shapes" | "effects"
 
 const DEFAULT_PRODUCT_ID = "812" // Men's Premium Organic T-Shirt
 
@@ -1093,6 +1100,9 @@ export default function Designer({
   useEffect(() => {
     setMobileSheetPanel(null)
   }, [selectedTextId])
+  // A selected image's Shape or Effects panel: the left drawer on desktop,
+  // the "Edit image" sheet on that tab on mobile.
+  const [imagePanel, setImagePanel] = useState<ImagePanel | null>(null)
   // Selection range while a CURVED text is being edited. The textarea still
   // owns the real caret and selection; this mirrors its selectionStart/End so
   // both can be re-drawn on the path (the native ones are laid out flat and
@@ -1148,9 +1158,51 @@ export default function Designer({
     // maximum. Absent for vectors and non-uploads.
     pixelWidth?: number
     pixelHeight?: number
+    // The shape it's cut to (lib/shapes), from the Shape panel; none = the
+    // whole image.
+    shape?: string
+    // The effect on it (lib/effects) and its slider values, from the Effects
+    // panel; drawn by lib/effect-render into effectSrcs.
+    effect?: AppliedEffect
   }
   const [graphicElements, setGraphicElements] = useState<GraphicElement[]>([])
   const [selectedGraphicId, setSelectedGraphicId] = useState<string | null>(null)
+  // Deselecting the image closes its Shape / Effects panel, and so does opening
+  // an add panel, which slides in where the drawer is.
+  useEffect(() => {
+    if (!selectedGraphicId) setImagePanel(null)
+  }, [selectedGraphicId])
+  useEffect(() => {
+    if (activePanel) setImagePanel(null)
+  }, [activePanel])
+  const selectedGraphic = graphicElements.find(g => g.id === selectedGraphicId) ?? null
+
+  // Each image with an effect, drawn with it (lib/effect-render), keyed by
+  // effectRenderKey so a stale render never shows for newer values. Until its
+  // render lands, an image keeps showing the last one it had.
+  const [effectSrcs, setEffectSrcs] = useState<Record<string, { key: string; src: string }>>({})
+  useEffect(() => {
+    let cancelled = false
+    graphicElements.forEach(g => {
+      if (!g.effect) return
+      const key = effectRenderKey(g.src, g.effect)
+      if (effectSrcs[g.id]?.key === key) return
+      renderEffect(g.src, g.effect).then(src => {
+        if (!cancelled) setEffectSrcs(prev => ({ ...prev, [g.id]: { key, src } }))
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [graphicElements, effectSrcs])
+  // What the canvas shows for an image: its effect render once there is one.
+  const graphicDisplaySrc = (g: { id: string; src: string; effect?: AppliedEffect }) =>
+    g.effect ? (effectSrcs[g.id]?.src ?? g.src) : g.src
+  // The same for the view thumbnails, which take whole elements.
+  const withDisplaySrc = <G extends { id: string; src: string; effect?: AppliedEffect }>(g: G) => ({
+    ...g,
+    src: graphicDisplaySrc(g),
+  })
   // Id of the AI graphic that was just snapped back to its maximum size — drives
   // the notice above the object.
   const [aiSizeCappedId, setAiSizeCappedId] = useState<string | null>(null)
@@ -2095,6 +2147,72 @@ export default function Designer({
     setSelectedGraphicId(null)
   }
 
+  // The Shape panels' pick: cut the selected image to the shape (null takes the
+  // cut away). As create-omat's custom-shapes source does, a shape of other
+  // proportions reshapes the box to them — here about its centre — and "No
+  // Shape" leaves the box as it is.
+  const applyShapeToSelectedGraphic = (shape: ShapeDef | null) => {
+    const id = selectedGraphicId
+    if (!id) return
+    const node = graphicElementRefs.current[id]
+    setGraphicElements(prev =>
+      prev.map(g => {
+        if (g.id !== id) return g
+        if (!shape) return { ...g, shape: undefined }
+        const scale = node
+          ? shapeBoxScale(shape, node.offsetWidth, node.offsetHeight)
+          : { width: 1, height: 1 }
+        const width = g.width * scale.width
+        const height = g.height * scale.height
+        return {
+          ...g,
+          shape: shape.id,
+          width,
+          height,
+          x: g.x + (g.width - width) / 2,
+          y: g.y + (g.height - height) / 2,
+        }
+      })
+    )
+  }
+
+  // The Effects panels' pick: the effect at its default slider values (null
+  // takes it off). Picking the image's current effect again keeps its values.
+  const applyEffectToSelectedGraphic = (effect: EffectDef | null) => {
+    const id = selectedGraphicId
+    if (!id) return
+    setGraphicElements(prev =>
+      prev.map(g => {
+        if (g.id !== id) return g
+        if (!effect) return { ...g, effect: undefined }
+        if (g.effect?.id === effect.id) return g
+        return { ...g, effect: { id: effect.id, values: defaultEffectValues(effect) } }
+      })
+    )
+  }
+
+  // One of the effect's sliders moved.
+  const changeSelectedGraphicEffectValue = (key: string, value: number) => {
+    const id = selectedGraphicId
+    if (!id) return
+    setGraphicElements(prev =>
+      prev.map(g =>
+        g.id === id && g.effect
+          ? { ...g, effect: { ...g.effect, values: { ...g.effect.values, [key]: value } } }
+          : g
+      )
+    )
+  }
+
+  // The editor bar's Shape / Effects: on desktop it toggles that drawer (an
+  // open add panel gives way, the drawer taking the left edge); on mobile it
+  // opens the "Edit image" sheet on that tab.
+  const toggleImagePanel = (panel: ImagePanel) => {
+    const next = isDlgMobile || imagePanel !== panel ? panel : null
+    if (next && !isDlgMobile) setActivePanel(null)
+    setImagePanel(next)
+  }
+
   const duplicateSelectedGraphic = () => {
     if (!selectedGraphicId) return
     const src = graphicElements.find(g => g.id === selectedGraphicId)
@@ -2442,6 +2560,8 @@ export default function Designer({
         target.closest("[data-editor-bar]") ||
         target.closest("[data-text-color-panel]") ||
         target.closest("[data-font-panel]") ||
+        target.closest("[data-shape-panel]") ||
+        target.closest("[data-effects-panel]") ||
         target.closest("[data-text-path-panel]") ||
         // Any bottom sheet. The mobile edit sheet is portalled to <body>, so
         // without this every tap on one of its tabs read as a click outside
@@ -4657,8 +4777,20 @@ export default function Designer({
   // is let go.
   const sizeMessageResize =
     resizingElId !== null && (sizeBadgeStatus !== null || printTooLargeId !== null || printRecovered)
+  // The image panel actually up: only for a lone selected image, and never in
+  // embroidery, which has neither shapes nor effects.
+  const imagePanelShown =
+    imagePanel && selectedGraphic && !selectedText && effectivePrintTechnique !== "embroidery"
+      ? imagePanel
+      : null
+  // On mobile the "Edit image" sheet takes the bar's place while it's up, as
+  // the text sheet does.
   const graphicEditorBarShown =
-    !!selectedGraphicId && !selectedText && !embroideryBlocksBasket && !sizeMessageResize
+    !!selectedGraphicId &&
+    !selectedText &&
+    !embroideryBlocksBasket &&
+    !sizeMessageResize &&
+    !(isDlgMobile && imagePanel)
   // What the canvas badges stack under while it holds the top spot.
   // A text keeps its bar, except while it's moved under the size warning, or
   // resized with a size message up.
@@ -7055,11 +7187,13 @@ export default function Designer({
                         src={
                           simplifyReview?.graphicId === el.id && !simplifyReview.showBefore
                             ? simplifyReview.after!
-                            : el.src
+                            : graphicDisplaySrc(el)
                         }
                         alt=""
                         draggable={false}
                         style={{
+                          // Cut to its shape, if it has one.
+                          ...shapedImageStyle(el.shape),
                           clipPath: contentClipPath("graphic", el),
                           // Blurred while the hoop guide is up, so its arrow
                           // reads over the image.
@@ -7628,7 +7762,9 @@ export default function Designer({
                           image={thumb}
                           overlay={getPrintAreaOverlay(productData, view.id)}
                           textElements={textElements.filter(t => t.printAreaId === viewPaId)}
-                          graphicElements={graphicElements.filter(g => g.printAreaId === viewPaId)}
+                          graphicElements={graphicElements
+                            .filter(g => g.printAreaId === viewPaId)
+                            .map(withDisplaySrc)}
                           displaySize={liveCanvasContentSize / zoom}
                           size={size}
                           lightProduct={isLightProductColor(currentAppearance?.color)}
@@ -8083,9 +8219,31 @@ export default function Designer({
             <GraphicEditorBar
               show={graphicEditorBarShown}
               isAi={!!graphicElements.find(g => g.id === selectedGraphicId)?.isAi}
+              isEmbroidery={effectivePrintTechnique === "embroidery"}
+              onShape={() => toggleImagePanel("shapes")}
+              onEffects={() => toggleImagePanel("effects")}
               onDuplicate={duplicateSelectedGraphic}
               onDelete={deleteSelectedGraphic}
             />
+
+            {/* Desktop Shape and Effects panels — create-omat's GridPanel on
+                Shape / Effects. Below dlg the "Edit image" sheet's tabs stand
+                in for them. */}
+            <div className="contents max-dlg:hidden">
+              <ShapePanel
+                open={imagePanelShown === "shapes"}
+                onClose={() => setImagePanel(null)}
+                currentShapeId={selectedGraphic?.shape ?? null}
+                onChange={applyShapeToSelectedGraphic}
+              />
+              <EffectsPanel
+                open={imagePanelShown === "effects"}
+                onClose={() => setImagePanel(null)}
+                current={selectedGraphic?.effect ?? null}
+                onPick={applyEffectToSelectedGraphic}
+                onValueChange={changeSelectedGraphicEffectValue}
+              />
+            </div>
 
             {/* Mobile text editor bar — rendered here, beside the design bar,
                 so both are positioned against the canvas: they are the same
@@ -8297,7 +8455,7 @@ export default function Designer({
                                 image={thumb}
                                 overlay={viewOverlay}
                                 textElements={viewTexts}
-                                graphicElements={viewGraphics}
+                                graphicElements={viewGraphics.map(withDisplaySrc)}
                                 displaySize={liveCanvasContentSize / zoom}
                                 size={100}
                               />
@@ -8404,7 +8562,7 @@ export default function Designer({
                                 image={thumb}
                                 overlay={viewOverlay}
                                 textElements={viewTexts}
-                                graphicElements={viewGraphics}
+                                graphicElements={viewGraphics.map(withDisplaySrc)}
                                 displaySize={liveCanvasContentSize / zoom}
                                 size={44}
                                 lightProduct={isLightProductColor(currentAppearance?.color)}
@@ -8461,7 +8619,7 @@ export default function Designer({
                                 image={previewThumb ?? ""}
                                 overlay={previewOverlay}
                                 textElements={previewTexts}
-                                graphicElements={previewGraphics}
+                                graphicElements={previewGraphics.map(withDisplaySrc)}
                                 displaySize={liveCanvasContentSize / zoom}
                                 size={160}
                               />
@@ -10153,9 +10311,24 @@ export default function Designer({
           sheet — like create-omat it gets the floating design editor bar over
           the canvas plus the Done pill in the dock. */}
       <MobileEditSheet
-        open={isDlgMobile && !!selectedText && !editingTextId && !!mobileSheetPanel}
+        open={
+          isDlgMobile &&
+          (selectedText
+            ? !editingTextId && !!mobileSheetPanel
+            : imagePanelShown !== null)
+        }
         initialTab={mobileSheetPanel ?? "Font"}
-        onClose={() => setMobileSheetPanel(null)}
+        onClose={() => {
+          setMobileSheetPanel(null)
+          setImagePanel(null)
+        }}
+        graphicTab={imagePanel ?? "shapes"}
+        onGraphicTabChange={setImagePanel}
+        graphicShapeId={selectedGraphic?.shape ?? null}
+        onShapeChange={applyShapeToSelectedGraphic}
+        graphicEffect={selectedGraphic?.effect ?? null}
+        onEffectPick={applyEffectToSelectedGraphic}
+        onEffectValueChange={changeSelectedGraphicEffectValue}
         blockType={selectedText ? "text" : selectedGraphicId ? "graphic" : null}
         text={
           selectedText
@@ -10243,7 +10416,7 @@ function ViewDesignThumb({
     italic?: boolean
     underline?: boolean
   }[]
-  graphicElements: { id: string; x: number; y: number; z: number; width: number; height: number; src: string; rotation?: number }[]
+  graphicElements: { id: string; x: number; y: number; z: number; width: number; height: number; src: string; rotation?: number; shape?: string }[]
   displaySize: number
   size: number
   // White / near-white product: shadow the product image only, never the
@@ -10347,6 +10520,7 @@ function ViewDesignThumb({
               objectFit: "contain",
               transform: `rotate(${el.rotation ?? 0}deg)`,
               transformOrigin: "center",
+              ...shapedImageStyle(el.shape),
             }}
           />
         ))}

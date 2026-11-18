@@ -5,13 +5,21 @@ type GraphicEditorBarProps = {
   // Mirrors create-omat's isAiEditable: the "Modify with AI" item only appears
   // for artwork that came out of the AI panel.
   isAi?: boolean
+  // Embroidery can't stitch a cut-out, so create-omat drops Shape (and
+  // Effects) from the bar while it's the technique.
+  isEmbroidery?: boolean
+  // Opens the Shape panel — the desktop drawer or the mobile sheet.
+  onShape?: () => void
+  // Opens the Effects panel — the desktop drawer or the mobile sheet.
+  onEffects?: () => void
   onDuplicate: () => void
   onDelete: () => void
 }
 
 // create-omat's design editor bar (src/components/ui/editor-bar/index.tsx →
-// `design` items), minus the Colors item for now. Only duplicate and delete are
-// wired up — the rest render with their hover state but do nothing on click yet.
+// `design` items), minus the Colors item for now. Shape, Effects, duplicate
+// and delete are wired up — the rest render with their hover state but do
+// nothing on click yet.
 
 function ShapeIcon() {
   return (
@@ -96,7 +104,15 @@ const ITEM_CLASS =
 
 const DIVIDER = <div className="bg-[#e9e9e9] -my-1.5 w-px shrink-0 self-stretch" />
 
-export function GraphicEditorBar({ show, isAi = false, onDuplicate, onDelete }: GraphicEditorBarProps) {
+export function GraphicEditorBar({
+  show,
+  isAi = false,
+  isEmbroidery = false,
+  onShape,
+  onEffects,
+  onDuplicate,
+  onDelete,
+}: GraphicEditorBarProps) {
   return (
     // Shared between desktop and mobile like create-omat's EditorBar — the
     // shell scrolls the row and shows its chevrons once it stops fitting, and
@@ -108,21 +124,23 @@ export function GraphicEditorBar({ show, isAi = false, onDuplicate, onDelete }: 
           Remove Background
         </button>
 
-        {DIVIDER}
+        {!isEmbroidery && (
+          <>
+            {DIVIDER}
 
-        {/* Shape — not wired yet. */}
-        <button type="button" className={ITEM_CLASS}>
-          <ShapeIcon />
-          Shape
-        </button>
+            <button type="button" className={ITEM_CLASS} onClick={onShape}>
+              <ShapeIcon />
+              Shape
+            </button>
 
-        {DIVIDER}
+            {DIVIDER}
 
-        {/* Effects — not wired yet. */}
-        <button type="button" className={ITEM_CLASS}>
-          <GrainIcon />
-          Effects
-        </button>
+            <button type="button" className={ITEM_CLASS} onClick={onEffects}>
+              <GrainIcon />
+              Effects
+            </button>
+          </>
+        )}
 
         {DIVIDER}
 

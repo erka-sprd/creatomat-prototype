@@ -18,7 +18,12 @@ import {
 import { AlignIcon, BoldIcon, ItalicIcon, UnderlineIcon } from "@/components/ui/editor-bar"
 import { WedgeSlider } from "@/components/ui/editor-bar/WedgeSlider"
 import { FontButton } from "@/components/ui/font-panel/FontButton"
+import { ShapeStrip } from "@/components/ui/shape-panel/ShapeStrip"
+import { EffectSliders } from "@/components/ui/effects-panel/EffectSliders"
+import { EffectStrip } from "@/components/ui/effects-panel/EffectStrip"
+import { effectById, type AppliedEffect, type EffectDef } from "@/lib/effects"
 import { FONTS, MAX_FONT_SIZE, MIN_FONT_SIZE } from "@/lib/fonts"
+import { type ShapeDef } from "@/lib/shapes"
 import { type TextCurveId } from "@/lib/text-path"
 import { ArrowLeft } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -35,7 +40,13 @@ import { useCallback, useEffect, useRef, useState } from "react"
 //   Size    minus / WedgeSlider / plus across the full width, the slider
 //           reading out its percentage above the handle as create-omat does
 //   Curve   the desktop panel's presets in one horizontal strip
-// A selected graphic gets the same sheet with its two actions.
+// A selected graphic gets the "Edit image" version, opened by the editor
+// bar's Shape or Effects: Remove Background (not wired) / Shapes / Effects
+// tabs with duplicate/delete at the end.
+//   Shapes   create-omat's ShapePanel strip
+//   Effects  its EffectsPanel strip; the picked tile's sliders button swaps
+//            the body for EffectControlsPanel, the effect's name and a back
+//            arrow in the title
 
 type TextValues = {
     fontFamily: string
@@ -76,6 +87,16 @@ type MobileEditSheetProps = {
     curveId: TextCurveId | null
     /** null clears the baseline — CE.SDK's setTextOnPath(id, null). */
     onCurveChange: (id: TextCurveId | null) => void
+    /** The selected graphic's shape (lib/shapes); null when it has none. */
+    graphicShapeId?: string | null
+    onShapeChange?: (shape: ShapeDef | null) => void
+    /** Which of the image's tabs is showing. */
+    graphicTab?: GraphicTab
+    onGraphicTabChange?: (tab: GraphicTab) => void
+    /** The selected graphic's effect (lib/effects); null when it has none. */
+    graphicEffect?: AppliedEffect | null
+    onEffectPick?: (effect: EffectDef | null) => void
+    onEffectValueChange?: (key: string, value: number) => void
     /**
      * Portal host. Given an element, the sheet is positioned absolutely inside
      * it instead of fixed to the viewport — how the handoff shows the real
@@ -86,6 +107,12 @@ type MobileEditSheetProps = {
 
 const TEXT_TABS = ["Font", "Format", "Size", "Color", "Curve"] as const
 export type TextTab = (typeof TEXT_TABS)[number]
+
+type GraphicTab = "shapes" | "effects"
+const GRAPHIC_TABS: { id: GraphicTab; label: string }[] = [
+    { id: "shapes", label: "Shapes" },
+    { id: "effects", label: "Effects" },
+]
 
 export default function MobileEditSheet({
     open,
@@ -109,8 +136,24 @@ export default function MobileEditSheet({
     initialTab = "Font",
     curveId,
     onCurveChange,
+    graphicShapeId = null,
+    onShapeChange = () => {},
+    graphicTab = "shapes",
+    onGraphicTabChange = () => {},
+    graphicEffect = null,
+    onEffectPick = () => {},
+    onEffectValueChange = () => {},
     container,
 }: MobileEditSheetProps) {
+    // The effect whose sliders fill the sheet, or null for the tabs view.
+    // Dropped on leaving the tab or the sheet, and if the effect is taken off.
+    const [effectControls, setEffectControls] = useState<EffectDef | null>(null)
+    useEffect(() => {
+        setEffectControls(null)
+    }, [graphicTab, open])
+    useEffect(() => {
+        if (effectControls && graphicEffect?.id !== effectControls.id) setEffectControls(null)
+    }, [graphicEffect?.id, effectControls])
     const [activeTab, setActiveTab] = useState<TextTab>("Font")
     // The custom colour view replaces the whole sheet body, create-omat style;
     // the last colour picked there becomes the rainbow bubble's centre dot.
@@ -186,6 +229,18 @@ export default function MobileEditSheet({
             ) : (
                 "Text style"
             )
+        ) : effectControls ? (
+            <span className="flex h-full items-center gap-2 pt-1">
+                <button
+                    type="button"
+                    aria-label="Back"
+                    onClick={() => setEffectControls(null)}
+                    className="-ml-1 cursor-pointer p-1"
+                >
+                    <ArrowLeft className="size-6" strokeWidth={1.8} />
+                </button>
+                {effectControls.label}
+            </span>
         ) : (
             "Edit image"
         )
@@ -425,27 +480,84 @@ export default function MobileEditSheet({
                 </div>
             ) : null}
 
-            {blockType === "graphic" && (
-                <div className="flex items-center justify-center gap-3 px-4 pt-2 pb-[calc(24px+env(safe-area-inset-bottom))]">
-                    <button
-                        type="button"
-                        onClick={onDuplicate}
-                        className="flex cursor-pointer items-center gap-2 rounded-full bg-neutral-100 px-5 py-3 text-sm font-semibold text-black active:bg-neutral-200"
+            {blockType === "graphic" && effectControls && (
+                /* create-omat's EffectControlsPanel: the effect's sliders in a
+                   228px body, centred while they fit and scrolling once not. */
+                <div className="h-[228px] overflow-hidden pt-2 pb-[env(safe-area-inset-bottom)]">
+                    <div className="no-scrollbar flex h-full w-full flex-col overflow-y-auto px-4 py-2">
+                        <div className="my-auto flex w-full flex-col gap-6 px-1.5">
+                            <EffectSliders
+                                variant="mobile"
+                                effect={effectControls}
+                                values={graphicEffect?.values ?? {}}
+                                onChange={onEffectValueChange}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {blockType === "graphic" && !effectControls && (
+                <div className="flex flex-col pb-[calc(8px+env(safe-area-inset-bottom))]">
+                    {/* create-omat's DESIGN_MOBILE_PANELS row: Remove Background
+                        is an action set flush (px-0 mr-4), then the tabs. */}
+                    <div
+                        data-sheet-tabs="true"
+                        className="no-scrollbar flex items-center gap-2 overflow-x-auto px-4 whitespace-nowrap"
                     >
-                        <DuplicateIcon className="size-5" />
-                        Duplicate
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            onDelete()
-                            onClose()
-                        }}
-                        className="flex cursor-pointer items-center gap-2 rounded-full bg-neutral-100 px-5 py-3 text-sm font-semibold text-[#DC2626] active:bg-neutral-200"
-                    >
-                        <DeleteIcon className="size-5" />
-                        Delete
-                    </button>
+                        <button
+                            type="button"
+                            className="mr-4 inline-flex shrink-0 cursor-pointer items-center justify-center rounded-full px-0 py-2 text-sm font-semibold transition"
+                        >
+                            Remove Background
+                        </button>
+                        {GRAPHIC_TABS.map(tab => (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => onGraphicTabChange(tab.id)}
+                                className={
+                                    "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-full px-4 py-2 text-sm font-semibold transition " +
+                                    (graphicTab === tab.id ? "bg-neutral-100" : "")
+                                }
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                        <div className="flex items-center gap-1 bg-white pl-2">
+                            <button
+                                type="button"
+                                aria-label="Duplicate image"
+                                onClick={onDuplicate}
+                                className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors active:bg-neutral-100"
+                            >
+                                <DuplicateIcon className="size-5" />
+                            </button>
+                            <button
+                                type="button"
+                                aria-label="Delete image"
+                                onClick={() => {
+                                    onDelete()
+                                    onClose()
+                                }}
+                                className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-red-600 transition-colors active:bg-neutral-50"
+                            >
+                                <DeleteIcon className="size-5" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex h-[184px] items-center justify-center">
+                        {graphicTab === "shapes" ? (
+                            <ShapeStrip currentShapeId={graphicShapeId} onChange={onShapeChange} />
+                        ) : (
+                            <EffectStrip
+                                currentId={effectById(graphicEffect?.id)?.id ?? null}
+                                onPick={onEffectPick}
+                                onShowControls={setEffectControls}
+                            />
+                        )}
+                    </div>
                 </div>
             )}
         </MobileDrawer>

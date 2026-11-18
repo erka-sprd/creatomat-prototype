@@ -190,6 +190,21 @@
   }
 }
 
+/* The sliders button popping onto the picked effect tile (mobile Effects
+   strip) — create-omat's effect-controls-pop. Scale only: the centring is the
+   element's own (standalone) translate. */
+@keyframes effect-controls-pop {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+.animate-effect-controls {
+  animation: effect-controls-pop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
 /* Gentle, endless up/down hover for the hero product images.
    Uses the independent `translate` property so it composes with each
    element's Tailwind rotate without overriding it. Max 5px displacement. */
