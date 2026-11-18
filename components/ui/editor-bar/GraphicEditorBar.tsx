@@ -1,3 +1,8 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
+import { useState, type ReactNode } from "react"
+
+import { FLIP_HORIZONTAL_LABEL, FLIP_LABEL, FLIP_VERTICAL_LABEL, type FlipAxis } from "@/lib/flip"
+
 import { EditorBarShell } from "./EditorBarShell"
 
 type GraphicEditorBarProps = {
@@ -12,13 +17,15 @@ type GraphicEditorBarProps = {
   onShape?: () => void
   // Opens the Effects panel — the desktop drawer or the mobile sheet.
   onEffects?: () => void
+  // Flips the selected image on one axis — the Flip dropdown's two items.
+  onFlip?: (axis: FlipAxis) => void
   onDuplicate: () => void
   onDelete: () => void
 }
 
 // create-omat's design editor bar (src/components/ui/editor-bar/index.tsx →
-// `design` items), minus the Colors item for now. Shape, Effects, duplicate
-// and delete are wired up — the rest render with their hover state but do
+// `design` items), minus the Colors item for now. Shape, Effects, Flip,
+// duplicate and delete are wired up — the rest render with their hover state but do
 // nothing on click yet.
 
 function ShapeIcon() {
@@ -66,9 +73,9 @@ function AiStarsIcon() {
   )
 }
 
-function FlipIcon() {
+function FlipIcon({ size = 20 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 16 16" width="20" height="20" fill="none" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width={size} height={size} fill="none" aria-hidden="true">
       <path
         d="M8.00062 1.33325C8.34238 1.33339 8.62421 1.59066 8.66273 1.92212L8.66663 2.00024V14.0002C8.66646 14.3682 8.36858 14.6661 8.00062 14.6663C7.65873 14.6663 7.37702 14.409 7.33851 14.0774L7.33363 14.0002V2.00024C7.33363 1.63205 7.63243 1.33325 8.00062 1.33325ZM5.48695 4.01782L5.55824 4.03931L5.59339 4.05298L5.63148 4.07056L5.69886 4.10962L5.76038 4.15454L5.81507 4.2063L5.8639 4.26196L5.90492 4.32349L5.9391 4.38794L5.96644 4.4563L5.98499 4.52661L5.99574 4.58911L6.00062 4.66724V11.3333C6.00054 11.6749 5.74302 11.9566 5.41175 11.9954L5.33363 12.0002H2.00062C1.53116 12.0002 1.21708 11.5318 1.37367 11.1057L1.40394 11.0354L4.73695 4.36841L4.77601 4.30103L4.82093 4.2395L4.87269 4.18481L4.92933 4.13696L4.98988 4.09497L5.05433 4.06079L5.12269 4.03442L5.193 4.01489L5.26527 4.00317C5.33826 3.99563 5.41343 4.00038 5.48695 4.01782ZM10.7448 4.00513L10.82 4.01782L10.8922 4.03931L10.9606 4.0686L11.025 4.10376L11.0846 4.14673L11.1383 4.19556L11.1871 4.25024L11.2301 4.30981L11.2633 4.36841L14.5973 11.0354C14.8067 11.455 14.5285 11.9456 14.0778 11.9963L14.0006 12.0002H10.6676C10.3259 12.0002 10.0442 11.7427 10.0055 11.4114L10.0006 11.3333L10.0016 4.63599L10.0055 4.58911L10.0182 4.51392L10.0397 4.44263L10.068 4.37427L10.1041 4.30981L10.1471 4.25024L10.1959 4.19556L10.2506 4.14673L10.3102 4.10376L10.3707 4.06958C10.3961 4.05727 10.4188 4.04764 10.442 4.03931L10.5133 4.01782C10.5623 4.00619 10.6125 4.00062 10.6618 4.00024L10.7448 4.00513ZM3.07874 10.6672H4.66663V7.49048L3.07874 10.6672ZM11.3336 10.6672H12.9215L11.3336 7.49146V10.6672Z"
         fill="currentColor"
@@ -104,12 +111,68 @@ const ITEM_CLASS =
 
 const DIVIDER = <div className="bg-[#e9e9e9] -my-1.5 w-px shrink-0 self-stretch" />
 
+// create-omat's Flip item: an editor-bar button opening its DropdownMenu
+// (components/ui/common/DropdownMenu) with the two axes. The menu is portalled,
+// so it carries data-editor-bar to count as part of the bar for the canvas's
+// click-outside deselect.
+function FlipMenu({ onFlip }: { onFlip?: (axis: FlipAxis) => void }) {
+  const [open, setOpen] = useState(false)
+  const items: { axis: FlipAxis; label: string; icon: ReactNode }[] = [
+    { axis: "horizontal", label: FLIP_HORIZONTAL_LABEL, icon: <FlipIcon /> },
+    {
+      axis: "vertical",
+      label: FLIP_VERTICAL_LABEL,
+      icon: (
+        <span className="rotate-90">
+          <FlipIcon size={16} />
+        </span>
+      ),
+    },
+  ]
+  return (
+    // Non-modal: a modal menu turns off pointer events on the page as it opens
+    // on pointerdown, so the trigger's own click then lands outside the bar
+    // and deselects the image.
+    <DropdownMenu.Root onOpenChange={setOpen} modal={false}>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" className={`${ITEM_CLASS} ${open ? "bg-neutral-100" : ""}`}>
+          <FlipIcon />
+          {FLIP_LABEL}
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="center"
+          side="bottom"
+          sideOffset={4}
+          data-editor-bar="true"
+          className="z-50 flex min-w-[160px] flex-col gap-5 border border-neutral-200 bg-white px-5 py-5 shadow-m"
+        >
+          {items.map(item => (
+            <DropdownMenu.Item
+              key={item.axis}
+              onSelect={() => onFlip?.(item.axis)}
+              className="cursor-pointer text-sm outline-none hover:opacity-70"
+            >
+              <span className="flex items-center gap-3">
+                {item.icon}
+                {item.label}
+              </span>
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
+
 export function GraphicEditorBar({
   show,
   isAi = false,
   isEmbroidery = false,
   onShape,
   onEffects,
+  onFlip,
   onDuplicate,
   onDelete,
 }: GraphicEditorBarProps) {
@@ -156,11 +219,8 @@ export function GraphicEditorBar({
           </>
         )}
 
-        {/* Flip — dropdown in create-omat; trigger only for now, not wired. */}
-        <button type="button" className={ITEM_CLASS}>
-          <FlipIcon />
-          Flip
-        </button>
+        {/* Flip — kept in embroidery too, as in create-omat. */}
+        <FlipMenu onFlip={onFlip} />
 
         {DIVIDER}
 

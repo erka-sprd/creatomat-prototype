@@ -134,6 +134,7 @@ import {
 } from "@/components/ui/scoped-dialog"
 import { FontPanel } from "@/components/ui/font-panel/FontPanel"
 import { ShapePanel } from "@/components/ui/shape-panel/ShapePanel"
+import { flipTransform, toggleFlip, type FlipAxis } from "@/lib/flip"
 import { shapeBoxScale, shapedImageStyle, type ShapeDef } from "@/lib/shapes"
 import { EffectsPanel } from "@/components/ui/effects-panel/EffectsPanel"
 import { defaultEffectValues, type AppliedEffect, type EffectDef } from "@/lib/effects"
@@ -1164,6 +1165,9 @@ export default function Designer({
     // The effect on it (lib/effects) and its slider values, from the Effects
     // panel; drawn by lib/effect-render into effectSrcs.
     effect?: AppliedEffect
+    // Mirrored on either axis (lib/flip), from the editor bar's Flip menu.
+    flipX?: boolean
+    flipY?: boolean
   }
   const [graphicElements, setGraphicElements] = useState<GraphicElement[]>([])
   const [selectedGraphicId, setSelectedGraphicId] = useState<string | null>(null)
@@ -2211,6 +2215,12 @@ export default function Designer({
     const next = isDlgMobile || imagePanel !== panel ? panel : null
     if (next && !isDlgMobile) setActivePanel(null)
     setImagePanel(next)
+  }
+
+  const flipSelectedGraphic = (axis: FlipAxis) => {
+    const id = selectedGraphicId
+    if (!id) return
+    setGraphicElements(prev => prev.map(g => (g.id === id ? toggleFlip(g, axis) : g)))
   }
 
   const duplicateSelectedGraphic = () => {
@@ -7194,6 +7204,8 @@ export default function Designer({
                         style={{
                           // Cut to its shape, if it has one.
                           ...shapedImageStyle(el.shape),
+                          // Mirrored, shape cut and effect with it.
+                          transform: flipTransform(el),
                           clipPath: contentClipPath("graphic", el),
                           // Blurred while the hoop guide is up, so its arrow
                           // reads over the image.
@@ -8222,6 +8234,7 @@ export default function Designer({
               isEmbroidery={effectivePrintTechnique === "embroidery"}
               onShape={() => toggleImagePanel("shapes")}
               onEffects={() => toggleImagePanel("effects")}
+              onFlip={flipSelectedGraphic}
               onDuplicate={duplicateSelectedGraphic}
               onDelete={deleteSelectedGraphic}
             />
@@ -10416,7 +10429,7 @@ function ViewDesignThumb({
     italic?: boolean
     underline?: boolean
   }[]
-  graphicElements: { id: string; x: number; y: number; z: number; width: number; height: number; src: string; rotation?: number; shape?: string }[]
+  graphicElements: { id: string; x: number; y: number; z: number; width: number; height: number; src: string; rotation?: number; shape?: string; flipX?: boolean; flipY?: boolean }[]
   displaySize: number
   size: number
   // White / near-white product: shadow the product image only, never the
@@ -10518,7 +10531,7 @@ function ViewDesignThumb({
               width: `${el.width}%`,
               height: `${el.height}%`,
               objectFit: "contain",
-              transform: `rotate(${el.rotation ?? 0}deg)`,
+              transform: `rotate(${el.rotation ?? 0}deg) ${flipTransform(el) ?? ""}`,
               transformOrigin: "center",
               ...shapedImageStyle(el.shape),
             }}
