@@ -72,10 +72,10 @@ const TILE_HOVER = "hover:bg-neutral-100"
 // A view tile: on the kit's lightest neutral (neutral-50) — outlined 1px in
 // the kit's neutral-100 on hover. Every tile keeps a clear border, so nothing
 // shifts when one shows.
-// Selected ("Pop", picked on /view-strip-variants), it sits on the next
-// neutral up (neutral-100), unoutlined, its thumbnail grown with a bounce
-// (.view-tile-pop, globals.css).
-const VIEW_TILE_ACTIVE = "border border-transparent bg-[var(--sprd-neutral-100)]"
+// Selected (the "hairline disc", picked 2026-11-18), it sits on the next
+// neutral up (neutral-100) with a fine neutral-200 edge; its thumbnail keeps
+// its size.
+const VIEW_TILE_ACTIVE = "border border-[var(--sprd-neutral-200)] bg-[var(--sprd-neutral-100)]"
 const VIEW_TILE_IDLE =
   "border border-transparent bg-white hover:border-[var(--sprd-neutral-100)] hover:bg-[var(--sprd-neutral-50)]"
 // The hover state held (ViewStrip's pinnedHoverId).
@@ -738,9 +738,7 @@ export function ViewStrip({
                     views are not clipped, so a light product's shadow is not
                     cut off where the garment meets the box edge. */}
                 <div
-                  className={`relative ${view.photo ? "overflow-hidden rounded-full" : ""} ${
-                    selected ? "view-tile-pop" : "view-tile-unpop"
-                  }`}
+                  className={`relative ${view.photo ? "overflow-hidden rounded-full" : ""}`}
                   style={{ width: TILE_THUMB_PX, height: TILE_THUMB_PX }}
                 >
                   {view.thumb(TILE_THUMB_PX)}

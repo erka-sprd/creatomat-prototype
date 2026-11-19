@@ -176,7 +176,7 @@ function LiveStrip({ views }: { views: MergedRowView[] }) {
   )
 }
 
-/** §3 — a view is picked, one after the next: the label glides over, the view pops. */
+/** §3 — a view is picked, one after the next: the label glides over, the view's disc comes on. */
 function SelectLoop({ views }: { views: MergedRowView[] }) {
   const beat = useBeat()
   return (
@@ -718,7 +718,7 @@ export default function ViewSwitcher() {
       <Section id="s3">
         <Kicker>§3 · Selected view</Kicker>
         <SectionHead title="The label sits over the selected view" />
-        <p>Pick a view: the label and its cut glide over, the view pops</p>
+        <p>Pick a view: the label and its cut glide over, a grey disc with a fine edge marks it</p>
         <Demo padding="p-3.5" className="overflow-x-auto">
           <Canvas padding={LABEL_ROOM}>
             <SelectLoop views={tshirt.views} />

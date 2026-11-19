@@ -218,8 +218,10 @@ export function ViewLabelArt() {
           {views.slice(0, VIEW_LABEL_TILES).map((src, i) => (
             <span
               key={src}
-              className={`flex items-center justify-center rounded-full ${
-                i === active ? "bg-[var(--sprd-neutral-100)]" : ""
+              className={`flex items-center justify-center rounded-full border ${
+                i === active
+                  ? "border-[var(--sprd-neutral-200)] bg-[var(--sprd-neutral-100)]"
+                  : "border-transparent"
               }`}
               style={{ width: VIEW_LABEL_TILE_PX, height: VIEW_LABEL_TILE_PX }}
             >
