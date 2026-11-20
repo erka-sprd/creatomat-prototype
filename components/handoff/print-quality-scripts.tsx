@@ -142,6 +142,8 @@ const tooLarge = all(
 const goodSize = all({ issue: null, green: "print-good" }, design("a", { tone: "green" }))
 // And then as any selected upload: blue, its editor bar and the bottom row back.
 const settled = all({ green: null, row: true, editorBar: true }, design("a", { tone: "blue" }))
+// After "Fit to good size": no green, the message goes and the bottom row comes straight back.
+const fitted = all({ issue: null }, settled)
 
 const TOO_LARGE_START: Partial<SceneState> = {
   technique: "standard",
@@ -249,8 +251,7 @@ const BAR = timeline<Update>(
     all({ cursor: null }, design("a", { size: 1, motionMs: FIT_MS, bounce: true })),
     1400
   ),
-  [FIT_MS, all({ step: 2, editorBar: true }, goodSize)],
-  [RECOVERED_GOOD_SIZE_MS, settled]
+  [FIT_MS, all({ step: 2 }, fitted)]
 )
 
 export function EditorBarScene(props: SceneProps) {
@@ -300,7 +301,7 @@ const fitSteps = (mobile: boolean): Step[] => [
     when: `“${PRINT_FIT_LABEL}” is ${mobile ? "tapped" : "clicked"}`,
     then: "shrinks to its sharp size, small bounce",
   },
-  { when: "it's there", then: `green for ${seconds(RECOVERED_GOOD_SIZE_MS)}` },
+  { when: "it's there", then: "no green: the bottom row comes straight back" },
 ]
 const FIT_STEPS = { desktop: fitSteps(false), mobile: fitSteps(true) }
 // About its centre: no pinned corner.
@@ -314,8 +315,7 @@ const FIT = timeline<Update>(
     all({ cursor: null }, design("a", { size: 1, motionMs: FIT_MS, bounce: true })),
     1800
   ),
-  [FIT_MS, all({ step: 1, editorBar: true }, goodSize)],
-  [RECOVERED_GOOD_SIZE_MS, settled]
+  [FIT_MS, all({ step: 1 }, fitted)]
 )
 
 export function FitScene(props: SceneProps) {

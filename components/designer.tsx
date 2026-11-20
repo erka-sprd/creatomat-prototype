@@ -4619,17 +4619,22 @@ export default function Designer({
     return { id: hit.g.id, ratio: hit.ratio }
   })()
   const printTooLargeId = printTooLarge?.id ?? null
-  // Brought back to its sharp size (resized or "Fit to good size"): green
-  // frame and handles and "good size" for RECOVERED_GOOD_SIZE_MS, as a lone
-  // design brought back within embroidery's hoop frame. Not when the upload
-  // was removed, or the view or technique changed under it.
+  // Resized back to its sharp size: green frame and handles and "good size"
+  // for RECOVERED_GOOD_SIZE_MS, as a lone design brought back within
+  // embroidery's hoop frame. Not when the upload was removed, or the view or
+  // technique changed under it — nor after "Fit to good size", which brings
+  // the bottom row straight back (printFittedRef).
   const [printRecovered, setPrintRecovered] = useState(false)
   const prevPrintTooLargeRef = useRef<string | null>(null)
+  const printFittedRef = useRef<string | null>(null)
   useEffect(() => {
     const prev = prevPrintTooLargeRef.current
     prevPrintTooLargeRef.current = printTooLargeId
+    const fitted = prev !== null && printFittedRef.current === prev
+    if (prev !== printTooLargeId) printFittedRef.current = null
     if (printTooLargeId) setPrintRecovered(false)
-    else if (prev && visibleGraphicElements.some(g => g.id === prev)) setPrintRecovered(true)
+    else if (prev && !fitted && visibleGraphicElements.some(g => g.id === prev))
+      setPrintRecovered(true)
   }, [printTooLargeId])
   useEffect(() => {
     if (!printRecovered) return
@@ -4641,10 +4646,12 @@ export default function Designer({
   }, [effectivePrintTechnique, currentPrintAreaId])
   // "Fit to good size": shrinks that upload about its centre to the size it
   // prints sharp at, eased as embroidery's "Fit to best size" (the overshoot
-  // goes smaller, never past the limit) — the green "good size" follows.
+  // goes smaller, never past the limit) — then the bottom row comes straight
+  // back, without the green "good size".
   const fitToPrintSize = () => {
     if (!printTooLarge || fitAnimRef.current) return
     const { id, ratio } = printTooLarge
+    printFittedRef.current = id
     const g = visibleGraphicElements.find(el => el.id === id)
     if (!g) return
     const start = { w: g.width, h: g.height }

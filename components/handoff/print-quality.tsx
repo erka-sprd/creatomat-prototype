@@ -240,7 +240,7 @@ export default function PrintQuality() {
         n={6}
         kicker="Fit to good size"
         title="Fit to good size shrinks it to its sharp size"
-        line="About its centre, as embroidery's “Fit to best size”"
+        line="About its centre, as embroidery's “Fit to best size”, then straight back to the bottom row"
       >
         <DeviceDemo frame="print-quality" scene="fit">
           {device => <FitScene product={product} device={device} />}
