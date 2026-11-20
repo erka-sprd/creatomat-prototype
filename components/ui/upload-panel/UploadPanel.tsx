@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import { KitButton } from "@/components/kit-button"
 import { hasImageDrag, startImageDrag } from "@/lib/canvas-drop"
+import { fromSavedSrc, loadSnapshot, rememberBlob, saveSnapshot, toSavedSrc } from "@/lib/canvas-persist"
 import { pixelSizeLabel } from "@/lib/print-quality"
 import { cn } from "@/lib/utils"
 
@@ -23,6 +24,10 @@ const SUPPORTED_MIME_TYPES = new Set([
 ])
 const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20 MB
 const MAX_FILES_LIMIT = 10
+// The finished uploads, kept across a refresh (lib/canvas-persist), as
+// create-omat keeps LOCAL_STORAGE_KEYS.uploadedImages.
+const UPLOADS_SNAPSHOT = "uploads"
+type SavedUpload = { id: string; name: string; src: string; vector?: boolean }
 
 type UploadStatus = "uploading" | "uploaded" | "error"
 type UploadError = "size_too_large" | "unsupported"
@@ -288,8 +293,12 @@ export function UploadPanel({
     onPlaceImage,
     pending,
     onPendingConsumed,
+    persist = false,
 }: {
     onPlaceImage: (url: string) => void
+    // The designer's own panel: its uploads are kept across a refresh. Off for
+    // the handoff's demo panels, which must neither show nor save the user's.
+    persist?: boolean
     // A logo handed in from the landing page (data URL + name). Processed exactly
     // like a normal upload so it appears in the panel and auto-places.
     pending?: { dataUrl: string; name: string } | null
@@ -309,6 +318,46 @@ export function UploadPanel({
         imagesRef.current = images
     }, [images])
     const placedRef = useRef<Set<string>>(new Set())
+
+    // Bring back the uploads kept from before, behind any added meanwhile; only
+    // then start saving, so an empty first render can't wipe them.
+    const [restored, setRestored] = useState(false)
+    useEffect(() => {
+        if (!persist) return
+        let gone = false
+        loadSnapshot<SavedUpload[]>(UPLOADS_SNAPSHOT).then(async saved => {
+            const entries = await Promise.all(
+                (saved ?? []).map(async ({ id, name, src, vector }) => {
+                    const url = await fromSavedSrc(src)
+                    if (!url) return null
+                    const entry: UploadEntry = { id, name, url, status: "uploaded", progress: 0, vector }
+                    return entry
+                })
+            )
+            if (gone) return
+            const kept = entries.filter((e): e is UploadEntry => e !== null)
+            kept.forEach(e => placedRef.current.add(e.id))
+            setImages(prev => [...prev, ...kept.filter(e => !prev.some(p => p.id === e.id))])
+            setRestored(true)
+        })
+        return () => {
+            gone = true
+        }
+    }, [])
+    useEffect(() => {
+        if (!restored) return
+        const done = images.filter(im => im.status === "uploaded" && im.url)
+        Promise.all(
+            done.map(async ({ id, name, url, vector }) => ({
+                id,
+                name,
+                src: await toSavedSrc(url),
+                vector,
+            }))
+        ).then(saved => saveSnapshot(UPLOADS_SNAPSHOT, saved, saved.map(s => s.src)))
+    }, [images, restored])
+    const persistRef = useRef(persist)
+    persistRef.current = persist
 
     // Newest at the top: each upload goes in front of the list.
     const addFiles = useCallback((files: File[]) => {
@@ -338,6 +387,7 @@ export function UploadPanel({
                 return
             }
             const url = URL.createObjectURL(file)
+            if (persistRef.current) rememberBlob(url, file)
             const vector = file.type === "image/svg+xml"
             setImages(prev => [
                 { id, name: file.name, url, status: "uploading", progress: 0, vector },
@@ -393,8 +443,7 @@ export function UploadPanel({
 
     const removeImage = (id: string) =>
         setImages(prev => {
-            const target = prev.find(im => im.id === id)
-            if (target?.url) URL.revokeObjectURL(target.url)
+            // The URL isn't revoked: the same image may still be on the canvas.
             return prev.filter(im => im.id !== id)
         })
 

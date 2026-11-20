@@ -138,12 +138,12 @@ const tooLarge = all(
   { issue: "print-too-large", fit: true, row: false, editorBar: false, green: null },
   design("a", { tone: "orange" })
 )
-// Back at it: the green message for RECOVERED_GOOD_SIZE_MS, the frame green.
-const goodSize = all({ issue: null, green: "print-good" }, design("a", { tone: "green" }))
-// And then as any selected upload: blue, its editor bar and the bottom row back.
-const settled = all({ green: null, row: true, editorBar: true }, design("a", { tone: "blue" }))
-// After "Fit to good size": no green, the message goes and the bottom row comes straight back.
-const fitted = all({ issue: null }, settled)
+// Back at its sharp size (fit or resized): no green message — the message goes
+// and the bottom row comes straight back; only the frame stays green, for
+// RECOVERED_GOOD_SIZE_MS, then turns blue.
+const backGreen = all({ issue: null, row: true }, design("a", { tone: "green" }))
+const backBlue = design("a", { tone: "blue" })
+const fitted = all({ editorBar: true }, backGreen)
 
 const TOO_LARGE_START: Partial<SceneState> = {
   technique: "standard",
@@ -251,7 +251,8 @@ const BAR = timeline<Update>(
     all({ cursor: null }, design("a", { size: 1, motionMs: FIT_MS, bounce: true })),
     1400
   ),
-  [FIT_MS, all({ step: 2 }, fitted)]
+  [FIT_MS, all({ step: 2 }, fitted)],
+  [RECOVERED_GOOD_SIZE_MS, backBlue]
 )
 
 export function EditorBarScene(props: SceneProps) {
@@ -276,17 +277,19 @@ export function BasketScene(props: SceneProps) {
 
 const BACK_STEPS: Step[] = [
   { when: "a corner handle is held", then: "the green area shows its sharp size" },
-  { when: "resized down to it", then: "snaps, turns green" },
-  { when: "the handle is released", then: `green for ${seconds(RECOVERED_GOOD_SIZE_MS)}` },
+  {
+    when: "resized down to it",
+    then: `snaps, the bottom row comes straight back, the frame green for ${seconds(RECOVERED_GOOD_SIZE_MS)}`,
+  },
 ]
 const SHRINK_MS = 1400
 const BACK = timeline<Update>(
   [900, { cursor: { design: "a", at: "se" }, cursorMs: 600 }],
   [POINT_MS, all({ pressed: true }, design("a", { hot: "se", guide: "se" }))],
   [1600, all({ step: 1 }, resize(1, SHRINK_MS))],
-  [SHRINK_MS, goodSize],
-  [1200, all({ step: 2, editorBar: true }, release)],
-  [RECOVERED_GOOD_SIZE_MS, settled],
+  [SHRINK_MS, backGreen],
+  [1200, all({ editorBar: true }, release)],
+  [RECOVERED_GOOD_SIZE_MS - 1200, backBlue],
   [600, { cursor: null }]
 )
 
@@ -301,7 +304,10 @@ const fitSteps = (mobile: boolean): Step[] => [
     when: `“${PRINT_FIT_LABEL}” is ${mobile ? "tapped" : "clicked"}`,
     then: "shrinks to its sharp size, small bounce",
   },
-  { when: "it's there", then: "no green: the bottom row comes straight back" },
+  {
+    when: "it's there",
+    then: `the bottom row comes straight back, the frame green for ${seconds(RECOVERED_GOOD_SIZE_MS)}`,
+  },
 ]
 const FIT_STEPS = { desktop: fitSteps(false), mobile: fitSteps(true) }
 // About its centre: no pinned corner.
@@ -315,7 +321,8 @@ const FIT = timeline<Update>(
     all({ cursor: null }, design("a", { size: 1, motionMs: FIT_MS, bounce: true })),
     1800
   ),
-  [FIT_MS, all({ step: 1 }, fitted)]
+  [FIT_MS, all({ step: 1 }, fitted)],
+  [RECOVERED_GOOD_SIZE_MS, backBlue]
 )
 
 export function FitScene(props: SceneProps) {

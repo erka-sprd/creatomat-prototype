@@ -214,7 +214,7 @@ export const ENTRIES: Entry[] = [
     problem:
       "“Why is my logo blurry on the shirt?” — a small upload can be enlarged far past what its pixels print sharp, and nothing in the designer says so.",
     created: "2026-11-11",
-    updated: { date: "November 20, 2026", time: "1:24 PM" },
+    updated: { date: "November 20, 2026", time: "1:30 PM" },
     status: "live",
     tint: TINTS.blue,
   },

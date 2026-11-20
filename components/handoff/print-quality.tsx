@@ -228,7 +228,7 @@ export default function PrintQuality() {
         n={5}
         kicker="Back to a good size"
         title="Resized back, it snaps onto its sharp size"
-        line="As a design back within embroidery's hoop frame"
+        line="No green message: only the frame stays green for a moment"
       >
         <DeviceDemo frame="print-quality" scene="back">
           {device => <BackToGoodSizeScene product={product} device={device} />}

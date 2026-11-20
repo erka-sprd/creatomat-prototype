@@ -32,6 +32,7 @@ import {
   embroideryHoopFrameFraction,
 } from "@/lib/embroidery-limits"
 import { buildCarryMap, carryBox, carryTextPoint } from "@/lib/design-carry"
+import { fromSavedSrc, loadSnapshot, saveSnapshot, toSavedSrc } from "@/lib/canvas-persist"
 import { IMAGE_SERVER_BASE, loadCatalog, modelImagesFor } from "@/lib/catalog"
 import { AI_MAX_PRINT_AREA_FRACTION, isAiImage } from "@/lib/graphics-library"
 import { printMaxWidthMm, uploadPixelWidth } from "@/lib/print-quality"
@@ -186,6 +187,10 @@ type DesignerPanel = "graphics" | "uploads" | "ai" | "templates"
 type ImagePanel = "shapes" | "effects"
 
 const DEFAULT_PRODUCT_ID = "812" // Men's Premium Organic T-Shirt
+
+// How long the canvas waits after the last change before it is saved for a
+// refresh (lib/canvas-persist) — a drag doesn't write on every frame.
+const CANVAS_SAVE_DEBOUNCE_MS = 400
 
 // Desktop view switcher variant. "thumbs" replicates create-omat's ProductAreas
 // row (one thumbnail per view, label under the selected one). "dropdown" is the
@@ -2646,6 +2651,71 @@ export default function Designer({
     )
   }, [productData])
 
+  // Kept across a refresh, until the user removes it (lib/canvas-persist), as
+  // create-omat's localStorage autosave: what's on the print areas, the product
+  // and its colour, and the print technique. A ?product= deep link starts
+  // fresh instead. The elements land once the saved product is the one
+  // loaded, after the carry above, so a switch from the default can't remap
+  // them; saving starts only after that, so the empty first render can't wipe
+  // what was kept.
+  const canvasSnapshot = csMode ? "canvas-cs" : "canvas"
+  type SavedCanvas = {
+    product: { id: string; appearanceId?: string }
+    technique: "standard" | "embroidery"
+    texts: TextElement[]
+    graphics: GraphicElement[]
+  }
+  const [pendingCanvas, setPendingCanvas] = useState<SavedCanvas | null>(null)
+  const [canvasRestored, setCanvasRestored] = useState(false)
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("product")) {
+      setCanvasRestored(true)
+      return
+    }
+    loadSnapshot<SavedCanvas>(canvasSnapshot).then(async saved => {
+      if (!saved) return setCanvasRestored(true)
+      const graphics = await Promise.all(
+        saved.graphics.map(async g => {
+          const src = await fromSavedSrc(g.src)
+          return src ? { ...g, src } : null
+        })
+      )
+      const restored = { ...saved, graphics: graphics.filter(g => g !== null) }
+      setSelectedProduct({ ...restored.product, src: "", name: "", appearanceId: restored.product.appearanceId ?? "" })
+      setPrintTechnique(restored.technique)
+      if (restored.texts.length || restored.graphics.length) setWelcomeOpen(false)
+      setPendingCanvas(restored)
+    })
+  }, [])
+  useEffect(() => {
+    if (!pendingCanvas || productData?.id !== pendingCanvas.product.id) return
+    setTextElements(pendingCanvas.texts)
+    setGraphicElements(pendingCanvas.graphics)
+    zCounterRef.current = Math.max(
+      zCounterRef.current,
+      ...pendingCanvas.texts.map(t => t.z),
+      ...pendingCanvas.graphics.map(g => g.z)
+    )
+    setPendingCanvas(null)
+    setCanvasRestored(true)
+  }, [productData, pendingCanvas])
+  useEffect(() => {
+    if (!canvasRestored || !productData) return
+    const timer = setTimeout(async () => {
+      const graphics = await Promise.all(
+        graphicElements.map(async g => ({ ...g, src: await toSavedSrc(g.src) }))
+      )
+      const saved: SavedCanvas = {
+        product: { id: productData.id, appearanceId: productData.appearances[activeColorIndex]?.id },
+        technique: printTechnique,
+        texts: textElements,
+        graphics,
+      }
+      saveSnapshot(canvasSnapshot, saved, graphics.map(g => g.src))
+    }, CANVAS_SAVE_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [canvasRestored, productData, activeColorIndex, printTechnique, textElements, graphicElements])
+
   // Document-level mousemove/up so dragging and resizing keep working when cursor leaves the element.
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -4619,22 +4689,18 @@ export default function Designer({
     return { id: hit.g.id, ratio: hit.ratio }
   })()
   const printTooLargeId = printTooLarge?.id ?? null
-  // Resized back to its sharp size: green frame and handles and "good size"
-  // for RECOVERED_GOOD_SIZE_MS, as a lone design brought back within
-  // embroidery's hoop frame. Not when the upload was removed, or the view or
-  // technique changed under it — nor after "Fit to good size", which brings
-  // the bottom row straight back (printFittedRef).
+  // Brought back to its sharp size (resized or "Fit to good size"), the
+  // message goes and the bottom row comes straight back: no green "good
+  // size" message in print. Only the frame and handles stay green for
+  // RECOVERED_GOOD_SIZE_MS. Not when the upload was removed, or the view or
+  // technique changed under it.
   const [printRecovered, setPrintRecovered] = useState(false)
   const prevPrintTooLargeRef = useRef<string | null>(null)
-  const printFittedRef = useRef<string | null>(null)
   useEffect(() => {
     const prev = prevPrintTooLargeRef.current
     prevPrintTooLargeRef.current = printTooLargeId
-    const fitted = prev !== null && printFittedRef.current === prev
-    if (prev !== printTooLargeId) printFittedRef.current = null
     if (printTooLargeId) setPrintRecovered(false)
-    else if (prev && !fitted && visibleGraphicElements.some(g => g.id === prev))
-      setPrintRecovered(true)
+    else if (prev && visibleGraphicElements.some(g => g.id === prev)) setPrintRecovered(true)
   }, [printTooLargeId])
   useEffect(() => {
     if (!printRecovered) return
@@ -4646,12 +4712,10 @@ export default function Designer({
   }, [effectivePrintTechnique, currentPrintAreaId])
   // "Fit to good size": shrinks that upload about its centre to the size it
   // prints sharp at, eased as embroidery's "Fit to best size" (the overshoot
-  // goes smaller, never past the limit) — then the bottom row comes straight
-  // back, without the green "good size".
+  // goes smaller, never past the limit).
   const fitToPrintSize = () => {
     if (!printTooLarge || fitAnimRef.current) return
     const { id, ratio } = printTooLarge
-    printFittedRef.current = id
     const g = visibleGraphicElements.find(el => el.id === id)
     if (!g) return
     const start = { w: g.width, h: g.height }
@@ -4673,7 +4737,7 @@ export default function Designer({
     fitAnimRef.current = requestAnimationFrame(step)
   }
   // The print tone of the selected upload: orange while it's the one too
-  // large, green while its "good size" shows.
+  // large, green for a while once it's back at a good size.
   const printTone =
     selectedGraphicId && selectedGraphicId === printTooLargeId
       ? ("orange" as const)
@@ -4793,7 +4857,7 @@ export default function Designer({
   // "good size" it snaps to — no editor bar either: it comes once the handle
   // is let go.
   const sizeMessageResize =
-    resizingElId !== null && (sizeBadgeStatus !== null || printTooLargeId !== null || printRecovered)
+    resizingElId !== null && (sizeBadgeStatus !== null || printTooLargeId !== null)
   // The image panel actually up: only for a lone selected image, and never in
   // embroidery, which has neither shapes nor effects.
   const imagePanelShown =
@@ -5474,13 +5538,13 @@ export default function Designer({
   // "Creating preview" takes the spot first while it runs (EmbroideryPreviewDock).
   const creatingPreview = embroideryLoading && !!designBbox
   // Simplify with AI holds the warning back too, running and under review.
-  // In print: an upload past its sharp size, or "good size" once brought back.
+  // In print: an upload past its sharp size.
   const dockedWarning =
     creatingPreview || simplifyRun
       ? null
       : (designIssueWarning ??
         sizeBadgeStatus ??
-        (printTooLarge ? "print-too-large" : printRecovered ? "print-good" : null))
+        (printTooLarge ? "print-too-large" : null))
   // The solutions popover's "Switch to print": closes it and makes the switch
   // at once — the warning leaves with the embroidery. In its place comes
   // only "Switched to standard print", in green (a dock of its own), said for
@@ -7813,9 +7877,7 @@ export default function Designer({
                 way and back up — rather than repainting it in place. */}
             {mergedDesigner && (
               <EmbroideryIssueDock
-                status={
-                  dockedWarning === "good" || dockedWarning === "print-good" ? null : dockedWarning
-                }
+                status={dockedWarning === "good" ? null : dockedWarning}
                 combination={isCombination}
                 shakeSignal={embroideryShakeSignal}
                 onSeeOptions={toggleThinLineHelp}
@@ -7838,16 +7900,10 @@ export default function Designer({
             {/* The green messages: "Good design size" (back within the hoop
                 frame) and, after "Switch to print", "Switched to standard
                 print" — in the same spot, arriving from below as the warning
-                leaves. In print, "Good size to print sharp". */}
+                leaves. Print has no green "good size". */}
             {mergedDesigner && (
               <EmbroideryIssueDock
-                status={
-                  printSwitched
-                    ? "print-switched"
-                    : dockedWarning === "good" || dockedWarning === "print-good"
-                      ? dockedWarning
-                      : null
-                }
+                status={printSwitched ? "print-switched" : dockedWarning === "good" ? "good" : null}
                 onSeeOptions={toggleThinLineHelp}
               />
             )}
@@ -8202,6 +8258,7 @@ export default function Designer({
                 )}
                 {panel === "uploads" && (
                   <UploadPanel
+                    persist
                     onPlaceImage={addGraphicElement}
                     pending={pendingPanelUpload}
                     onPendingConsumed={() => setPendingPanelUpload(null)}

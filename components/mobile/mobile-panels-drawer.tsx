@@ -66,6 +66,7 @@ export default function MobilePanelsDrawer({
                     }}
                     pending={pendingUpload}
                     onPendingConsumed={onPendingUploadConsumed}
+                    persist
                 />
             )}
 
